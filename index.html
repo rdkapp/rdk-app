@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Randall Duk Kim APP v1.6.0</title>
+  <title>Randall Duk Kim APP v1.7.0</title>
   
   <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -376,9 +376,10 @@
             await Promise.all([window.gapiLoadPromise, window.gisLoadPromise]);
             window.SQL = await window.initSqlJs({ locateFile: file => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/${file}` });
             
-            await new Promise((resolve, reject) => gapi.load('client:picker', { callback: resolve, onerror: reject }));
+            // Load only the 'client' library initially for a more stable init.
+            await new Promise((resolve, reject) => gapi.load('client', { callback: resolve, onerror: reject }));
             
-            // More robust initialization: Initialize the Drive API client explicitly with the discovery document
+            // Initialize the Drive API client explicitly with the discovery document
             await gapi.client.init({
               apiKey: GOOGLE_API_KEY,
               discoveryDocs: ["https://www.googleapis.com/discovery/v1/apis/drive/v3/rest"],
@@ -431,8 +432,12 @@
           setAppStatus('unlock_keychain');
       }, []);
       
-      const openKeychain = useCallback(() => {
+      const openKeychain = useCallback(async () => {
           try {
+            // Lazily load the picker API to ensure it's ready when needed
+            // and to avoid conflicts during initial app load.
+            await new Promise((resolve) => gapi.load('picker', { callback: resolve }));
+
             const view = new google.picker.View(google.picker.ViewId.DOCS);
             view.setQuery('*.db');
             
