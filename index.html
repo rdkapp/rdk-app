@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -204,11 +205,9 @@
       return (
         <div className="max-w-4xl mx-auto min-h-screen bg-white dark:bg-zinc-800 shadow-lg md:mt-8 md:rounded-2xl flex flex-col">
            <header className="sticky top-0 z-10 flex items-center justify-between p-4 border-b border-gray-200 dark:border-zinc-700 bg-gray-50/80 dark:bg-zinc-800/80 backdrop-blur-sm">
-            <div className="flex items-center space-x-3">
-                <img src={googleUser.picture} alt="User" className="w-8 h-8 rounded-full" />
-                <h1 className="text-xl font-bold text-gray-900 dark:text-white truncate">{keychainName}</h1>
-            </div>
+            <h1 className="text-xl font-bold text-gray-900 dark:text-white truncate">Randall Duk Kim APP</h1>
             <div className="flex items-center space-x-2">
+                <div className="text-right font-semibold text-gray-700 dark:text-gray-200">{keychainName}</div>
                 <button onClick={onSaveChanges} className={`flex items-center px-3 py-2 rounded-lg text-sm font-semibold transition-all ${hasUnsavedChanges ? 'bg-blue-600 text-white hover:bg-blue-700 animate-pulse' : 'bg-gray-200 dark:bg-zinc-700 text-gray-800 dark:text-gray-200'}`}><Icon name="save" className="text-lg mr-1" />Guardar en Drive</button>
                 <button onClick={() => setIsSettingsOpen(true)} className="p-2 rounded-full hover:bg-gray-200 dark:hover:bg-zinc-700" title="Configuración"><Icon name="settings" /></button>
                 <button onClick={() => onLock(false)} className="p-2 rounded-full hover:bg-gray-200 dark:hover:bg-zinc-700" title="Bloquear Llavero"><Icon name="lock" /></button>
@@ -250,14 +249,49 @@
         </div>
     );
 
-    const KeychainSelector = ({ onCreate, onOpen }) => (
+    const CreateKeychainModal = ({ isOpen, onClose, onCreate }) => {
+        const [name, setName] = React.useState('');
+        if (!isOpen) return null;
+        
+        const handleSubmit = (e) => {
+            e.preventDefault();
+            if (name.trim()) {
+                onCreate(name.trim());
+            } else {
+                alert("El nombre del llavero no puede estar vacío.");
+            }
+        };
+
+        return (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50" onClick={onClose}>
+                <div className="bg-white dark:bg-zinc-800 rounded-lg shadow-xl w-full max-w-sm m-4" onClick={(e) => e.stopPropagation()}>
+                    <form onSubmit={handleSubmit}>
+                        <div className="p-6">
+                            <h2 className="text-xl font-bold text-gray-900 dark:text-white">Crear Nuevo Llavero</h2>
+                            <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">Asigne un nombre a su nuevo llavero. Este nombre se usará en el archivo de Google Drive.</p>
+                            <div className="mt-4">
+                                <label htmlFor="newKeychainName" className="sr-only">Nombre del Llavero</label>
+                                <input type="text" name="newKeychainName" id="newKeychainName" autoFocus value={name} onChange={e => setName(e.target.value)} placeholder="Ej: Llavero Principal" required className="block w-full rounded-md border-gray-300 dark:border-zinc-600 shadow-sm bg-gray-50 dark:bg-zinc-700 text-gray-900 dark:text-white" />
+                            </div>
+                        </div>
+                        <div className="bg-gray-50 dark:bg-zinc-900/50 px-6 py-4 flex justify-end space-x-3">
+                            <button type="button" onClick={onClose} className="py-2 px-4 border border-gray-300 dark:border-zinc-600 rounded-md shadow-sm text-sm font-medium text-gray-700 dark:text-gray-200 bg-white dark:bg-zinc-700 hover:bg-gray-50 dark:hover:bg-zinc-600">Cancelar</button>
+                            <button type="submit" className="py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700">Crear</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        );
+    };
+
+    const KeychainSelector = ({ onShowCreateModal, onOpen }) => (
         <div className="flex items-center justify-center min-h-screen bg-gray-100 dark:bg-zinc-900 p-4">
              <div className="w-full max-w-md bg-white dark:bg-zinc-800 rounded-2xl shadow-lg p-8 space-y-6 text-center">
                 <Icon name="folder_managed" className="text-5xl text-blue-500 mx-auto" />
                 <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Bienvenido</h2>
                 <p className="text-gray-600 dark:text-gray-400">¿Desea crear un nuevo llavero en su Google Drive o abrir uno existente?</p>
                 <div className="space-y-4 pt-4">
-                    <button onClick={onCreate} className="w-full flex justify-center items-center py-3 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700"><Icon name="note_add" className="text-lg mr-2"/> Crear Nuevo Llavero</button>
+                    <button onClick={onShowCreateModal} className="w-full flex justify-center items-center py-3 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700"><Icon name="note_add" className="text-lg mr-2"/> Crear Nuevo Llavero</button>
                     <button onClick={onOpen} className="w-full flex justify-center items-center py-3 px-4 border border-gray-300 dark:border-zinc-500 rounded-md shadow-sm text-sm font-medium text-gray-700 dark:text-gray-200 bg-transparent hover:bg-gray-50 dark:hover:bg-zinc-700"><Icon name="folder_open" className="text-lg mr-2"/> Abrir desde Google Drive</button>
                 </div>
             </div>
@@ -266,11 +300,7 @@
     
     const UnlockScreen = ({ onUnlock, keychainName, isCreating }) => {
         const [password, setPassword] = React.useState('');
-        const formRef = React.useRef(null);
-        const handleSubmit = (e) => {
-            e.preventDefault();
-            onUnlock(password);
-        };
+        const handleSubmit = (e) => { e.preventDefault(); onUnlock(password); };
         const title = isCreating ? "Crear Contraseña Maestra" : `Desbloquear "${keychainName}"`;
         const prompt = isCreating ? "Establezca una contraseña maestra para su nuevo llavero." : "Ingrese su contraseña maestra para descifrar el llavero.";
         const buttonText = isCreating ? "Establecer Contraseña" : "Desbloquear";
@@ -281,8 +311,8 @@
                     <Icon name={isCreating ? "password" : "lock_open"} className="text-5xl text-blue-500 mx-auto" />
                     <h2 className="text-2xl font-bold text-gray-900 dark:text-white">{title}</h2>
                     <p className="text-gray-600 dark:text-gray-400">{prompt}</p>
-                    <form onSubmit={handleSubmit} ref={formRef}>
-                      <input type="password" autoFocus value={password} onChange={e => setPassword(e.target.value)} placeholder="Contraseña Maestra" className="appearance-none block w-full px-3 py-2 border border-gray-300 dark:border-zinc-600 rounded-md shadow-sm bg-gray-50 dark:bg-zinc-700 text-gray-900 dark:text-white" />
+                    <form onSubmit={handleSubmit}>
+                      <input type="password" autoFocus value={password} onChange={e => setPassword(e.target.value)} placeholder="Contraseña Maestra" required className="appearance-none block w-full px-3 py-2 border border-gray-300 dark:border-zinc-600 rounded-md shadow-sm bg-gray-50 dark:bg-zinc-700 text-gray-900 dark:text-white" />
                       <button type="submit" className="mt-4 w-full flex justify-center items-center py-3 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700">{buttonText}</button>
                     </form>
                 </div>
@@ -297,6 +327,7 @@
       const [appStatus, setAppStatus] = useState('initializing'); // initializing, google_login, select_keychain, unlock_keychain, unlocked, error
       const [configError, setConfigError] = useState(null);
       const [errorMessage, setErrorMessage] = useState('');
+      const [isCreateModalOpen, setCreateModalOpen] = useState(false);
       // API clients and tokens
       const [googleTokenClient, setGoogleTokenClient] = useState(null);
       const [googleUser, setGoogleUser] = useState(null);
@@ -307,38 +338,29 @@
       const [masterKey, setMasterKey] = useState(null);
       const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
       
-      // 1. Robust Initialization
       useEffect(() => {
         const init = async () => {
           try {
             if (GOOGLE_API_KEY.includes('PEGA_TU') || GOOGLE_CLIENT_ID.includes('PEGA_TU')) {
               setConfigError("Las claves de API de Google no están configuradas en el código fuente.");
-              setAppStatus('google_login');
-              return;
+              setAppStatus('google_login'); return;
             }
             await Promise.all([window.gapiLoadPromise, window.gisLoadPromise]);
             window.SQL = await window.initSqlJs({ locateFile: file => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/${file}` });
             
-            // More robust, granular initialization
-            await new Promise((resolve, reject) => gapi.load('client', { callback: resolve, onerror: reject }));
-            await gapi.client.init({ apiKey: GOOGLE_API_KEY });
-            await gapi.client.load('drive', 'v3');
-            await new Promise((resolve, reject) => gapi.load('picker', { callback: resolve, onerror: reject }));
+            await new Promise((resolve, reject) => gapi.load('client:picker', { callback: resolve, onerror: reject }));
+            await gapi.client.init({ apiKey: GOOGLE_API_KEY, discoveryDocs: ["https://www.googleapis.com/discovery/v1/apis/drive/v3/rest"] });
 
             const tokenClient = google.accounts.oauth2.initTokenClient({
-              client_id: GOOGLE_CLIENT_ID,
-              scope: SCOPES,
-              callback: '',
+              client_id: GOOGLE_CLIENT_ID, scope: SCOPES, callback: '',
             });
             setGoogleTokenClient(tokenClient);
             setAppStatus('google_login');
           } catch (error) {
             console.error("Initialization failed:", error);
             if (error.message && (error.message.includes('discovery') || error.message.includes('missing required fields'))) {
-               setErrorMessage("Error de red al cargar APIs de Google. Por favor, deshabilite bloqueadores de anuncios/privacidad para este sitio y recargue.");
-            } else {
-               setErrorMessage("Error fatal al inicializar. Verifique la consola y su conexión.");
-            }
+               setErrorMessage("Error de red al cargar APIs de Google. Deshabilite bloqueadores de anuncios/privacidad y recargue.");
+            } else { setErrorMessage("Error fatal al inicializar. Verifique la consola y su conexión."); }
             setAppStatus('error');
           }
         };
@@ -351,33 +373,29 @@
           return () => window.removeEventListener('beforeunload', handleBeforeUnload);
       }, [hasUnsavedChanges]);
 
-      // 2. Google Login
       const handleGoogleLogin = useCallback(() => {
           if (!googleTokenClient) return;
           googleTokenClient.callback = async (resp) => {
-              if (resp.error) {
-                  alert("Hubo un error al autenticar con Google."); return;
-              }
+              if (resp.error) { alert("Hubo un error al autenticar con Google."); return; }
               try {
                   gapi.client.setToken(resp);
                   const driveResponse = await gapi.client.drive.about.get({ fields: 'user' });
                   setGoogleUser(driveResponse.result.user);
                   setAppStatus('select_keychain');
-              } catch (err) {
-                  alert("No se pudo obtener la información del usuario de Google Drive después de iniciar sesión.");
-              }
+              } catch (err) { alert("No se pudo obtener la información del usuario de Google Drive."); }
           };
           googleTokenClient.requestAccessToken({ prompt: 'consent' });
       }, [googleTokenClient]);
 
-      // 3. Keychain File Handling (NEW LOGIC)
-      const createNewKeychain = useCallback(async () => {
+      const handleConfirmCreate = useCallback(async (keychainName) => {
+          setCreateModalOpen(false);
           setAppStatus('loading');
-          const { database: newDb } = await initDb(null); // Create empty db in memory
+          const { database: newDb } = await initDb(null);
+          setKeychainName(newDb, keychainName);
           setDb(newDb);
-          setDbFileId(null); // Mark as a new, unsaved file
-          setDbFilename('MiLlavero.db'); // Default name
-          setAppStatus('unlock_keychain'); // Proceed to set password
+          setDbFileId(null);
+          setDbFilename(`${keychainName}.db`);
+          setAppStatus('unlock_keychain');
       }, []);
       
       const openKeychain = useCallback(() => {
@@ -398,34 +416,23 @@
                     }
                 }).build();
             picker.setVisible(true);
-          } catch(e) {
-            alert("No se pudo abrir el selector de archivos.");
-          }
+          } catch(e) { alert("No se pudo abrir el selector de archivos."); }
       }, []);
       
-      // 4. Unlock / Set Password (NEW LOGIC)
       const handleUnlockKeychain = useCallback(async (password) => {
           if (!password) { alert("La contraseña no puede estar vacía."); return; }
           setAppStatus('loading');
           try {
-              // Case 1: Unlocking an existing file from Drive
               if (dbFileId) {
                   const res = await gapi.client.drive.files.get({ fileId: dbFileId, alt: 'media' });
                   const dbBuffer = await new Response(res.body).arrayBuffer();
                   const { database, salt } = await initDb(dbBuffer);
                   const key = await deriveKey(password, salt);
-                  setDb(database);
-                  setMasterKey(key);
-                  setAppStatus('unlocked');
-                  setHasUnsavedChanges(false);
-              } 
-              // Case 2: Setting password for a new in-memory keychain
-              else {
+                  setDb(database); setMasterKey(key); setAppStatus('unlocked'); setHasUnsavedChanges(false);
+              } else {
                   const salt = getMetadata(db, 'salt');
                   const key = await deriveKey(password, salt);
-                  setMasterKey(key);
-                  setAppStatus('unlocked');
-                  setHasUnsavedChanges(true); // New file, needs to be saved
+                  setMasterKey(key); setAppStatus('unlocked'); setHasUnsavedChanges(true);
               }
           } catch (error) {
               console.error("Failed to unlock/set password:", error);
@@ -433,75 +440,69 @@
               setAppStatus('unlock_keychain');
           }
       }, [db, dbFileId]);
+
+      const generateTimestamp = () => {
+        const d = new Date(); const pad = (n) => n.toString().padStart(2, '0');
+        return `${pad(d.getDate())}-${pad(d.getMonth() + 1)}-${d.getFullYear()}-${pad(d.getHours())}-${pad(d.getMinutes())}-${pad(d.getSeconds())}`;
+      };
       
-      // 5. Save & Logout (NEW LOGIC)
       const handleSaveChanges = useCallback(async () => {
           if (!db) return;
           const dbData = exportDb(db);
           const blob = new Blob([dbData], { type: 'application/x-sqlite3' });
           let res;
-
-          // Case 1: Updating an existing file
+          
           if (dbFileId) {
               res = await gapi.client.request({
-                  path: `/upload/drive/v3/files/${dbFileId}`,
-                  method: 'PATCH',
-                  params: { uploadType: 'media' },
-                  body: blob
+                  path: `/upload/drive/v3/files/${dbFileId}`, method: 'PATCH', params: { uploadType: 'media' }, body: blob
               });
-          } 
-          // Case 2: Creating a new file for the first time
-          else {
-              const metadata = { name: getKeychainName(db) + '.db', mimeType: 'application/x-sqlite3' };
+          } else {
+              const keychainName = getKeychainName(db);
+              const filename = `RandallDukKimApp_${keychainName}_${generateTimestamp()}.db`;
+              const metadata = { name: filename, mimeType: 'application/x-sqlite3' };
               const form = new FormData();
               form.append('metadata', new Blob([JSON.stringify(metadata)], {type: 'application/json'}));
               form.append('file', blob);
               res = await gapi.client.request({
-                  path: '/upload/drive/v3/files',
-                  method: 'POST',
-                  params: { uploadType: 'multipart' },
-                  body: form
+                  path: '/upload/drive/v3/files', method: 'POST', params: { uploadType: 'multipart' }, body: form
               });
-              if(res.result.id) {
-                setDbFileId(res.result.id); // Save the new ID for future updates
-              }
+              if(res.result.id) { setDbFileId(res.result.id); setDbFilename(filename); }
           }
 
           if (res.status === 200) {
               setHasUnsavedChanges(false);
-          } else {
-              alert("Error al guardar en Google Drive.");
-          }
+              alert('¡Llavero guardado en Google Drive con éxito!');
+          } else { alert("Error al guardar en Google Drive."); }
       }, [db, dbFileId]);
       
-      const handleLock = useCallback((force = false) => {
-          if (!force && hasUnsavedChanges && !window.confirm("Tiene cambios sin guardar. ¿Seguro?")) return;
-          setDb(null); setMasterKey(null); setHasUnsavedChanges(false);
-          setAppStatus('unlock_keychain');
+      const handleLock = useCallback(() => {
+          if (hasUnsavedChanges && !window.confirm("Tiene cambios sin guardar que se perderán. ¿Seguro que quiere bloquear?")) return;
+          setDb(null); setMasterKey(null); setDbFileId(null); setDbFilename(''); setHasUnsavedChanges(false);
+          setAppStatus('select_keychain');
       }, [hasUnsavedChanges]);
       
       const handleSignOut = useCallback(() => {
-          if (hasUnsavedChanges && !window.confirm("Tiene cambios sin guardar. ¿Seguro?")) return;
+          if (hasUnsavedChanges && !window.confirm("Tiene cambios sin guardar que se perderán. ¿Seguro que quiere cerrar sesión?")) return;
           if (gapi.client.getToken()) {
             google.accounts.oauth2.revoke(gapi.client.getToken().access_token, () => {
                 gapi.client.setToken(null);
                 setAppStatus('google_login'); setGoogleUser(null); setDb(null);
-                setDbFileId(null); setMasterKey(null); setHasUnsavedChanges(false);
+                setDbFileId(null); setDbFilename(''); setMasterKey(null); setHasUnsavedChanges(false);
             });
           }
       }, [hasUnsavedChanges]);
 
       // --- RENDER LOGIC ---
-      if (appStatus === 'initializing') return <LoadingScreen message="Inicializando APIs..." />;
-      if (appStatus === 'error') return <LoadingScreen message={errorMessage} />;
-      if (appStatus === 'google_login') return <GoogleLoginScreen onLogin={handleGoogleLogin} configError={configError} />;
-      if (appStatus === 'loading') return <LoadingScreen message="Cargando..." />;
-      if (appStatus === 'select_keychain') return <KeychainSelector onCreate={createNewKeychain} onOpen={openKeychain} />;
-      if (appStatus === 'unlock_keychain') return <UnlockScreen onUnlock={handleUnlockKeychain} keychainName={dbFilename} isCreating={!dbFileId} />;
-      if (appStatus === 'unlocked' && db && masterKey) {
-        return <MainInterface db={db} masterKey={masterKey} onLock={handleLock} onSignOut={handleSignOut} onSaveChanges={handleSaveChanges} hasUnsavedChanges={hasUnsavedChanges} setHasUnsavedChanges={setHasUnsavedChanges} googleUser={googleUser} />
-      }
-      return <LoadingScreen message="Estado desconocido, por favor recargue." />;
+      return (<>
+        {appStatus === 'initializing' && <LoadingScreen message="Inicializando APIs..." />}
+        {appStatus === 'error' && <LoadingScreen message={errorMessage} />}
+        {appStatus === 'google_login' && <GoogleLoginScreen onLogin={handleGoogleLogin} configError={configError} />}
+        {appStatus === 'loading' && <LoadingScreen message="Cargando..." />}
+        {appStatus === 'select_keychain' && <KeychainSelector onShowCreateModal={() => setCreateModalOpen(true)} onOpen={openKeychain} />}
+        {appStatus === 'unlock_keychain' && <UnlockScreen onUnlock={handleUnlockKeychain} keychainName={dbFilename} isCreating={!dbFileId} />}
+        {appStatus === 'unlocked' && db && masterKey && <MainInterface db={db} masterKey={masterKey} onLock={handleLock} onSignOut={handleSignOut} onSaveChanges={handleSaveChanges} hasUnsavedChanges={hasUnsavedChanges} setHasUnsavedChanges={setHasUnsavedChanges} googleUser={googleUser} />}
+        <CreateKeychainModal isOpen={isCreateModalOpen} onClose={() => setCreateModalOpen(false)} onCreate={handleConfirmCreate} />
+      </>);
     };
     
     // --- RENDER APP ---
