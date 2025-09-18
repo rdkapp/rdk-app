@@ -449,33 +449,55 @@
       };
       
       const handleSaveChanges = useCallback(async () => {
-          if (!db) return;
-          const dbData = exportDb(db);
-          const blob = new Blob([dbData], { type: 'application/octet-stream' });
-          let res;
-          
-          if (dbFileId) {
-              res = await gapi.client.request({
-                  path: `/upload/drive/v3/files/${dbFileId}`, method: 'PATCH', params: { uploadType: 'media' }, body: blob
-              });
-          } else {
-              const keychainName = getKeychainName(db);
-              const filename = `RandallDukKimApp_${keychainName}_${generateTimestamp()}.db`;
-              const metadata = { name: filename, mimeType: 'application/octet-stream' };
-              const form = new FormData();
-              form.append('metadata', new Blob([JSON.stringify(metadata)], {type: 'application/json'}));
-              form.append('file', blob);
-              res = await gapi.client.request({
-                  path: '/upload/drive/v3/files', method: 'POST', params: { uploadType: 'multipart' }, body: form
-              });
-              if(res.result.id) { setDbFileId(res.result.id); setDbFilename(filename); }
-          }
+        if (!db) return;
+        const dbData = exportDb(db);
+        const blob = new Blob([dbData], { type: 'application/octet-stream' });
+        
+        try {
+            if (dbFileId) {
+                // Update existing file
+                await gapi.client.request({
+                    path: `/upload/drive/v3/files/${dbFileId}`,
+                    method: 'PATCH',
+                    params: { uploadType: 'media' },
+                    body: blob
+                });
+            } else {
+                // Create new file (robust two-step process)
+                const keychainName = getKeychainName(db);
+                const filename = `RandallDukKimApp_${keychainName}_${generateTimestamp()}.db`;
+                
+                // Step 1: Create file with metadata
+                const createResponse = await gapi.client.drive.files.create({
+                    resource: {
+                        name: filename,
+                        mimeType: 'application/octet-stream'
+                    },
+                    fields: 'id'
+                });
+                
+                const newFileId = createResponse.result.id;
+                if (!newFileId) throw new Error("Google Drive no devolvió un ID de archivo.");
 
-          if (res.status === 200) {
-              setHasUnsavedChanges(false);
-              alert('¡Llavero guardado en Google Drive con éxito!');
-          } else { alert("Error al guardar en Google Drive."); }
-      }, [db, dbFileId]);
+                // Step 2: Upload content to the newly created file
+                await gapi.client.request({
+                    path: `/upload/drive/v3/files/${newFileId}`,
+                    method: 'PATCH',
+                    params: { uploadType: 'media' },
+                    body: blob
+                });
+
+                setDbFileId(newFileId);
+                setDbFilename(filename);
+            }
+
+            setHasUnsavedChanges(false);
+            alert('¡Llavero guardado en Google Drive con éxito!');
+        } catch (error) {
+            console.error("Error saving to Drive:", error);
+            alert("Error al guardar en Google Drive. Verifique la consola para más detalles.");
+        }
+    }, [db, dbFileId]);
       
       const handleLock = useCallback(() => {
           if (hasUnsavedChanges && !window.confirm("Tiene cambios sin guardar que se perderán. ¿Seguro que quiere bloquear?")) return;
