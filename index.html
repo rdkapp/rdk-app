@@ -1,10 +1,9 @@
-
 <!DOCTYPE html>
 <html lang="es">
 <head>
-  <meta charset="UTF--8" />
+  <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Randall Duk Kim APP</title>
+  <title>Randall Duk Kim APP V1.0</title>
   
   <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -413,7 +412,6 @@
           const picker = new google.picker.PickerBuilder()
               .setAppId(GOOGLE_CLIENT_ID.split('-')[0])
               .setOAuthToken(gapi.client.getToken().access_token)
-              .setDeveloperKey(GOOGLE_API_KEY)
               .addView(view)
               .setCallback(async (data) => {
                   if (data[google.picker.Action.PICKED]) {
