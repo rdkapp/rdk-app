@@ -61,12 +61,12 @@
     // Toda la aplicación está contenida en este script.
 
     // --- APP CONFIGURATION ---
-    const APP_VERSION = "1.7.0";
+    const APP_VERSION = "1.8.0";
 
     // --- GOOGLE API CONFIGURATION ---
     // IMPORTANTE: Reemplace estos valores con sus propias credenciales de Google Cloud.
-    const GOOGLE_API_KEY = "AIzaSyAUwZEPOyyA_PEMsjN8MwntB8YGjLd_W-o"; // Clave de API
-    const GOOGLE_CLIENT_ID = "39309742564-q6amcjfo7akgkrof6mft8de8dnvhs6r8.apps.googleusercontent.com"; // ID de Cliente OAuth 2.0
+    const GOOGLE_API_KEY = "PEGA_TU_GOOGLE_API_KEY_AQUI"; // Clave de API
+    const GOOGLE_CLIENT_ID = "PEGA_TU_GOOGLE_CLIENT_ID_AQUI"; // ID de Cliente OAuth 2.0
     const SCOPES = 'https://www.googleapis.com/auth/drive.file';
     // Extrae el App ID del Client ID para usarlo en el Picker.
     const APP_ID = GOOGLE_CLIENT_ID.split('-')[0];
@@ -216,7 +216,7 @@
                                     <label key={tag.id} className="flex items-center w-full px-2 py-2 text-sm text-gray-700 dark:text-gray-200 rounded-md hover:bg-gray-100 dark:hover:bg-zinc-700 cursor-pointer">
                                         <input type="checkbox" checked={tempSelection.includes(tag.name)} onChange={() => handleCheckboxChange(tag.name)} className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
                                         <span className="ml-3">{tag.name}</span>
-                                    </ar>
+                                    </label>
                                 ))}
                             </div>
                             <div className="flex justify-between p-2 border-t border-gray-200 dark:border-zinc-700">
@@ -635,4 +635,3 @@
   </script>
 </body>
 </html>
-
