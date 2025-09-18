@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Randall Duk Kim APP v1.4.0</title>
+  <title>Randall Duk Kim APP v1.5.0</title>
   
   <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -61,7 +61,7 @@
     // Toda la aplicación está contenida en este script.
 
     // --- APP CONFIGURATION ---
-    const APP_VERSION = "1.4.0";
+    const APP_VERSION = "1.5.0";
 
     // --- GOOGLE API CONFIGURATION ---
     // IMPORTANTE: Reemplace estos valores con sus propias credenciales de Google Cloud.
@@ -111,9 +111,24 @@
     // --- DATABASE SERVICE ---
     const createTables = (db) => {
       db.run(`CREATE TABLE IF NOT EXISTS credentials (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, encrypted_username TEXT NOT NULL, encrypted_password TEXT NOT NULL, comment TEXT, tag_id INTEGER, FOREIGN KEY (tag_id) REFERENCES tags(id));`);
-      db.run(`CREATE TABLE IF NOT EXISTS metadata (key TEXT PRIMARY KEY, value BLOB);`);
+      db.run(`CREATE TABLE IF NOT EXISTS metadata (key TEXT PRIMARY KEY, value TEXT);`);
       db.run(`CREATE TABLE IF NOT EXISTS tags (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL UNIQUE);`);
     };
+
+    const getRawMetadata = (db, key) => { const res = db.exec("SELECT value FROM metadata WHERE key = ?", [key]); return (res.length > 0 && res[0].values.length > 0) ? res[0].values[0][0] : null; };
+    const setRawMetadata = (db, key, value) => db.run("INSERT OR REPLACE INTO metadata (key, value) VALUES (?, ?)", [key, value]);
+    
+    const getSalt = (db) => {
+      const b64Salt = getRawMetadata(db, 'salt');
+      return b64Salt ? base64ToUint8Array(b64Salt) : null;
+    };
+    const setSalt = (db, saltUint8Array) => {
+      setRawMetadata(db, 'salt', bufferToBase64(saltUint8Array.buffer));
+    };
+
+    const getKeychainName = (db) => getRawMetadata(db, 'keychain_name') || 'MiLlavero';
+    const setKeychainName = (db, name) => setRawMetadata(db, 'keychain_name', name);
+    
     const initDb = async (dbBuffer) => {
         const SQL = window.SQL;
         let database;
@@ -125,19 +140,16 @@
             isNew = true;
         }
         createTables(database);
-        let salt = getMetadata(database, 'salt');
+        let salt = getSalt(database);
         if (!salt) {
             if (!isNew) throw new Error("Archivo de base de datos inválido: faltan metadatos.");
             salt = window.crypto.getRandomValues(new Uint8Array(SALT_LENGTH));
-            setMetadata(database, 'salt', salt);
+            setSalt(database, salt);
             setKeychainName(database, 'MiLlavero');
         }
         return { database, salt };
     };
-    const getMetadata = (db, key) => { const res = db.exec("SELECT value FROM metadata WHERE key = ?", [key]); return (res.length > 0 && res[0].values.length > 0) ? res[0].values[0][0] : null; };
-    const setMetadata = (db, key, value) => db.run("INSERT OR REPLACE INTO metadata (key, value) VALUES (?, ?)", [key, value]);
-    const getKeychainName = (db) => getMetadata(db, 'keychain_name') || 'MiLlavero';
-    const setKeychainName = (db, name) => setMetadata(db, 'keychain_name', name);
+
     const exportDb = (db) => db.export();
     const getCredentials = (db) => { const res = db.exec(`SELECT c.id, c.name, c.encrypted_username, c.encrypted_password, c.comment, t.name FROM credentials c LEFT JOIN tags t ON c.tag_id = t.id`); return res.length === 0 ? [] : res[0].values.map(row => ({ id: row[0], name: row[1], encrypted_username: row[2], encrypted_password: row[3], comment: row[4], tag: row[5] || 'Sin Etiqueta' })); };
     const addCredential = (db, cred) => db.run('INSERT INTO credentials (name, encrypted_username, encrypted_password, comment, tag_id) VALUES (?, ?, ?, ?, (SELECT id FROM tags WHERE name = ?))', [cred.name, cred.encryptedUsername, cred.encryptedPassword, cred.comment, cred.tag]);
@@ -448,7 +460,7 @@
                   const key = await deriveKey(password, salt);
                   setDb(database); setMasterKey(key); setAppStatus('unlocked'); setHasUnsavedChanges(false);
               } else {
-                  const salt = getMetadata(db, 'salt');
+                  const salt = getSalt(db);
                   const key = await deriveKey(password, salt);
                   setMasterKey(key); setAppStatus('unlocked'); setHasUnsavedChanges(true);
               }
@@ -488,25 +500,22 @@
                 const keychainName = getKeychainName(db);
                 const filename = `RandallDukKimApp_${keychainName}_${generateTimestamp()}.db`;
                 
-                // Step 1: Create metadata
+                // Use robust fetch for upload
                 const createMetaResponse = await fetch(`https://www.googleapis.com/drive/v3/files`, {
                     method: 'POST',
                     headers: {
                         'Authorization': `Bearer ${accessToken}`,
                         'Content-Type': 'application/json'
                     },
-                    body: JSON.stringify({
-                        name: filename,
-                        mimeType: 'application/octet-stream'
-                    })
+                    body: JSON.stringify({ name: filename })
                 });
+
                 if (!createMetaResponse.ok) throw new Error(`Error al crear metadatos: ${await createMetaResponse.text()}`);
                 const fileMeta = await createMetaResponse.json();
                 const newFileId = fileMeta.id;
                 
                 if (!newFileId) throw new Error("Google Drive no devolvió un ID de archivo.");
-                
-                // Step 2: Upload content
+
                 const uploadResponse = await fetch(`https://www.googleapis.com/upload/drive/v3/files/${newFileId}?uploadType=media`, {
                     method: 'PATCH',
                     headers: {
@@ -515,6 +524,7 @@
                     },
                     body: dbData
                 });
+
                 if (!uploadResponse.ok) throw new Error(`Error al subir contenido: ${await uploadResponse.text()}`);
 
                 setDbFileId(newFileId);
