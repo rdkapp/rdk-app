@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -65,7 +66,6 @@
     const GOOGLE_API_KEY = "AIzaSyAUwZEPOyyA_PEMsjN8MwntB8YGjLd_W-o"; // Clave de API
     const GOOGLE_CLIENT_ID = "39309742564-q6amcjfo7akgkrof6mft8de8dnvhs6r8.apps.googleusercontent.com"; // ID de Cliente OAuth 2.0
     const SCOPES = 'https://www.googleapis.com/auth/drive.file';
-    const DISCOVERY_DOCS = ["https://www.googleapis.com/discovery/v1/apis/drive/v3/rest"];
 
     // --- CONSTANTS ---
     const SALT_LENGTH = 16;
@@ -143,9 +143,7 @@
     const addTag = (db, name) => db.run('INSERT INTO tags (name) VALUES (?)', [name]);
     const deleteTag = (db, id) => { const usage = db.exec('SELECT COUNT(*) FROM credentials WHERE tag_id = ?', [id]); if (usage[0].values[0][0] > 0) throw new Error("No se puede eliminar la etiqueta porque está en uso."); db.run('DELETE FROM tags WHERE id = ?', [id]); };
     
-    // --- COMPONENTS (Unchanged: Icon, Spinner, SettingsModal, CredentialModal, CredentialItem, CredentialList, SearchBar) ---
-    // Note: To keep the response concise, these components are omitted as their internal logic is identical to the previous version.
-    // They are included in the full script below for completeness.
+    // --- COMPONENTS ---
     const Icon = ({ name, className }) => <span className={`material-symbols-sharp ${className || ''}`}>{name}</span>;
     const Spinner = () => <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>;
     const SettingsModal = ({ isOpen, onClose, keychainName, onSaveKeychainName, tags, onAddTag, onDeleteTag }) => { const { useState, useEffect } = React; const [name, setName] = useState(keychainName); const [newTagName, setNewTagName] = useState(''); useEffect(() => { setName(keychainName); }, [isOpen, keychainName]); if (!isOpen) return null; const handleSaveName = () => { if (name.trim()) { onSaveKeychainName(name.trim()); } }; const handleAddTag = (e) => { e.preventDefault(); if (newTagName.trim() && !tags.some(t => t.name.toLowerCase() === newTagName.trim().toLowerCase())) { onAddTag(newTagName.trim()); setNewTagName(''); } else { alert("La etiqueta no puede estar vacía o ya existe."); } }; return (<div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50" onClick={onClose}><div className="bg-white dark:bg-zinc-800 rounded-lg shadow-xl w-full max-w-lg m-4" onClick={(e) => e.stopPropagation()}><div className="p-6"><h2 className="text-xl font-bold text-gray-900 dark:text-white">Configuración</h2><div className="mt-6 space-y-6"><div><label htmlFor="keychainName" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Nombre del Llavero</label><div className="flex mt-1"><input type="text" name="keychainName" id="keychainName" value={name} onChange={(e) => setName(e.target.value)} className="flex-grow block w-full rounded-l-md border-gray-300 dark:border-zinc-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 bg-gray-50 dark:bg-zinc-700 text-gray-900 dark:text-white" /><button onClick={handleSaveName} className="px-4 py-2 border border-blue-600 bg-blue-600 text-white rounded-r-md hover:bg-blue-700 text-sm font-medium">Guardar Nombre</button></div></div><div><h3 className="text-lg font-medium text-gray-900 dark:text-white">Gestionar Etiquetas</h3><form onSubmit={handleAddTag} className="flex mt-2"><input type="text" value={newTagName} onChange={(e) => setNewTagName(e.target.value)} placeholder="Nueva etiqueta" className="flex-grow block w-full rounded-l-md border-gray-300 dark:border-zinc-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 bg-gray-50 dark:bg-zinc-700 text-gray-900 dark:text-white" /><button type="submit" className="px-4 py-2 border border-blue-600 bg-blue-600 text-white rounded-r-md hover:bg-blue-700 text-sm font-medium">Agregar</button></form><div className="mt-3 max-h-40 overflow-y-auto space-y-2 pr-2">{tags.map(tag => (<div key={tag.id} className="flex justify-between items-center bg-gray-100 dark:bg-zinc-700 p-2 rounded-md"><span className="text-sm text-gray-800 dark:text-gray-200">{tag.name}</span><button onClick={() => onDeleteTag(tag.id)} className="text-red-500 hover:text-red-700 dark:hover:text-red-400"><Icon name="delete" className="text-base" /></button></div>))}</div></div></div></div><div className="bg-gray-50 dark:bg-zinc-900/50 px-6 py-4 flex justify-end"><button type="button" onClick={onClose} className="py-2 px-4 border border-gray-300 dark:border-zinc-600 rounded-md shadow-sm text-sm font-medium text-gray-700 dark:text-gray-200 bg-white dark:bg-zinc-700 hover:bg-gray-50 dark:hover:bg-zinc-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">Cerrar</button></div></div></div>); };
@@ -153,8 +151,6 @@
     const CredentialItem = ({ credential, onEdit, onDelete }) => { const { useState } = React; const [isExpanded, setIsExpanded] = useState(false); const [isPasswordVisible, setIsPasswordVisible] = useState(false); const [isUsernameVisible, setIsUsernameVisible] = useState(false); const handleCopy = (text) => { navigator.clipboard.writeText(text); }; const getTagColor = (tagName) => { if(!tagName) tagName = 'Sin Etiqueta'; let hash = 0; for (let i = 0; i < tagName.length; i++) { hash = tagName.charCodeAt(i) + ((hash << 5) - hash); } const color = (hash & 0x00FFFFFF).toString(16).toUpperCase(); const hexColor = "00000".substring(0, 6 - color.length) + color; const r = parseInt(hexColor.substring(0,2), 16); const g = parseInt(hexColor.substring(2,4), 16); const b = parseInt(hexColor.substring(4,6), 16); const brightness = (r * 299 + g * 587 + b * 114) / 1000; const textColor = brightness > 125 ? 'text-black' : 'text-white'; return { backgroundColor: `#${hexColor}`, colorClass: textColor }; }; const tagStyle = getTagColor(credential.tag); return (<div className="bg-gray-50 dark:bg-zinc-700/50 rounded-lg shadow-sm transition-shadow hover:shadow-md"><button onClick={() => setIsExpanded(!isExpanded)} className="w-full flex items-center justify-between p-4 text-left"><div className="flex items-center min-w-0 mr-4"><div className={`flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center mr-4 text-lg font-bold text-white bg-gradient-to-br from-blue-500 to-indigo-600`}>{credential.name.charAt(0).toUpperCase()}</div><div className="truncate"><p className="font-semibold text-gray-900 dark:text-white truncate">{credential.name}</p></div></div><div className='flex items-center flex-shrink-0'><span className={`text-xs font-medium mr-4 px-2.5 py-0.5 rounded-full ${tagStyle.colorClass}`} style={{ backgroundColor: tagStyle.backgroundColor }}>{credential.tag}</span><Icon name="expand_more" className={`text-gray-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`} /></div></button>{isExpanded && (<div className="px-4 pb-4 border-t border-gray-200 dark:border-zinc-600"><div className="mt-4 space-y-4"><div><label className="text-xs font-medium text-gray-500 dark:text-gray-400">Usuario / Email</label><div className="flex items-center mt-1"><input type={isUsernameVisible ? 'text' : 'password'} readOnly value={credential.username} className="w-full bg-transparent text-gray-900 dark:text-white focus:outline-none" /><button onClick={() => setIsUsernameVisible(!isUsernameVisible)} className="p-1 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"><Icon name={isUsernameVisible ? 'visibility_off' : 'visibility'} className="text-xl"/></button><button onClick={() => handleCopy(credential.username || '')} className="p-1 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"><Icon name="content_copy" className="text-xl"/></button></div></div><div><label className="text-xs font-medium text-gray-500 dark:text-gray-400">Contraseña</label><div className="flex items-center mt-1"><input type={isPasswordVisible ? 'text' : 'password'} readOnly value={credential.password} className="w-full bg-transparent text-gray-900 dark:text-white focus:outline-none" /><button onClick={() => setIsPasswordVisible(!isPasswordVisible)} className="p-1 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"><Icon name={isPasswordVisible ? 'visibility_off' : 'visibility'} className="text-xl"/></button><button onClick={() => handleCopy(credential.password || '')} className="p-1 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"><Icon name="content_copy" className="text-xl"/></button></div></div>{credential.comment && (<div><label className="text-xs font-medium text-gray-500 dark:text-gray-400">Comentario</label><p className="mt-1 text-sm text-gray-800 dark:text-gray-200 whitespace-pre-wrap">{credential.comment}</p></div>)}</div><div className="mt-4 flex justify-end space-x-2"><button onClick={() => onEdit(credential)} className="flex items-center text-sm text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 p-2 rounded-md hover:bg-gray-100 dark:hover:bg-zinc-600"><Icon name="edit" className="text-base mr-1"/> Editar</button><button onClick={() => onDelete(credential.id)} className="flex items-center text-sm text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300 p-2 rounded-md hover:bg-gray-100 dark:hover:bg-zinc-600"><Icon name="delete" className="text-base mr-1"/> Borrar</button></div></div>)}</div>); };
     const CredentialList = ({ credentials, onEdit, onDelete }) => { if (credentials.length === 0) { return (<div className="text-center py-16"><Icon name="key_off" className="text-5xl text-gray-400 mx-auto" /><h3 className="mt-2 text-lg font-medium text-gray-900 dark:text-white">No se encontraron credenciales</h3><p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Comience agregando una nueva credencial.</p><p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Haga clic en el botón <Icon name="add" className="inline-block text-base" /> para comenzar.</p></div>); } return (<div className="space-y-3">{credentials.map(cred => (<CredentialItem key={cred.id} credential={cred} onEdit={onEdit} onDelete={onDelete} />))}</div>); };
     const SearchBar = ({ onSearch, onFilter, currentFilter, tags }) => { const handleSearchChange = (event) => { onSearch(event.target.value); }; const filterOptions = ['ALL', ...tags.map(t => t.name)]; return (<div className="mb-6"><div className="relative"><div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3"><Icon name="search" className="text-gray-400" /></div><input type="search" placeholder="Buscar por nombre, usuario o comentario..." className="block w-full rounded-lg border border-gray-300 dark:border-zinc-600 bg-gray-50 dark:bg-zinc-700 py-3 pl-10 pr-4 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500" onChange={handleSearchChange} /></div><div className="mt-4 flex justify-center"><div className="inline-flex rounded-md shadow-sm" role="group">{filterOptions.map(tag => (<button key={tag} type="button" onClick={() => onFilter(tag)} className={`py-2 px-4 text-sm font-medium ${ currentFilter === tag ? 'bg-blue-600 text-white' : 'bg-white dark:bg-zinc-700 text-gray-900 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-zinc-600' } border-t border-b border-gray-200 dark:border-zinc-600 first:border-l first:rounded-l-lg last:border-r last:rounded-r-lg focus:z-10 focus:ring-2 focus:ring-blue-500 transition-colors`}>{tag}</button>))}</div></div></div>); };
-
-    // --- FROM components/MainInterface.tsx ---
     const MainInterface = ({ db, masterKey, onLock, onSignOut, onSaveChanges, hasUnsavedChanges, setHasUnsavedChanges, googleUser }) => {
       const { useState, useEffect, useCallback, useMemo } = React;
       const [credentials, setCredentials] = useState([]);
@@ -320,15 +316,15 @@
             }
 
             // Wait for all external scripts to load
-            await Promise.all([window.gapiLoadPromise, window.gisLoadPromise, window.initSqlJs({ locateFile: file => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/${file}` })]);
+            await Promise.all([window.gapiLoadPromise, window.gisLoadPromise]);
             window.SQL = await window.initSqlJs({ locateFile: file => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/${file}` });
             
             // Load GAPI client libraries and initialize them
             await new Promise((resolve, reject) => gapi.load('client:picker', { callback: resolve, onerror: reject }));
-            await gapi.client.init({
-              apiKey: GOOGLE_API_KEY,
-              discoveryDocs: DISCOVERY_DOCS,
-            });
+
+            // More robust initialization sequence
+            await gapi.client.init({ apiKey: GOOGLE_API_KEY });
+            await gapi.client.load('drive', 'v3');
 
             // Initialize GIS token client
             const tokenClient = google.accounts.oauth2.initTokenClient({
@@ -342,7 +338,11 @@
             setAppStatus('google_login');
           } catch (error) {
             console.error("Initialization failed:", error);
-            setErrorMessage("Error fatal al inicializar las APIs. Verifique la consola y su conexión.");
+            if (error.message && (error.message.includes('discovery') || error.message.includes('missing required fields'))) {
+               setErrorMessage("Error de red al cargar APIs de Google. Por favor, deshabilite bloqueadores de anuncios/privacidad para este sitio y recargue.");
+            } else {
+               setErrorMessage("Error fatal al inicializar. Verifique la consola y su conexión.");
+            }
             setAppStatus('error');
           }
         };
@@ -360,11 +360,26 @@
       const handleGoogleLogin = useCallback(() => {
           if (!googleTokenClient) return;
           googleTokenClient.callback = async (resp) => {
-              if (resp.error) throw new Error(resp.error);
-              gapi.client.setToken(resp);
-              const userInfo = await gapi.client.oauth2.userinfo.get();
-              setGoogleUser(userInfo.result);
-              setAppStatus('select_keychain');
+              if (resp.error) {
+                  console.error("Google Auth Error:", resp.error);
+                  alert("Hubo un error al autenticar con Google.");
+                  return;
+              }
+              try {
+                  gapi.client.setToken(resp);
+                  // CORRECT, MODERN API CALL
+                  const driveResponse = await gapi.client.drive.about.get({ fields: 'user' });
+                  const user = driveResponse.result.user;
+                  setGoogleUser({
+                      name: user.displayName,
+                      picture: user.photoLink,
+                      email: user.emailAddress
+                  });
+                  setAppStatus('select_keychain');
+              } catch (err) {
+                  console.error("Error fetching user info:", err);
+                  alert("No se pudo obtener la información del usuario de Google Drive después de iniciar sesión.");
+              }
           };
           googleTokenClient.requestAccessToken({ prompt: 'consent' });
       }, [googleTokenClient]);
@@ -375,7 +390,7 @@
           const { database: newDb } = await initDb(null); // Create empty db
           const dbData = exportDb(newDb);
           
-          const metadata = { name: 'llavero.db', mimeType: 'application/x-sqlite3', parents: ['root'] };
+          const metadata = { name: 'llavero.db', mimeType: 'application/x-sqlite3' };
           const form = new FormData();
           form.append('metadata', new Blob([JSON.stringify(metadata)], {type: 'application/json'}));
           form.append('file', new Blob([dbData], {type: 'application/x-sqlite3'}));
@@ -425,7 +440,6 @@
               const { database, salt } = await initDb(dbBuffer);
               const key = await deriveKey(password, salt);
               
-              // Test decryption with a known value if possible, or assume success
               setDb(database);
               setMasterKey(key);
               setAppStatus('unlocked');
