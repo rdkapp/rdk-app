@@ -264,22 +264,26 @@
         </div>
     );
     
-    const UnlockScreen = ({ onUnlock, keychainName }) => {
+    const UnlockScreen = ({ onUnlock, keychainName, isCreating }) => {
         const [password, setPassword] = React.useState('');
         const formRef = React.useRef(null);
         const handleSubmit = (e) => {
             e.preventDefault();
             onUnlock(password);
         };
+        const title = isCreating ? "Crear Contraseña Maestra" : `Desbloquear "${keychainName}"`;
+        const prompt = isCreating ? "Establezca una contraseña maestra para su nuevo llavero." : "Ingrese su contraseña maestra para descifrar el llavero.";
+        const buttonText = isCreating ? "Establecer Contraseña" : "Desbloquear";
+
         return (
             <div className="flex items-center justify-center min-h-screen bg-gray-100 dark:bg-zinc-900 p-4">
                 <div className="w-full max-w-md bg-white dark:bg-zinc-800 rounded-2xl shadow-lg p-8 space-y-6 text-center">
-                    <Icon name="lock_open" className="text-5xl text-blue-500 mx-auto" />
-                    <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Desbloquear "{keychainName}"</h2>
-                    <p className="text-gray-600 dark:text-gray-400">Ingrese su contraseña maestra para descifrar el llavero.</p>
+                    <Icon name={isCreating ? "password" : "lock_open"} className="text-5xl text-blue-500 mx-auto" />
+                    <h2 className="text-2xl font-bold text-gray-900 dark:text-white">{title}</h2>
+                    <p className="text-gray-600 dark:text-gray-400">{prompt}</p>
                     <form onSubmit={handleSubmit} ref={formRef}>
                       <input type="password" autoFocus value={password} onChange={e => setPassword(e.target.value)} placeholder="Contraseña Maestra" className="appearance-none block w-full px-3 py-2 border border-gray-300 dark:border-zinc-600 rounded-md shadow-sm bg-gray-50 dark:bg-zinc-700 text-gray-900 dark:text-white" />
-                      <button type="submit" className="mt-4 w-full flex justify-center items-center py-3 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700">Desbloquear</button>
+                      <button type="submit" className="mt-4 w-full flex justify-center items-center py-3 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700">{buttonText}</button>
                     </form>
                 </div>
             </div>
@@ -307,33 +311,26 @@
       useEffect(() => {
         const init = async () => {
           try {
-            // Check for API Keys first
             if (GOOGLE_API_KEY.includes('PEGA_TU') || GOOGLE_CLIENT_ID.includes('PEGA_TU')) {
               setConfigError("Las claves de API de Google no están configuradas en el código fuente.");
               setAppStatus('google_login');
               return;
             }
-
-            // Wait for all external scripts to load
             await Promise.all([window.gapiLoadPromise, window.gisLoadPromise]);
             window.SQL = await window.initSqlJs({ locateFile: file => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/${file}` });
             
-            // Load GAPI client libraries and initialize them
-            await new Promise((resolve, reject) => gapi.load('client:picker', { callback: resolve, onerror: reject }));
-
-            // More robust initialization sequence
+            // More robust, granular initialization
+            await new Promise((resolve, reject) => gapi.load('client', { callback: resolve, onerror: reject }));
             await gapi.client.init({ apiKey: GOOGLE_API_KEY });
             await gapi.client.load('drive', 'v3');
+            await new Promise((resolve, reject) => gapi.load('picker', { callback: resolve, onerror: reject }));
 
-            // Initialize GIS token client
             const tokenClient = google.accounts.oauth2.initTokenClient({
               client_id: GOOGLE_CLIENT_ID,
               scope: SCOPES,
-              callback: '', // Callback is handled by promises
+              callback: '',
             });
             setGoogleTokenClient(tokenClient);
-
-            // Everything is ready, move to login screen
             setAppStatus('google_login');
           } catch (error) {
             console.error("Initialization failed:", error);
@@ -345,7 +342,6 @@
             setAppStatus('error');
           }
         };
-
         init();
       }, []);
       
@@ -360,50 +356,28 @@
           if (!googleTokenClient) return;
           googleTokenClient.callback = async (resp) => {
               if (resp.error) {
-                  console.error("Google Auth Error:", resp.error);
-                  alert("Hubo un error al autenticar con Google.");
-                  return;
+                  alert("Hubo un error al autenticar con Google."); return;
               }
               try {
                   gapi.client.setToken(resp);
-                  // CORRECT, MODERN API CALL
                   const driveResponse = await gapi.client.drive.about.get({ fields: 'user' });
-                  const user = driveResponse.result.user;
-                  setGoogleUser({
-                      name: user.displayName,
-                      picture: user.photoLink,
-                      email: user.emailAddress
-                  });
+                  setGoogleUser(driveResponse.result.user);
                   setAppStatus('select_keychain');
               } catch (err) {
-                  console.error("Error fetching user info:", err);
                   alert("No se pudo obtener la información del usuario de Google Drive después de iniciar sesión.");
               }
           };
           googleTokenClient.requestAccessToken({ prompt: 'consent' });
       }, [googleTokenClient]);
 
-      // 3. Keychain File Handling
+      // 3. Keychain File Handling (NEW LOGIC)
       const createNewKeychain = useCallback(async () => {
           setAppStatus('loading');
-          const { database: newDb } = await initDb(null); // Create empty db
-          const dbData = exportDb(newDb);
-          
-          const metadata = { name: 'llavero.db', mimeType: 'application/x-sqlite3' };
-          const form = new FormData();
-          form.append('metadata', new Blob([JSON.stringify(metadata)], {type: 'application/json'}));
-          form.append('file', new Blob([dbData], {type: 'application/x-sqlite3'}));
-          
-          const res = await gapi.client.request({
-              path: '/upload/drive/v3/files',
-              method: 'POST',
-              params: { uploadType: 'multipart' },
-              body: form
-          });
-
-          setDbFileId(res.result.id);
-          setDbFilename(res.result.name);
-          setAppStatus('unlock_keychain');
+          const { database: newDb } = await initDb(null); // Create empty db in memory
+          setDb(newDb);
+          setDbFileId(null); // Mark as a new, unsaved file
+          setDbFilename('MiLlavero.db'); // Default name
+          setAppStatus('unlock_keychain'); // Proceed to set password
       }, []);
       
       const openKeychain = useCallback(() => {
@@ -415,63 +389,83 @@
                 .setOAuthToken(gapi.client.getToken().access_token)
                 .addView(view)
                 .setCallback(async (data) => {
-                    try {
-                        if (data.action === google.picker.Action.PICKED) {
-                            setAppStatus('loading');
-                            const file = data.docs[0];
-                            setDbFileId(file.id);
-                            setDbFilename(file.name);
-                            setAppStatus('unlock_keychain');
-                        }
-                    } catch (e) {
-                        console.error("Error processing picked file:", e);
-                        alert("Ocurrió un error al procesar el archivo seleccionado.");
-                        setAppStatus('select_keychain');
+                    if (data.action === google.picker.Action.PICKED) {
+                        setAppStatus('loading');
+                        const file = data.docs[0];
+                        setDbFileId(file.id);
+                        setDbFilename(file.name);
+                        setAppStatus('unlock_keychain');
                     }
                 }).build();
             picker.setVisible(true);
           } catch(e) {
-            console.error("Error creating picker:", e);
             alert("No se pudo abrir el selector de archivos.");
           }
       }, []);
       
-      // 4. Unlock Keychain
+      // 4. Unlock / Set Password (NEW LOGIC)
       const handleUnlockKeychain = useCallback(async (password) => {
-          if (!password) {
-            alert("La contraseña no puede estar vacía.");
-            return;
-          }
+          if (!password) { alert("La contraseña no puede estar vacía."); return; }
           setAppStatus('loading');
           try {
-              const res = await gapi.client.drive.files.get({ fileId: dbFileId, alt: 'media' });
-              const dbBuffer = await new Response(res.body).arrayBuffer();
-              const { database, salt } = await initDb(dbBuffer);
-              const key = await deriveKey(password, salt);
-              
-              setDb(database);
-              setMasterKey(key);
-              setAppStatus('unlocked');
-              setHasUnsavedChanges(false);
+              // Case 1: Unlocking an existing file from Drive
+              if (dbFileId) {
+                  const res = await gapi.client.drive.files.get({ fileId: dbFileId, alt: 'media' });
+                  const dbBuffer = await new Response(res.body).arrayBuffer();
+                  const { database, salt } = await initDb(dbBuffer);
+                  const key = await deriveKey(password, salt);
+                  setDb(database);
+                  setMasterKey(key);
+                  setAppStatus('unlocked');
+                  setHasUnsavedChanges(false);
+              } 
+              // Case 2: Setting password for a new in-memory keychain
+              else {
+                  const salt = getMetadata(db, 'salt');
+                  const key = await deriveKey(password, salt);
+                  setMasterKey(key);
+                  setAppStatus('unlocked');
+                  setHasUnsavedChanges(true); // New file, needs to be saved
+              }
           } catch (error) {
-              console.error("Failed to unlock:", error);
-              alert("Fallo al desbloquear. Verifique su contraseña o el archivo puede estar dañado.");
+              console.error("Failed to unlock/set password:", error);
+              alert("Fallo al procesar. Verifique su contraseña o el archivo puede estar dañado.");
               setAppStatus('unlock_keychain');
           }
-      }, [dbFileId]);
+      }, [db, dbFileId]);
       
-      // 5. Save & Logout
+      // 5. Save & Logout (NEW LOGIC)
       const handleSaveChanges = useCallback(async () => {
-          if (!db || !dbFileId) return;
+          if (!db) return;
           const dbData = exportDb(db);
           const blob = new Blob([dbData], { type: 'application/x-sqlite3' });
-          
-          const res = await gapi.client.request({
-              path: `/upload/drive/v3/files/${dbFileId}`,
-              method: 'PATCH',
-              params: { uploadType: 'media' },
-              body: blob
-          });
+          let res;
+
+          // Case 1: Updating an existing file
+          if (dbFileId) {
+              res = await gapi.client.request({
+                  path: `/upload/drive/v3/files/${dbFileId}`,
+                  method: 'PATCH',
+                  params: { uploadType: 'media' },
+                  body: blob
+              });
+          } 
+          // Case 2: Creating a new file for the first time
+          else {
+              const metadata = { name: getKeychainName(db) + '.db', mimeType: 'application/x-sqlite3' };
+              const form = new FormData();
+              form.append('metadata', new Blob([JSON.stringify(metadata)], {type: 'application/json'}));
+              form.append('file', blob);
+              res = await gapi.client.request({
+                  path: '/upload/drive/v3/files',
+                  method: 'POST',
+                  params: { uploadType: 'multipart' },
+                  body: form
+              });
+              if(res.result.id) {
+                setDbFileId(res.result.id); // Save the new ID for future updates
+              }
+          }
 
           if (res.status === 200) {
               setHasUnsavedChanges(false);
@@ -503,7 +497,7 @@
       if (appStatus === 'google_login') return <GoogleLoginScreen onLogin={handleGoogleLogin} configError={configError} />;
       if (appStatus === 'loading') return <LoadingScreen message="Cargando..." />;
       if (appStatus === 'select_keychain') return <KeychainSelector onCreate={createNewKeychain} onOpen={openKeychain} />;
-      if (appStatus === 'unlock_keychain') return <UnlockScreen onUnlock={handleUnlockKeychain} keychainName={dbFilename} />;
+      if (appStatus === 'unlock_keychain') return <UnlockScreen onUnlock={handleUnlockKeychain} keychainName={dbFilename} isCreating={!dbFileId} />;
       if (appStatus === 'unlocked' && db && masterKey) {
         return <MainInterface db={db} masterKey={masterKey} onLock={handleLock} onSignOut={handleSignOut} onSaveChanges={handleSaveChanges} hasUnsavedChanges={hasUnsavedChanges} setHasUnsavedChanges={setHasUnsavedChanges} googleUser={googleUser} />
       }
