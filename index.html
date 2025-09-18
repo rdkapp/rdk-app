@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Randall Duk Kim APP v1.2</title>
+  <title>Randall Duk Kim APP v1.2.0</title>
   
   <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -61,7 +61,7 @@
     // Toda la aplicación está contenida en este script.
 
     // --- APP CONFIGURATION ---
-    const APP_VERSION = "1.1.0";
+    const APP_VERSION = "1.2.0";
 
     // --- GOOGLE API CONFIGURATION ---
     // IMPORTANTE: Reemplace estos valores con sus propias credenciales de Google Cloud.
@@ -77,6 +77,14 @@
     const PBKDF2_ITERATIONS = 100000;
 
     // --- CRYPTO SERVICE ---
+    const rawStringToUint8Array = (str) => {
+        const len = str.length;
+        const bytes = new Uint8Array(len);
+        for (let i = 0; i < len; i++) {
+            bytes[i] = str.charCodeAt(i);
+        }
+        return bytes;
+    };
     const bufferToBase64 = (buffer) => btoa(String.fromCharCode(...new Uint8Array(buffer)));
     const base64ToUint8Array = (base64) => {
       const binaryString = atob(base64);
@@ -433,13 +441,15 @@
           setAppStatus('loading');
           try {
               if (dbFileId) {
-                  // Use the more robust gapi.client.request for binary data
                   const res = await gapi.client.request({
                       path: `/drive/v3/files/${dbFileId}`,
                       params: { alt: 'media' }
                   });
-                  const dbBuffer = await new Response(res.body).arrayBuffer();
-                  const { database, salt } = await initDb(dbBuffer);
+
+                  // Correctly convert raw binary string to Uint8Array buffer
+                  const dbUint8Array = rawStringToUint8Array(res.body);
+                  
+                  const { database, salt } = await initDb(dbUint8Array.buffer);
                   const key = await deriveKey(password, salt);
                   setDb(database); setMasterKey(key); setAppStatus('unlocked'); setHasUnsavedChanges(false);
               } else {
