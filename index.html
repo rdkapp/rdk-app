@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Randall Duk Kim APP v1.1.1</title>
+  <title>Randall Duk Kim APP v1.2</title>
   
   <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -433,7 +433,11 @@
           setAppStatus('loading');
           try {
               if (dbFileId) {
-                  const res = await gapi.client.drive.files.get({ fileId: dbFileId, alt: 'media' });
+                  // Use the more robust gapi.client.request for binary data
+                  const res = await gapi.client.request({
+                      path: `/drive/v3/files/${dbFileId}`,
+                      params: { alt: 'media' }
+                  });
                   const dbBuffer = await new Response(res.body).arrayBuffer();
                   const { database, salt } = await initDb(dbBuffer);
                   const key = await deriveKey(password, salt);
@@ -544,4 +548,3 @@
   </script>
 </body>
 </html>
-
