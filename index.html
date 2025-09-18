@@ -348,8 +348,10 @@
             await Promise.all([window.gapiLoadPromise, window.gisLoadPromise]);
             window.SQL = await window.initSqlJs({ locateFile: file => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/${file}` });
             
-            await new Promise((resolve, reject) => gapi.load('client:picker', { callback: resolve, onerror: reject }));
-            await gapi.client.init({ apiKey: GOOGLE_API_KEY, discoveryDocs: ["https://www.googleapis.com/discovery/v1/apis/drive/v3/rest"] });
+            await new Promise((resolve, reject) => gapi.load('client', { callback: resolve, onerror: reject }));
+            await gapi.client.init({ apiKey: GOOGLE_API_KEY });
+            await gapi.client.load('drive', 'v3');
+            await new Promise((resolve, reject) => gapi.load('picker', { callback: resolve, onerror: reject }));
 
             const tokenClient = google.accounts.oauth2.initTokenClient({
               client_id: GOOGLE_CLIENT_ID, scope: SCOPES, callback: '',
@@ -394,7 +396,7 @@
           setKeychainName(newDb, keychainName);
           setDb(newDb);
           setDbFileId(null);
-          setDbFilename(`${keychainName}.db`);
+          setDbFilename(keychainName); // Use the provided name directly
           setAppStatus('unlock_keychain');
       }, []);
       
@@ -499,7 +501,7 @@
         {appStatus === 'google_login' && <GoogleLoginScreen onLogin={handleGoogleLogin} configError={configError} />}
         {appStatus === 'loading' && <LoadingScreen message="Cargando..." />}
         {appStatus === 'select_keychain' && <KeychainSelector onShowCreateModal={() => setCreateModalOpen(true)} onOpen={openKeychain} />}
-        {appStatus === 'unlock_keychain' && <UnlockScreen onUnlock={handleUnlockKeychain} keychainName={dbFilename} isCreating={!dbFileId} />}
+        {app.status === 'unlock_keychain' && <UnlockScreen onUnlock={handleUnlockKeychain} keychainName={dbFilename} isCreating={!dbFileId} />}
         {appStatus === 'unlocked' && db && masterKey && <MainInterface db={db} masterKey={masterKey} onLock={handleLock} onSignOut={handleSignOut} onSaveChanges={handleSaveChanges} hasUnsavedChanges={hasUnsavedChanges} setHasUnsavedChanges={setHasUnsavedChanges} googleUser={googleUser} />}
         <CreateKeychainModal isOpen={isCreateModalOpen} onClose={() => setCreateModalOpen(false)} onCreate={handleConfirmCreate} />
       </>);
