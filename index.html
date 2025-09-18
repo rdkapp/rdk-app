@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Randall Duk Kim APP v1.8.0</title>
+  <title>Randall Duk Kim APP v1.9.0</title>
   
   <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -61,7 +61,7 @@
     // Toda la aplicación está contenida en este script.
 
     // --- APP CONFIGURATION ---
-    const APP_VERSION = "1.8.0";
+    const APP_VERSION = "1.9.0";
 
     // --- GOOGLE API CONFIGURATION ---
     // IMPORTANTE: Reemplace estos valores con sus propias credenciales de Google Cloud.
@@ -70,7 +70,6 @@
     const SCOPES = 'https://www.googleapis.com/auth/drive.file';
     // Extrae el App ID del Client ID para usarlo en el Picker.
     const APP_ID = GOOGLE_CLIENT_ID.split('-')[0];
-    const DISCOVERY_DOCS = ["https://www.googleapis.com/discovery/v1/apis/drive/v3/rest"];
 
     // --- CONSTANTS ---
     const SALT_LENGTH = 16;
@@ -79,22 +78,55 @@
 
     // --- CRYPTO SERVICE ---
     // ROBUST Base64 conversion functions that handle all byte values correctly.
-    const bufferToBase64 = (buffer) => {
-        let binary = '';
+     const bufferToBase64 = (buffer) => {
         const bytes = new Uint8Array(buffer);
-        const len = bytes.byteLength;
-        for (let i = 0; i < len; i++) {
-            binary += String.fromCharCode(bytes[i]);
+        let base64 = '';
+        const encodings = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+        const byteLength = bytes.byteLength;
+        const byteRemainder = byteLength % 3;
+        const mainLength = byteLength - byteRemainder;
+        let a, b, c, d;
+        let chunk;
+        for (let i = 0; i < mainLength; i = i + 3) {
+            chunk = (bytes[i] << 16) | (bytes[i + 1] << 8) | bytes[i + 2];
+            a = (chunk & 16515072) >> 18;
+            b = (chunk & 258048) >> 12;
+            c = (chunk & 4032) >> 6;
+            d = chunk & 63;
+            base64 += encodings[a] + encodings[b] + encodings[c] + encodings[d];
         }
-        return window.btoa(binary);
+        if (byteRemainder === 1) {
+            chunk = bytes[mainLength];
+            a = (chunk & 252) >> 2;
+            b = (chunk & 3) << 4;
+            base64 += encodings[a] + encodings[b] + '==';
+        } else if (byteRemainder === 2) {
+            chunk = (bytes[mainLength] << 8) | bytes[mainLength + 1];
+            a = (chunk & 64512) >> 10;
+            b = (chunk & 1008) >> 4;
+            c = (chunk & 15) << 2;
+            base64 += encodings[a] + encodings[b] + encodings[c] + '=';
+        }
+        return base64;
     };
-
+    
     const base64ToUint8Array = (base64) => {
-        const binary_string = window.atob(base64);
-        const len = binary_string.length;
-        const bytes = new Uint8Array(len);
-        for (let i = 0; i < len; i++) {
-            bytes[i] = binary_string.charCodeAt(i);
+        const decodings = {};
+        const encodings = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+        for (let i = 0; i < 64; i++) { decodings[encodings[i]] = i; }
+        const base64Len = base64.length;
+        let bufferLength = base64Len * 0.75;
+        if (base64[base64Len - 1] === '=') bufferLength--;
+        if (base64[base64Len - 2] === '=') bufferLength--;
+        const bytes = new Uint8Array(bufferLength);
+        for (let i = 0, j = 0; i < base64Len; i += 4, j += 3) {
+            const a = decodings[base64[i]];
+            const b = decodings[base64[i + 1]];
+            const c = decodings[base64[i + 2]];
+            const d = decodings[base64[i + 3]];
+            bytes[j] = (a << 2) | (b >> 4);
+            if (c !== undefined) bytes[j + 1] = ((b & 15) << 4) | (c >> 2);
+            if (d !== undefined) bytes[j + 2] = ((c & 3) << 6) | d;
         }
         return bytes;
     };
@@ -180,56 +212,7 @@
     const CredentialModal = ({ isOpen, onClose, onSave, credential, tags }) => { const { useState, useEffect } = React; const [formData, setFormData] = useState({ name: '', username: '', password: '', comment: '', tag: tags.length > 0 ? tags[0].name : '', }); useEffect(() => { if (credential) { setFormData({ ...credential, tag: credential.tag || (tags.length > 0 ? tags[0].name : '') }); } else { setFormData({ name: '', username: '', password: '', comment: '', tag: tags.length > 0 ? tags[0].name : '' }); } }, [credential, tags, isOpen]); const handleChange = (e) => { const { name, value } = e.target; setFormData(prev => ({ ...prev, [name]: value })); }; const handleSubmit = (e) => { e.preventDefault(); if (!formData.name || !formData.username || !formData.password) { alert("Nombre, Usuario y Contraseña son requeridos."); return; } if (tags.length > 0 && !formData.tag) { alert("Debe seleccionar una etiqueta."); return; } onSave(formData); }; if (!isOpen) return null; return (<div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50" onClick={onClose}><div className="bg-white dark:bg-zinc-800 rounded-lg shadow-xl w-full max-w-lg m-4" onClick={(e) => e.stopPropagation()}><form onSubmit={handleSubmit}><div className="p-6"><h2 className="text-xl font-bold text-gray-900 dark:text-white">{credential ? 'Editar Credencial' : 'Agregar Nueva Credencial'}</h2><div className="mt-6 space-y-4"><div><label htmlFor="name" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Nombre</label><input type="text" name="name" id="name" value={formData.name} onChange={handleChange} required className="mt-1 block w-full rounded-md border-gray-300 dark:border-zinc-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 bg-gray-50 dark:bg-zinc-700 text-gray-900 dark:text-white" /></div><div><label htmlFor="username" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Usuario / Email</label><input type="text" name="username" id="username" value={formData.username} onChange={handleChange} required className="mt-1 block w-full rounded-md border-gray-300 dark:border-zinc-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 bg-gray-50 dark:bg-zinc-700 text-gray-900 dark:text-white" /></div><div><label htmlFor="password" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Contraseña</label><input type="password" name="password" id="password" value={formData.password} onChange={handleChange} required className="mt-1 block w-full rounded-md border-gray-300 dark:border-zinc-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 bg-gray-50 dark:bg-zinc-700 text-gray-900 dark:text-white" /></div><div><label htmlFor="comment" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Comentario</label><textarea name="comment" id="comment" value={formData.comment} onChange={handleChange} rows={3} className="mt-1 block w-full rounded-md border-gray-300 dark:border-zinc-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 bg-gray-50 dark:bg-zinc-700 text-gray-900 dark:text-white"></textarea></div><div><label htmlFor="tag" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Etiqueta</label><select name="tag" id="tag" value={formData.tag} onChange={handleChange} className="mt-1 block w-full rounded-md border-gray-300 dark:border-zinc-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 bg-gray-50 dark:bg-zinc-700 text-gray-900 dark:text-white" disabled={tags.length === 0}>{tags.length === 0 ? <option>Cree una etiqueta primero</option> : tags.map(tag => <option key={tag.id} value={tag.name}>{tag.name}</option>)}</select></div></div></div><div className="bg-gray-50 dark:bg-zinc-900/50 px-6 py-4 flex justify-end space-x-3"><button type="button" onClick={onClose} className="py-2 px-4 border border-gray-300 dark:border-zinc-600 rounded-md shadow-sm text-sm font-medium text-gray-700 dark:text-gray-200 bg-white dark:bg-zinc-700 hover:bg-gray-50 dark:hover:bg-zinc-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">Cancelar</button><button type="submit" className="py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">Guardar</button></div></form></div></div>); };
     const CredentialItem = ({ credential, onEdit, onDelete }) => { const { useState } = React; const [isExpanded, setIsExpanded] = useState(false); const [isPasswordVisible, setIsPasswordVisible] = useState(false); const [isUsernameVisible, setIsUsernameVisible] = useState(false); const handleCopy = (text) => { navigator.clipboard.writeText(text); }; const getTagColor = (tagName) => { if(!tagName) tagName = 'Sin Etiqueta'; let hash = 0; for (let i = 0; i < tagName.length; i++) { hash = tagName.charCodeAt(i) + ((hash << 5) - hash); } const color = (hash & 0x00FFFFFF).toString(16).toUpperCase(); const hexColor = "00000".substring(0, 6 - color.length) + color; const r = parseInt(hexColor.substring(0,2), 16); const g = parseInt(hexColor.substring(2,4), 16); const b = parseInt(hexColor.substring(4,6), 16); const brightness = (r * 299 + g * 587 + b * 114) / 1000; const textColor = brightness > 125 ? 'text-black' : 'text-white'; return { backgroundColor: `#${hexColor}`, colorClass: textColor }; }; const tagStyle = getTagColor(credential.tag); return (<div className="bg-gray-50 dark:bg-zinc-700/50 rounded-lg shadow-sm transition-shadow hover:shadow-md"><button onClick={() => setIsExpanded(!isExpanded)} className="w-full flex items-center justify-between p-4 text-left"><div className="flex items-center min-w-0 mr-4"><div className={`flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center mr-4 text-lg font-bold text-white bg-gradient-to-br from-blue-500 to-indigo-600`}>{credential.name.charAt(0).toUpperCase()}</div><div className="truncate"><p className="font-semibold text-gray-900 dark:text-white truncate">{credential.name}</p></div></div><div className='flex items-center flex-shrink-0'><span className={`text-xs font-medium mr-2 sm:mr-4 px-2.5 py-0.5 rounded-full truncate ${tagStyle.colorClass}`} style={{ backgroundColor: tagStyle.backgroundColor }}>{credential.tag}</span><Icon name="expand_more" className={`text-gray-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`} /></div></button>{isExpanded && (<div className="px-4 pb-4 border-t border-gray-200 dark:border-zinc-600"><div className="mt-4 space-y-4"><div><label className="text-xs font-medium text-gray-500 dark:text-gray-400">Usuario / Email</label><div className="flex items-center mt-1"><input type={isUsernameVisible ? 'text' : 'password'} readOnly value={credential.username} className="w-full bg-transparent text-gray-900 dark:text-white focus:outline-none" /><button onClick={() => setIsUsernameVisible(!isUsernameVisible)} className="p-1 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"><Icon name={isUsernameVisible ? 'visibility_off' : 'visibility'} className="text-xl"/></button><button onClick={() => handleCopy(credential.username || '')} className="p-1 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"><Icon name="content_copy" className="text-xl"/></button></div></div><div><label className="text-xs font-medium text-gray-500 dark:text-gray-400">Contraseña</label><div className="flex items-center mt-1"><input type={isPasswordVisible ? 'text' : 'password'} readOnly value={credential.password} className="w-full bg-transparent text-gray-900 dark:text-white focus:outline-none" /><button onClick={() => setIsPasswordVisible(!isPasswordVisible)} className="p-1 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"><Icon name={isPasswordVisible ? 'visibility_off' : 'visibility'} className="text-xl"/></button><button onClick={() => handleCopy(credential.password || '')} className="p-1 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"><Icon name="content_copy" className="text-xl"/></button></div></div>{credential.comment && (<div><label className="text-xs font-medium text-gray-500 dark:text-gray-400">Comentario</label><p className="mt-1 text-sm text-gray-800 dark:text-gray-200 whitespace-pre-wrap">{credential.comment}</p></div>)}</div><div className="mt-4 flex justify-end space-x-2"><button onClick={() => onEdit(credential)} className="flex items-center text-sm text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 p-2 rounded-md hover:bg-gray-100 dark:hover:bg-zinc-600"><Icon name="edit" className="text-base mr-1"/> Editar</button><button onClick={() => onDelete(credential.id)} className="flex items-center text-sm text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300 p-2 rounded-md hover:bg-gray-100 dark:hover:bg-zinc-600"><Icon name="delete" className="text-base mr-1"/> Borrar</button></div></div>)}</div>); };
     const CredentialList = ({ credentials, onEdit, onDelete }) => { if (credentials.length === 0) { return (<div className="text-center py-16"><Icon name="key_off" className="text-5xl text-gray-400 mx-auto" /><h3 className="mt-2 text-lg font-medium text-gray-900 dark:text-white">No se encontraron credenciales</h3><p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Comience agregando una nueva credencial.</p><p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Haga clic en el botón <Icon name="add" className="inline-block text-base" /> para comenzar.</p></div>); } return (<div className="space-y-3">{credentials.map(cred => (<CredentialItem key={cred.id} credential={cred} onEdit={onEdit} onDelete={onDelete} />))}</div>); };
-    const SearchBar = ({ onSearch, onApplyFilter, selectedTags, tags }) => {
-        const { useState, useEffect, useRef } = React;
-        const [isOpen, setIsOpen] = useState(false);
-        const [tempSelection, setTempSelection] = useState(selectedTags);
-        const dropdownRef = useRef(null);
-
-        useEffect(() => { setTempSelection(selectedTags); }, [selectedTags, isOpen]);
-        
-        useEffect(() => {
-            const handleClickOutside = (event) => { if (dropdownRef.current && !dropdownRef.current.contains(event.target)) { setIsOpen(false); } };
-            document.addEventListener("mousedown", handleClickOutside);
-            return () => document.removeEventListener("mousedown", handleClickOutside);
-        }, [dropdownRef]);
-
-        const handleCheckboxChange = (tagName) => {
-            setTempSelection(prev => prev.includes(tagName) ? prev.filter(t => t !== tagName) : [...prev, tagName]);
-        };
-
-        const handleApply = () => { onApplyFilter(tempSelection); setIsOpen(false); };
-        const handleClear = () => { setTempSelection([]); onApplyFilter([]); setIsOpen(false); };
-
-        return (
-            <div className="mb-6">
-                <div className="relative"><div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3"><Icon name="search" className="text-gray-400" /></div><input type="search" placeholder="Buscar por nombre, usuario o comentario..." className="block w-full rounded-lg border border-gray-300 dark:border-zinc-600 bg-gray-50 dark:bg-zinc-700 py-3 pl-10 pr-4 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500" onChange={(e) => onSearch(e.target.value)} /></div>
-                <div className="mt-4 flex justify-center relative" ref={dropdownRef}>
-                    <button onClick={() => setIsOpen(!isOpen)} className="inline-flex items-center justify-center px-4 py-2 border border-gray-300 dark:border-zinc-600 text-sm font-medium rounded-md text-gray-700 dark:text-gray-200 bg-white dark:bg-zinc-700 hover:bg-gray-50 dark:hover:bg-zinc-600">
-                        <Icon name="filter_list" className="mr-2" />
-                        Filtrar por Etiqueta {selectedTags.length > 0 && `(${selectedTags.length})`}
-                        <Icon name={isOpen ? 'arrow_drop_up' : 'arrow_drop_down'} className="ml-2" />
-                    </button>
-                    {isOpen && (
-                        <div className="absolute top-full mt-2 w-64 bg-white dark:bg-zinc-800 rounded-md shadow-lg z-20 border dark:border-zinc-700">
-                            <div className="p-2 max-h-60 overflow-y-auto">
-                                {tags.map(tag => (
-                                    <label key={tag.id} className="flex items-center w-full px-2 py-2 text-sm text-gray-700 dark:text-gray-200 rounded-md hover:bg-gray-100 dark:hover:bg-zinc-700 cursor-pointer">
-                                        <input type="checkbox" checked={tempSelection.includes(tag.name)} onChange={() => handleCheckboxChange(tag.name)} className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
-                                        <span className="ml-3">{tag.name}</span>
-                                    </label>
-                                ))}
-                            </div>
-                            <div className="flex justify-between p-2 border-t border-gray-200 dark:border-zinc-700">
-                                <button onClick={handleClear} className="text-sm text-gray-600 dark:text-gray-300 hover:underline">Limpiar</button>
-                                <button onClick={handleApply} className="px-3 py-1 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-700">Aplicar</button>
-                            </div>
-                        </div>
-                    )}
-                </div>
-            </div>
-        );
-    };
+    const SearchBar = ({ onSearch, onFilter, currentFilter, tags }) => { const handleSearchChange = (event) => { onSearch(event.target.value); }; const filterOptions = ['ALL', ...tags.map(t => t.name)]; return (<div className="mb-6"><div className="relative"><div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3"><Icon name="search" className="text-gray-400" /></div><input type="search" placeholder="Buscar por nombre, usuario o comentario..." className="block w-full rounded-lg border border-gray-300 dark:border-zinc-600 bg-gray-50 dark:bg-zinc-700 py-3 pl-10 pr-4 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500" onChange={handleSearchChange} /></div><div className="mt-4 flex justify-center"><div className="inline-flex rounded-md shadow-sm" role="group">{filterOptions.map(tag => (<button key={tag} type="button" onClick={() => onFilter(tag)} className={`py-2 px-4 text-sm font-medium ${ currentFilter === tag ? 'bg-blue-600 text-white' : 'bg-white dark:bg-zinc-700 text-gray-900 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-zinc-600' } border-t border-b border-gray-200 dark:border-zinc-600 first:border-l first:rounded-l-lg last:border-r last:rounded-r-lg focus:z-10 focus:ring-2 focus:ring-blue-500 transition-colors`}>{tag}</button>))}</div></div></div>); };
     const MainInterface = ({ db, masterKey, onSignOut, onSaveChanges, hasUnsavedChanges, setHasUnsavedChanges, googleUser }) => {
       const { useState, useEffect, useCallback, useMemo } = React;
       const [credentials, setCredentials] = useState([]);
@@ -240,7 +223,7 @@
       const [isSettingsOpen, setIsSettingsOpen] = useState(false);
       const [editingCredential, setEditingCredential] = useState(null);
       const [searchTerm, setSearchTerm] = useState('');
-      const [selectedTags, setSelectedTags] = useState([]);
+      const [filterTag, setFilterTag] = useState('ALL');
 
       const refreshData = useCallback(async () => {
         setIsLoading(true);
@@ -279,23 +262,20 @@
       const handleAddTag = (tagName) => { try { addTag(db, tagName); setHasUnsavedChanges(true); setTags(getTags(db)); } catch(e) { alert("Error: " + e.message); } };
       const handleDeleteTag = (tagId) => { try { deleteTag(db, tagId); setHasUnsavedChanges(true); refreshData(); } catch(e) { alert("Error: " + e.message); } };
       
-      const filteredCredentials = useMemo(() => credentials.filter(c => 
-        (selectedTags.length === 0 || selectedTags.includes(c.tag)) &&
-        (searchTerm.length === 0 || c.name.toLowerCase().includes(searchTerm.toLowerCase()) || c.username.toLowerCase().includes(searchTerm.toLowerCase()) || (c.comment && c.comment.toLowerCase().includes(searchTerm.toLowerCase())))
-      ).sort((a, b) => a.name.localeCompare(b.name)), [credentials, searchTerm, selectedTags]);
+      const filteredCredentials = useMemo(() => credentials.filter(c => (filterTag === 'ALL' || c.tag === filterTag) && (searchTerm.length === 0 || c.name.toLowerCase().includes(searchTerm.toLowerCase()) || c.username.toLowerCase().includes(searchTerm.toLowerCase()) || (c.comment && c.comment.toLowerCase().includes(searchTerm.toLowerCase())))).sort((a, b) => a.name.localeCompare(b.name)), [credentials, searchTerm, filterTag]);
 
       return (
         <div className="max-w-4xl mx-auto min-h-screen bg-white dark:bg-zinc-800 shadow-lg md:mt-8 md:rounded-2xl flex flex-col">
-           <header className="sticky top-0 z-10 flex flex-col sm:flex-row items-center justify-between gap-4 p-4 border-b border-gray-200 dark:border-zinc-700 bg-gray-50/80 dark:bg-zinc-800/80 backdrop-blur-sm">
-            <h1 className="text-xl font-bold text-gray-900 dark:text-white truncate">Randall Duk Kim APP v{APP_VERSION}</h1>
-            <div className="flex items-center justify-center sm:justify-end flex-wrap gap-2">
-                <div className="font-semibold text-gray-700 dark:text-gray-200 truncate min-w-0 max-w-[150px] sm:max-w-xs" title={keychainName}>{keychainName}</div>
-                <button onClick={onSaveChanges} className={`flex items-center px-3 py-2 rounded-lg text-sm font-semibold transition-all ${hasUnsavedChanges ? 'bg-blue-600 text-white hover:bg-blue-700 animate-pulse' : 'bg-gray-200 dark:bg-zinc-700 text-gray-800 dark:text-gray-200'}`}><Icon name="save" className="text-lg mr-1" />Guardar</button>
+           <header className="sticky top-0 z-10 flex flex-col md:flex-row md:items-center justify-between gap-4 md:gap-0 p-4 border-b border-gray-200 dark:border-zinc-700 bg-gray-50/80 dark:bg-zinc-800/80 backdrop-blur-sm">
+            <h1 className="text-xl font-bold text-gray-900 dark:text-white truncate text-center md:text-left">Randall Duk Kim APP v{APP_VERSION}</h1>
+            <div className="flex items-center justify-center md:justify-end flex-wrap gap-2">
+                <div className="text-right font-semibold text-gray-700 dark:text-gray-200 truncate">{keychainName}</div>
+                <button onClick={onSaveChanges} className={`flex items-center px-3 py-2 rounded-lg text-sm font-semibold transition-all ${hasUnsavedChanges ? 'bg-blue-600 text-white hover:bg-blue-700 animate-pulse' : 'bg-gray-200 dark:bg-zinc-700 text-gray-800 dark:text-gray-200'}`}><Icon name="save" className="text-lg mr-1" />Guardar en Drive</button>
                 <button onClick={() => setIsSettingsOpen(true)} className="p-2 rounded-full hover:bg-gray-200 dark:hover:bg-zinc-700 text-gray-600 dark:text-gray-300" title="Configuración"><Icon name="settings" /></button>
                 <button onClick={onSignOut} className="p-2 rounded-full hover:bg-gray-200 dark:hover:bg-zinc-700 text-gray-600 dark:text-gray-300" title="Salir y cerrar sesión"><Icon name="exit_to_app" /></button>
             </div>
           </header>
-          <main className="flex-grow p-4 sm:p-6 pb-24 overflow-y-auto"><SearchBar onSearch={setSearchTerm} onApplyFilter={setSelectedTags} selectedTags={selectedTags} tags={tags} />{isLoading ? <p>Cargando...</p> : <CredentialList credentials={filteredCredentials} onEdit={handleEdit} onDelete={handleDelete} />}</main>
+          <main className="flex-grow p-4 sm:p-6 pb-24 overflow-y-auto"><SearchBar onSearch={setSearchTerm} onFilter={setFilterTag} currentFilter={filterTag} tags={tags} />{isLoading ? <p>Cargando...</p> : <CredentialList credentials={filteredCredentials} onEdit={handleEdit} onDelete={handleDelete} />}</main>
           <footer className="fixed bottom-0 left-0 right-0 bg-white dark:bg-zinc-800 border-t border-gray-200 dark:border-zinc-700 p-2 text-center text-sm text-gray-500 dark:text-gray-400 z-10">Creado por: Mario Almada PY - 2025</footer>
           <div className="fixed bottom-16 right-4 sm:right-6 z-20"><button onClick={handleAddNew} className="bg-blue-600 hover:bg-blue-700 text-white rounded-full p-4 shadow-lg"><Icon name="add" className="text-2xl" /></button></div>
           <CredentialModal isOpen={isModalOpen} onClose={() => { setIsModalOpen(false); setEditingCredential(null); }} onSave={handleAddOrUpdate} credential={editingCredential} tags={tags} />
@@ -390,7 +370,7 @@
             <div className="flex items-center justify-center min-h-screen bg-gray-100 dark:bg-zinc-900 p-4">
                 <div className="w-full max-w-md bg-white dark:bg-zinc-800 rounded-2xl shadow-lg p-8 space-y-6 text-center">
                     <Icon name={isCreating ? "password" : "lock_open"} className="text-5xl text-blue-500 mx-auto" />
-                    <h2 className="text-2xl font-bold text-gray-900 dark:text-white">{title}</h2>
+                    <h2 className="text-2xl font-bold text-gray-900 dark:text-white truncate" title={keychainName}>{title}</h2>
                     <p className="text-gray-600 dark:text-gray-400">{prompt}</p>
                     <form onSubmit={handleSubmit}>
                       <input type="password" autoFocus value={password} onChange={e => setPassword(e.target.value)} placeholder="Contraseña Maestra" required className="appearance-none block w-full px-3 py-2 border border-gray-300 dark:border-zinc-600 rounded-md shadow-sm bg-gray-50 dark:bg-zinc-700 text-gray-900 dark:text-white" />
@@ -430,9 +410,9 @@
             window.SQL = await window.initSqlJs({ locateFile: file => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/${file}` });
             
             await new Promise((resolve, reject) => gapi.load('client:picker', { callback: resolve, onerror: reject }));
-            await gapi.client.init({
-                 apiKey: GOOGLE_API_KEY,
-                 discoveryDocs: DISCOVERY_DOCS,
+            await gapi.client.init({ 
+                apiKey: GOOGLE_API_KEY,
+                discoveryDocs: ["https://www.googleapis.com/discovery/v1/apis/drive/v3/rest"]
             });
             
             const tokenClient = google.accounts.oauth2.initTokenClient({
@@ -505,7 +485,7 @@
           } catch(e) { alert("No se pudo abrir el selector de archivos."); }
       }, []);
       
-      const handleUnlockKeychain = useCallback(async (password) => {
+       const handleUnlockKeychain = useCallback(async (password) => {
           if (!password) { alert("La contraseña no puede estar vacía."); return; }
           setAppStatus('loading');
           try {
@@ -549,53 +529,35 @@
         try {
             const dbData = exportDb(db); // Uint8Array
             const accessToken = gapi.client.getToken().access_token;
-            let fileIdToUpdate = dbFileId;
-
-            // Use robust fetch for upload
-            const boundary = '-------314159265358979323846';
-            const delimiter = "\r\n--" + boundary + "\r\n";
-            const close_delim = "\r\n--" + boundary + "--";
-
             const keychainName = getKeychainName(db);
-            const filename = `RandallDukKimApp_${keychainName}_${generateTimestamp()}.db`;
-            
             const metadata = {
-                name: fileIdToUpdate ? dbFilename : filename,
+                name: `RandallDukKimApp_${keychainName}_${generateTimestamp()}.db`,
                 mimeType: 'application/octet-stream'
             };
 
-            const multipartRequestBody =
-                delimiter +
-                'Content-Type: application/json; charset=UTF-8\r\n\r\n' +
-                JSON.stringify(metadata) +
-                delimiter +
-                'Content-Type: application/octet-stream\r\n' +
-                'Content-Transfer-Encoding: base64\r\n\r\n' +
-                bufferToBase64(dbData) +
-                close_delim;
-            
-            const method = fileIdToUpdate ? 'PATCH' : 'POST';
-            const path = fileIdToUpdate ? `/upload/drive/v3/files/${fileIdToUpdate}` : '/upload/drive/v3/files';
-            
-            const response = await fetch(`https://www.googleapis.com${path}?uploadType=multipart`, {
-                method: method,
-                headers: {
-                    'Authorization': `Bearer ${accessToken}`,
-                    'Content-Type': `multipart/related; boundary=${boundary}`
-                },
-                body: multipartRequestBody
-            });
-            
-            if (!response.ok) {
-                throw new Error(`Error al guardar en Drive: ${await response.text()}`);
-            }
-            
-            if (!fileIdToUpdate) {
-                const newFile = await response.json();
+            if (dbFileId) { // Update existing file
+                 await fetch(`https://www.googleapis.com/upload/drive/v3/files/${dbFileId}?uploadType=media`, {
+                    method: 'PATCH',
+                    headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/octet-stream' },
+                    body: dbData
+                });
+            } else { // Create new file
+                const createResponse = await fetch(`https://www.googleapis.com/drive/v3/files`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name: metadata.name, mimeType: metadata.mimeType })
+                });
+                const newFile = await createResponse.json();
+                
+                await fetch(`https://www.googleapis.com/upload/drive/v3/files/${newFile.id}?uploadType=media`, {
+                    method: 'PATCH',
+                    headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/octet-stream' },
+                    body: dbData
+                });
                 setDbFileId(newFile.id);
                 setDbFilename(metadata.name);
             }
-
+            
             setHasUnsavedChanges(false);
             setAppStatus('unlocked');
             alert('¡Llavero guardado en Google Drive con éxito!');
@@ -604,7 +566,7 @@
             setAppStatus('unlocked');
             alert("Error al guardar en Google Drive. Verifique la consola para más detalles.");
         }
-    }, [db, dbFileId, dbFilename]);
+    }, [db, dbFileId]);
       
       const handleSignOut = useCallback(() => {
           if (hasUnsavedChanges && !window.confirm("Tiene cambios sin guardar que se perderán. ¿Seguro que quiere cerrar sesión?")) return;
@@ -638,4 +600,3 @@
   </script>
 </body>
 </html>
-
