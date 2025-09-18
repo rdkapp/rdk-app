@@ -1,9 +1,10 @@
+
 <!DOCTYPE html>
 <html lang="es">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Randall Duk Kim APP v1.5.1</title>
+  <title>Randall Duk Kim APP v1.5.2</title>
   
   <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -61,7 +62,7 @@
     // Toda la aplicación está contenida en este script.
 
     // --- APP CONFIGURATION ---
-    const APP_VERSION = "1.5.1";
+    const APP_VERSION = "1.5.2";
 
     // --- GOOGLE API CONFIGURATION ---
     // IMPORTANTE: Reemplace estos valores con sus propias credenciales de Google Cloud.
@@ -77,25 +78,59 @@
     const PBKDF2_ITERATIONS = 100000;
 
     // --- CRYPTO SERVICE ---
-    // Robust Base64 conversion functions that handle all byte values correctly.
+    // ROBUST Base64 conversion functions that handle all byte values correctly.
+    // These replace the old, unreliable btoa/atob with binary string methods.
     const bufferToBase64 = (buffer) => {
-        let binary = '';
         const bytes = new Uint8Array(buffer);
-        const len = bytes.byteLength;
-        for (let i = 0; i < len; i++) {
-            binary += String.fromCharCode(bytes[i]);
+        let base64 = '';
+        const encodings = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+
+        for (let i = 0; i < bytes.length; i += 3) {
+            const byte1 = bytes[i];
+            const byte2 = i + 1 < bytes.length ? bytes[i + 1] : NaN;
+            const byte3 = i + 2 < bytes.length ? bytes[i + 2] : NaN;
+
+            const triplet = (byte1 << 16) | (byte2 << 8) | byte3;
+
+            base64 += encodings.charAt((triplet >> 18) & 63) +
+                      encodings.charAt((triplet >> 12) & 63) +
+                      (isNaN(byte2) ? '=' : encodings.charAt((triplet >> 6) & 63)) +
+                      (isNaN(byte3) ? '=' : encodings.charAt(triplet & 63));
         }
-        return window.btoa(binary);
+        return base64;
     };
+
     const base64ToUint8Array = (base64) => {
-      const binaryString = window.atob(base64);
-      const len = binaryString.length;
-      const bytes = new Uint8Array(len);
-      for (let i = 0; i < len; i++) {
-        bytes[i] = binaryString.charCodeAt(i);
-      }
-      return bytes;
+        const decodings = {};
+        const encodings = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+        for (let i = 0; i < encodings.length; i++) {
+            decodings[encodings.charAt(i)] = i;
+        }
+
+        const cleanedBase64 = base64.replace(/[^A-Za-z0-9+/]/g, "");
+        const byteLength = cleanedBase64.length * 0.75;
+        const bytes = new Uint8Array(byteLength);
+
+        let byteIndex = 0;
+        for (let i = 0; i < cleanedBase64.length; i += 4) {
+            const sextet1 = decodings[cleanedBase64.charAt(i)];
+            const sextet2 = decodings[cleanedBase64.charAt(i + 1)];
+            const sextet3 = decodings[cleanedBase64.charAt(i + 2)];
+            const sextet4 = decodings[cleanedBase64.charAt(i + 3)];
+
+            const triplet = (sextet1 << 18) | (sextet2 << 12) | (sextet3 << 6) | sextet4;
+
+            bytes[byteIndex++] = (triplet >> 16) & 255;
+            if (sextet3 !== undefined && cleanedBase64.charAt(i + 2) !== '=') {
+                bytes[byteIndex++] = (triplet >> 8) & 255;
+            }
+            if (sextet4 !== undefined && cleanedBase64.charAt(i + 3) !== '=') {
+                bytes[byteIndex++] = triplet & 255;
+            }
+        }
+        return bytes;
     };
+
     const deriveKey = async (password, salt) => {
       const passwordEncoder = new TextEncoder();
       const baseKey = await window.crypto.subtle.importKey('raw', passwordEncoder.encode(password), { name: 'PBKDF2' }, false, ['deriveKey']);
