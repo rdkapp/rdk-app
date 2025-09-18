@@ -65,11 +65,12 @@
 
     // --- GOOGLE API CONFIGURATION ---
     // IMPORTANTE: Reemplace estos valores con sus propias credenciales de Google Cloud.
-    const GOOGLE_API_KEY = "AIzaSyAUwZEPOyyA_PEMsjN8MwntB8YGjLd_W-o"; // Clave de API
-    const GOOGLE_CLIENT_ID = "39309742564-q6amcjfo7akgkrof6mft8de8dnvhs6r8.apps.googleusercontent.com"; // ID de Cliente OAuth 2.0
+    const GOOGLE_API_KEY = "PEGA_TU_GOOGLE_API_KEY_AQUI"; // Clave de API
+    const GOOGLE_CLIENT_ID = "PEGA_TU_GOOGLE_CLIENT_ID_AQUI"; // ID de Cliente OAuth 2.0
     const SCOPES = 'https://www.googleapis.com/auth/drive.file';
     // Extrae el App ID del Client ID para usarlo en el Picker.
     const APP_ID = GOOGLE_CLIENT_ID.split('-')[0];
+    const DISCOVERY_DOCS = ["https://www.googleapis.com/discovery/v1/apis/drive/v3/rest"];
 
     // --- CONSTANTS ---
     const SALT_LENGTH = 16;
@@ -429,8 +430,10 @@
             window.SQL = await window.initSqlJs({ locateFile: file => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/${file}` });
             
             await new Promise((resolve, reject) => gapi.load('client:picker', { callback: resolve, onerror: reject }));
-            await gapi.client.init({ apiKey: GOOGLE_API_KEY });
-            await gapi.client.load('drive', 'v3');
+            await gapi.client.init({
+                 apiKey: GOOGLE_API_KEY,
+                 discoveryDocs: DISCOVERY_DOCS,
+            });
             
             const tokenClient = google.accounts.oauth2.initTokenClient({
               client_id: GOOGLE_CLIENT_ID, scope: SCOPES, callback: '',
@@ -635,4 +638,3 @@
   </script>
 </body>
 </html>
-
