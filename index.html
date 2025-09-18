@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Randall Duk Kim APP v1.3.0</title>
+  <title>Randall Duk Kim APP v1.4.0</title>
   
   <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -61,7 +61,7 @@
     // Toda la aplicación está contenida en este script.
 
     // --- APP CONFIGURATION ---
-    const APP_VERSION = "1.3.0";
+    const APP_VERSION = "1.4.0";
 
     // --- GOOGLE API CONFIGURATION ---
     // IMPORTANTE: Reemplace estos valores con sus propias credenciales de Google Cloud.
@@ -466,51 +466,67 @@
       
       const handleSaveChanges = useCallback(async () => {
         if (!db) return;
-        const dbData = exportDb(db);
-        const blob = new Blob([dbData], { type: 'application/octet-stream' });
-        
+        setAppStatus('loading');
         try {
-            if (dbFileId) {
+            const dbData = exportDb(db); // Uint8Array
+            const accessToken = gapi.client.getToken().access_token;
+            let fileIdToUpdate = dbFileId;
+
+            if (fileIdToUpdate) {
                 // Update existing file
-                await gapi.client.request({
-                    path: `/upload/drive/v3/files/${dbFileId}`,
+                const updateResponse = await fetch(`https://www.googleapis.com/upload/drive/v3/files/${fileIdToUpdate}?uploadType=media`, {
                     method: 'PATCH',
-                    params: { uploadType: 'media' },
-                    body: blob
+                    headers: {
+                        'Authorization': `Bearer ${accessToken}`,
+                        'Content-Type': 'application/octet-stream'
+                    },
+                    body: dbData
                 });
+                if (!updateResponse.ok) throw new Error(`Error al actualizar el archivo: ${await updateResponse.text()}`);
             } else {
-                // Create new file (robust two-step process)
+                // Create new file
                 const keychainName = getKeychainName(db);
                 const filename = `RandallDukKimApp_${keychainName}_${generateTimestamp()}.db`;
                 
-                // Step 1: Create file with metadata
-                const createResponse = await gapi.client.drive.files.create({
-                    resource: {
+                // Step 1: Create metadata
+                const createMetaResponse = await fetch(`https://www.googleapis.com/drive/v3/files`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${accessToken}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
                         name: filename,
                         mimeType: 'application/octet-stream'
-                    },
-                    fields: 'id'
+                    })
                 });
+                if (!createMetaResponse.ok) throw new Error(`Error al crear metadatos: ${await createMetaResponse.text()}`);
+                const fileMeta = await createMetaResponse.json();
+                const newFileId = fileMeta.id;
                 
-                const newFileId = createResponse.result.id;
                 if (!newFileId) throw new Error("Google Drive no devolvió un ID de archivo.");
-
-                // Step 2: Upload content to the newly created file
-                await gapi.client.request({
-                    path: `/upload/drive/v3/files/${newFileId}`,
+                
+                // Step 2: Upload content
+                const uploadResponse = await fetch(`https://www.googleapis.com/upload/drive/v3/files/${newFileId}?uploadType=media`, {
                     method: 'PATCH',
-                    params: { uploadType: 'media' },
-                    body: blob
+                    headers: {
+                        'Authorization': `Bearer ${accessToken}`,
+                        'Content-Type': 'application/octet-stream'
+                    },
+                    body: dbData
                 });
+                if (!uploadResponse.ok) throw new Error(`Error al subir contenido: ${await uploadResponse.text()}`);
 
                 setDbFileId(newFileId);
                 setDbFilename(filename);
             }
 
             setHasUnsavedChanges(false);
+            setAppStatus('unlocked');
             alert('¡Llavero guardado en Google Drive con éxito!');
         } catch (error) {
             console.error("Error saving to Drive:", error);
+            setAppStatus('unlocked');
             alert("Error al guardar en Google Drive. Verifique la consola para más detalles.");
         }
     }, [db, dbFileId]);
