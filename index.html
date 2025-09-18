@@ -68,6 +68,8 @@
     const GOOGLE_API_KEY = "AIzaSyAUwZEPOyyA_PEMsjN8MwntB8YGjLd_W-o"; // Clave de API
     const GOOGLE_CLIENT_ID = "39309742564-q6amcjfo7akgkrof6mft8de8dnvhs6r8.apps.googleusercontent.com"; // ID de Cliente OAuth 2.0
     const SCOPES = 'https://www.googleapis.com/auth/drive.file';
+    // Extrae el App ID del Client ID para usarlo en el Picker.
+    const APP_ID = GOOGLE_CLIENT_ID.split('-')[0];
 
     // --- CONSTANTS ---
     const SALT_LENGTH = 16;
@@ -407,8 +409,9 @@
           try {
             const view = new google.picker.View(google.picker.ViewId.DOCS);
             view.setQuery('*.db');
-            view.setMimeTypes("application/x-sqlite3,application/octet-stream,application/vnd.sqlite3");
+            
             const picker = new google.picker.PickerBuilder()
+                .setAppId(APP_ID)
                 .setOrigin(window.location.origin)
                 .setOAuthToken(gapi.client.getToken().access_token)
                 .addView(view)
