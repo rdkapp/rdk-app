@@ -5,80 +5,44 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Randall Duk Kim APP v1.9.0</title>
   
-  <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
-  
-  <!-- React y ReactDOM -->
   <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
-  
-  <!-- Babel para transpilación de JSX en el navegador -->
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-
-  <!-- sql.js (SQLite para el navegador) -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/sql-wasm.js"></script>
-
-  <!-- Google Material Symbols (Icon Font) -->
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Sharp:opsz,wght,FILL,GRAD@24,400,0,0" />
   
-  <!-- Pre-define Google API callbacks to prevent race conditions -->
   <script>
     window.gapiLoadPromise = new Promise(resolve => { window.gapiLoaded = () => resolve(); });
     window.gisLoadPromise = new Promise(resolve => { window.gisLoaded = () => resolve(); });
   </script>
   
-  <!-- Google API Client Libraries -->
   <script async defer src="https://apis.google.com/js/api.js" onload="gapiLoaded()"></script>
   <script async defer src="https://accounts.google.com/gsi/client" onload="gisLoaded()"></script>
 
   <style>
-    /* Estilo de barra de desplazamiento tipo iOS */
-    ::-webkit-scrollbar {
-      width: 6px;
-      height: 6px;
-    }
-    ::-webkit-scrollbar-thumb {
-      background: #c1c1c1;
-      border-radius: 3px;
-    }
-    ::-webkit-scrollbar-thumb:hover {
-      background: #a8a8a8;
-    }
-    body {
-      -webkit-font-smoothing: antialiased;
-      -moz-osx-font-smoothing: grayscale;
-    }
-    /* Estilo base para los iconos */
-    .material-symbols-sharp {
-      vertical-align: middle;
-    }
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-thumb { background: #c1c1c1; border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: #a8a8a8; }
+    body { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+    .material-symbols-sharp { vertical-align: middle; }
   </style>
 </head>
 <body class="bg-gray-100 dark:bg-zinc-900">
   <div id="root"></div>
 
   <script type="text/babel">
-    // Toda la aplicación está contenida en este script.
-
-    // --- APP CONFIGURATION ---
     const APP_VERSION = "1.9.0";
-
-    // --- GOOGLE API CONFIGURATION ---
-    // IMPORTANTE: Reemplace estos valores con sus propias credenciales de Google Cloud.
-    const GOOGLE_API_KEY = "AIzaSyAUwZEPOyyA_PEMsjN8MwntB8YGjLd_W-o"; // Clave de API
-    const GOOGLE_CLIENT_ID = "39309742564-q6amcjfo7akgkrof6mft8de8dnvhs6r8.apps.googleusercontent.com"; // ID de Cliente OAuth 2.0
+    const GOOGLE_API_KEY = "AIzaSyAUwZEPOyyA_PEMsjN8MwntB8YGjLd_W-o";
+    const GOOGLE_CLIENT_ID = "39309742564-q6amcjfo7akgkrof6mft8de8dnvhs6r8.apps.googleusercontent.com";
     const SCOPES = 'https://www.googleapis.com/auth/drive.file';
-    // Extrae el App ID del Client ID para usarlo en el Picker.
     const APP_ID = GOOGLE_CLIENT_ID.split('-')[0];
 
-    // --- CONSTANTS ---
     const SALT_LENGTH = 16;
     const IV_LENGTH = 12;
     const PBKDF2_ITERATIONS = 100000;
 
-    // --- CRYPTO SERVICE ---
-    // ROBUST Base64 conversion functions that handle all byte values correctly.
-     const bufferToBase64 = (buffer) => {
+    const bufferToBase64 = (buffer) => {
         const bytes = new Uint8Array(buffer);
         let base64 = '';
         const encodings = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
@@ -154,27 +118,20 @@
       } catch (e) { throw new Error("No se pudo descifrar el dato. La contraseña maestra podría ser incorrecta."); }
     };
     
-    // --- DATABASE SERVICE ---
     const createTables = (db) => {
       db.run(`CREATE TABLE IF NOT EXISTS credentials (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, encrypted_username TEXT NOT NULL, encrypted_password TEXT NOT NULL, comment TEXT, tag_id INTEGER, FOREIGN KEY (tag_id) REFERENCES tags(id));`);
       db.run(`CREATE TABLE IF NOT EXISTS metadata (key TEXT PRIMARY KEY, value TEXT);`);
       db.run(`CREATE TABLE IF NOT EXISTS tags (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL UNIQUE);`);
     };
-
     const getRawMetadata = (db, key) => { const res = db.exec("SELECT value FROM metadata WHERE key = ?", [key]); return (res.length > 0 && res[0].values.length > 0) ? res[0].values[0][0] : null; };
     const setRawMetadata = (db, key, value) => db.run("INSERT OR REPLACE INTO metadata (key, value) VALUES (?, ?)", [key, value]);
-    
     const getSalt = (db) => {
       const b64Salt = getRawMetadata(db, 'salt');
       return b64Salt ? base64ToUint8Array(b64Salt) : null;
     };
-    const setSalt = (db, saltUint8Array) => {
-      setRawMetadata(db, 'salt', bufferToBase64(saltUint8Array.buffer));
-    };
-
+    const setSalt = (db, saltUint8Array) => { setRawMetadata(db, 'salt', bufferToBase64(saltUint8Array.buffer)); };
     const getKeychainName = (db) => getRawMetadata(db, 'keychain_name') || 'MiLlavero';
     const setKeychainName = (db, name) => setRawMetadata(db, 'keychain_name', name);
-    
     const initDb = async (dbBuffer) => {
         const SQL = window.SQL;
         let database;
@@ -195,7 +152,6 @@
         }
         return { database, salt };
     };
-
     const exportDb = (db) => db.export();
     const getCredentials = (db) => { const res = db.exec(`SELECT c.id, c.name, c.encrypted_username, c.encrypted_password, c.comment, t.name FROM credentials c LEFT JOIN tags t ON c.tag_id = t.id`); return res.length === 0 ? [] : res[0].values.map(row => ({ id: row[0], name: row[1], encrypted_username: row[2], encrypted_password: row[3], comment: row[4], tag: row[5] || 'Sin Etiqueta' })); };
     const addCredential = (db, cred) => db.run('INSERT INTO credentials (name, encrypted_username, encrypted_password, comment, tag_id) VALUES (?, ?, ?, ?, (SELECT id FROM tags WHERE name = ?))', [cred.name, cred.encryptedUsername, cred.encryptedPassword, cred.comment, cred.tag]);
@@ -205,14 +161,69 @@
     const addTag = (db, name) => db.run('INSERT INTO tags (name) VALUES (?)', [name]);
     const deleteTag = (db, id) => { const usage = db.exec('SELECT COUNT(*) FROM credentials WHERE tag_id = ?', [id]); if (usage[0].values[0][0] > 0) throw new Error("No se puede eliminar la etiqueta porque está en uso."); db.run('DELETE FROM tags WHERE id = ?', [id]); };
     
-    // --- COMPONENTS ---
     const Icon = ({ name, className }) => <span className={`material-symbols-sharp ${className || ''}`}>{name}</span>;
     const Spinner = () => <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>;
+    
     const SettingsModal = ({ isOpen, onClose, keychainName, onSaveKeychainName, tags, onAddTag, onDeleteTag }) => { const { useState, useEffect } = React; const [name, setName] = useState(keychainName); const [newTagName, setNewTagName] = useState(''); useEffect(() => { setName(keychainName); }, [isOpen, keychainName]); if (!isOpen) return null; const handleSaveName = () => { if (name.trim()) { onSaveKeychainName(name.trim()); } }; const handleAddTag = (e) => { e.preventDefault(); if (newTagName.trim() && !tags.some(t => t.name.toLowerCase() === newTagName.trim().toLowerCase())) { onAddTag(newTagName.trim()); setNewTagName(''); } else { alert("La etiqueta no puede estar vacía o ya existe."); } }; return (<div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50" onClick={onClose}><div className="bg-white dark:bg-zinc-800 rounded-lg shadow-xl w-full max-w-lg m-4" onClick={(e) => e.stopPropagation()}><div className="p-6"><h2 className="text-xl font-bold text-gray-900 dark:text-white">Configuración</h2><div className="mt-6 space-y-6"><div><label htmlFor="keychainName" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Nombre del Llavero</label><div className="flex mt-1"><input type="text" name="keychainName" id="keychainName" value={name} onChange={(e) => setName(e.target.value)} className="flex-grow block w-full rounded-l-md border-gray-300 dark:border-zinc-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 bg-gray-50 dark:bg-zinc-700 text-gray-900 dark:text-white" /><button onClick={handleSaveName} className="px-4 py-2 border border-blue-600 bg-blue-600 text-white rounded-r-md hover:bg-blue-700 text-sm font-medium">Guardar Nombre</button></div></div><div><h3 className="text-lg font-medium text-gray-900 dark:text-white">Gestionar Etiquetas</h3><form onSubmit={handleAddTag} className="flex mt-2"><input type="text" value={newTagName} onChange={(e) => setNewTagName(e.target.value)} placeholder="Nueva etiqueta" className="flex-grow block w-full rounded-l-md border-gray-300 dark:border-zinc-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 bg-gray-50 dark:bg-zinc-700 text-gray-900 dark:text-white" /><button type="submit" className="px-4 py-2 border border-blue-600 bg-blue-600 text-white rounded-r-md hover:bg-blue-700 text-sm font-medium">Agregar</button></form><div className="mt-3 max-h-40 overflow-y-auto space-y-2 pr-2">{tags.map(tag => (<div key={tag.id} className="flex justify-between items-center bg-gray-100 dark:bg-zinc-700 p-2 rounded-md"><span className="text-sm text-gray-800 dark:text-gray-200">{tag.name}</span><button onClick={() => onDeleteTag(tag.id)} className="text-red-500 hover:text-red-700 dark:hover:text-red-400"><Icon name="delete" className="text-base" /></button></div>))}</div></div></div></div><div className="bg-gray-50 dark:bg-zinc-900/50 px-6 py-4 flex justify-end"><button type="button" onClick={onClose} className="py-2 px-4 border border-gray-300 dark:border-zinc-600 rounded-md shadow-sm text-sm font-medium text-gray-700 dark:text-gray-200 bg-white dark:bg-zinc-700 hover:bg-gray-50 dark:hover:bg-zinc-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">Cerrar</button></div></div></div>); };
-    const CredentialModal = ({ isOpen, onClose, onSave, credential, tags }) => { const { useState, useEffect } = React; const [formData, setFormData] = useState({ name: '', username: '', password: '', comment: '', tag: tags.length > 0 ? tags[0].name : '', }); useEffect(() => { if (credential) { setFormData({ ...credential, tag: credential.tag || (tags.length > 0 ? tags[0].name : '') }); } else { setFormData({ name: '', username: '', password: '', comment: '', tag: tags.length > 0 ? tags[0].name : '' }); } }, [credential, tags, isOpen]); const handleChange = (e) => { const { name, value } = e.target; setFormData(prev => ({ ...prev, [name]: value })); }; const handleSubmit = (e) => { e.preventDefault(); if (!formData.name || !formData.username || !formData.password) { alert("Nombre, Usuario y Contraseña son requeridos."); return; } if (tags.length > 0 && !formData.tag) { alert("Debe seleccionar una etiqueta."); return; } onSave(formData); }; if (!isOpen) return null; return (<div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50" onClick={onClose}><div className="bg-white dark:bg-zinc-800 rounded-lg shadow-xl w-full max-w-lg m-4" onClick={(e) => e.stopPropagation()}><form onSubmit={handleSubmit}><div className="p-6"><h2 className="text-xl font-bold text-gray-900 dark:text-white">{credential ? 'Editar Credencial' : 'Agregar Nueva Credencial'}</h2><div className="mt-6 space-y-4"><div><label htmlFor="name" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Nombre</label><input type="text" name="name" id="name" value={formData.name} onChange={handleChange} required className="mt-1 block w-full rounded-md border-gray-300 dark:border-zinc-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 bg-gray-50 dark:bg-zinc-700 text-gray-900 dark:text-white" /></div><div><label htmlFor="username" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Usuario / Email</label><input type="text" name="username" id="username" value={formData.username} onChange={handleChange} required className="mt-1 block w-full rounded-md border-gray-300 dark:border-zinc-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 bg-gray-50 dark:bg-zinc-700 text-gray-900 dark:text-white" /></div><div><label htmlFor="password" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Contraseña</label><input type="password" name="password" id="password" value={formData.password} onChange={handleChange} required className="mt-1 block w-full rounded-md border-gray-300 dark:border-zinc-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 bg-gray-50 dark:bg-zinc-700 text-gray-900 dark:text-white" /></div><div><label htmlFor="comment" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Comentario</label><textarea name="comment" id="comment" value={formData.comment} onChange={handleChange} rows={3} className="mt-1 block w-full rounded-md border-gray-300 dark:border-zinc-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 bg-gray-50 dark:bg-zinc-700 text-gray-900 dark:text-white"></textarea></div><div><label htmlFor="tag" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Etiqueta</label><select name="tag" id="tag" value={formData.tag} onChange={handleChange} className="mt-1 block w-full rounded-md border-gray-300 dark:border-zinc-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 bg-gray-50 dark:bg-zinc-700 text-gray-900 dark:text-white" disabled={tags.length === 0}>{tags.length === 0 ? <option>Cree una etiqueta primero</option> : tags.map(tag => <option key={tag.id} value={tag.name}>{tag.name}</option>)}</select></div></div></div><div className="bg-gray-50 dark:bg-zinc-900/50 px-6 py-4 flex justify-end space-x-3"><button type="button" onClick={onClose} className="py-2 px-4 border border-gray-300 dark:border-zinc-600 rounded-md shadow-sm text-sm font-medium text-gray-700 dark:text-gray-200 bg-white dark:bg-zinc-700 hover:bg-gray-50 dark:hover:bg-zinc-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">Cancelar</button><button type="submit" className="py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">Guardar</button></div></form></div></div>); };
+    const CredentialModal = ({ isOpen, onClose, onSave, credential, tags }) => { const { useState, useEffect } = React; const [formData, setFormData] = useState({ name: '', username: '', password: '', comment: '', tag: tags.length > 0 ? tags[0].name : '', }); useEffect(() => { if (credential) { setFormData({ ...credential, tag: credential.tag || (tags.length > 0 ? tags[0].name : '') }); } else { setFormData({ name: '', username: '', password: '', comment: '', tag: tags.length > 0 ? tags[0].name : '' }); } }, [credential, tags, isOpen]); const handleChange = (e) => { const { name, value } = e.target; setFormData(prev => ({ ...prev, [name]: value })); }; const handleSubmit = (e) => { e.preventDefault(); if (!formData.name || !formData.username || !formData.password) { alert("Nombre, Usuario y Contraseña son requeridos."); return; } if (tags.length > 0 && !formData.tag) { alert("Debe seleccionar una etiqueta."); return; } onSave(formData); }; if (!isOpen) return null; return (<div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50" onClick={onClose}><div className="bg-white dark:bg-zinc-800 rounded-lg shadow-xl w-full max-w-lg m-4" onClick={(e) => e.stopPropagation()}><form onSubmit={handleSubmit}><div className="p-6"><h2 className="text-xl font-bold text-gray-900 dark:text-white">{credential ? 'Editar Credencial' : 'Agregar Nueva Credencial'}</h2><div className="mt-6 space-y-4"><div><label htmlFor="name" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Nombre</label><input type="text" name="name" id="name" value={formData.name} onChange={handleChange} required className="mt-1 block w-full rounded-md border-gray-300 dark:border-zinc-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 bg-gray-50 dark:bg-zinc-700 text-gray-900 dark:text-white" /></div><div><label htmlFor="username" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Usuario / Email</label><input type="text" name="username" id="username" value={formData.username} onChange={handleChange} required className="mt-1 block w-full rounded-md border-gray-300 dark:border-zinc-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 bg-gray-50 dark:bg-zinc-700 text-gray-900 dark:text-white" /></div><div><label htmlFor="password" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Contraseña</label><input type="password" name="password" id="password" value={formData.password} onChange={handleChange} required className="mt-1 block w-full rounded-md border-gray-300 dark:border-zinc-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 bg-gray-50 dark:bg-zinc-700 text-gray-900 dark:text-white" /></div><div><label htmlFor="comment" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Comentario</label><textarea name="comment" id="comment" value={formData.comment} onChange={handleChange} rows={3} className="mt-1 block w-full rounded-md border-gray-300 dark:border-zinc-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 bg-gray-50 dark:bg-zinc-700 text-gray-900 dark:text-white"></textarea></div><div><label htmlFor="tag" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Etiqueta</label><select name="tag" id="tag" value={formData.tag} onChange={handleChange} className="mt-1 block w-full rounded-md border-gray-300 dark:border-zinc-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 bg-gray-50 dark:bg-zinc-700 text-gray-900 dark:text-white" disabled={tags.length === 0}>{tags.length === 0 ? <option>Cree una etiqueta primero</option> : tags.map(tag => <option key={tag.id} value={tag.name}>{tag.name}</option>)}</select></div></div></div><div className="bg-gray-50 dark:bg-zinc-900/50 px-6 py-4 flex justify-end space-x-3"><button type="button" onClick={onClose} className="py-2 px-4 border border-gray-300 dark:border-zinc-600 rounded-md shadow-sm text-sm font-medium text-gray-700 dark:text-gray-200 bg-white dark:bg-zinc-700 hover:bg-gray-50 dark:hover:bg-zinc-600">Cancelar</button><button type="submit" className="py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700">Guardar</button></div></form></div></div>); };
     const CredentialItem = ({ credential, onEdit, onDelete }) => { const { useState } = React; const [isExpanded, setIsExpanded] = useState(false); const [isPasswordVisible, setIsPasswordVisible] = useState(false); const [isUsernameVisible, setIsUsernameVisible] = useState(false); const handleCopy = (text) => { navigator.clipboard.writeText(text); }; const getTagColor = (tagName) => { if(!tagName) tagName = 'Sin Etiqueta'; let hash = 0; for (let i = 0; i < tagName.length; i++) { hash = tagName.charCodeAt(i) + ((hash << 5) - hash); } const color = (hash & 0x00FFFFFF).toString(16).toUpperCase(); const hexColor = "00000".substring(0, 6 - color.length) + color; const r = parseInt(hexColor.substring(0,2), 16); const g = parseInt(hexColor.substring(2,4), 16); const b = parseInt(hexColor.substring(4,6), 16); const brightness = (r * 299 + g * 587 + b * 114) / 1000; const textColor = brightness > 125 ? 'text-black' : 'text-white'; return { backgroundColor: `#${hexColor}`, colorClass: textColor }; }; const tagStyle = getTagColor(credential.tag); return (<div className="bg-gray-50 dark:bg-zinc-700/50 rounded-lg shadow-sm transition-shadow hover:shadow-md"><button onClick={() => setIsExpanded(!isExpanded)} className="w-full flex items-center justify-between p-4 text-left"><div className="flex items-center min-w-0 mr-4"><div className={`flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center mr-4 text-lg font-bold text-white bg-gradient-to-br from-blue-500 to-indigo-600`}>{credential.name.charAt(0).toUpperCase()}</div><div className="truncate"><p className="font-semibold text-gray-900 dark:text-white truncate">{credential.name}</p></div></div><div className='flex items-center flex-shrink-0'><span className={`text-xs font-medium mr-2 sm:mr-4 px-2.5 py-0.5 rounded-full truncate ${tagStyle.colorClass}`} style={{ backgroundColor: tagStyle.backgroundColor }}>{credential.tag}</span><Icon name="expand_more" className={`text-gray-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`} /></div></button>{isExpanded && (<div className="px-4 pb-4 border-t border-gray-200 dark:border-zinc-600"><div className="mt-4 space-y-4"><div><label className="text-xs font-medium text-gray-500 dark:text-gray-400">Usuario / Email</label><div className="flex items-center mt-1"><input type={isUsernameVisible ? 'text' : 'password'} readOnly value={credential.username} className="w-full bg-transparent text-gray-900 dark:text-white focus:outline-none" /><button onClick={() => setIsUsernameVisible(!isUsernameVisible)} className="p-1 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"><Icon name={isUsernameVisible ? 'visibility_off' : 'visibility'} className="text-xl"/></button><button onClick={() => handleCopy(credential.username || '')} className="p-1 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"><Icon name="content_copy" className="text-xl"/></button></div></div><div><label className="text-xs font-medium text-gray-500 dark:text-gray-400">Contraseña</label><div className="flex items-center mt-1"><input type={isPasswordVisible ? 'text' : 'password'} readOnly value={credential.password} className="w-full bg-transparent text-gray-900 dark:text-white focus:outline-none" /><button onClick={() => setIsPasswordVisible(!isPasswordVisible)} className="p-1 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"><Icon name={isPasswordVisible ? 'visibility_off' : 'visibility'} className="text-xl"/></button><button onClick={() => handleCopy(credential.password || '')} className="p-1 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"><Icon name="content_copy" className="text-xl"/></button></div></div>{credential.comment && (<div><label className="text-xs font-medium text-gray-500 dark:text-gray-400">Comentario</label><p className="mt-1 text-sm text-gray-800 dark:text-gray-200 whitespace-pre-wrap">{credential.comment}</p></div>)}</div><div className="mt-4 flex justify-end space-x-2"><button onClick={() => onEdit(credential)} className="flex items-center text-sm text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 p-2 rounded-md hover:bg-gray-100 dark:hover:bg-zinc-600"><Icon name="edit" className="text-base mr-1"/> Editar</button><button onClick={() => onDelete(credential.id)} className="flex items-center text-sm text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300 p-2 rounded-md hover:bg-gray-100 dark:hover:bg-zinc-600"><Icon name="delete" className="text-base mr-1"/> Borrar</button></div></div>)}</div>); };
     const CredentialList = ({ credentials, onEdit, onDelete }) => { if (credentials.length === 0) { return (<div className="text-center py-16"><Icon name="key_off" className="text-5xl text-gray-400 mx-auto" /><h3 className="mt-2 text-lg font-medium text-gray-900 dark:text-white">No se encontraron credenciales</h3><p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Comience agregando una nueva credencial.</p><p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Haga clic en el botón <Icon name="add" className="inline-block text-base" /> para comenzar.</p></div>); } return (<div className="space-y-3">{credentials.map(cred => (<CredentialItem key={cred.id} credential={cred} onEdit={onEdit} onDelete={onDelete} />))}</div>); };
-    const SearchBar = ({ onSearch, onFilter, currentFilter, tags }) => { const handleSearchChange = (event) => { onSearch(event.target.value); }; const filterOptions = ['ALL', ...tags.map(t => t.name)]; return (<div className="mb-6"><div className="relative"><div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3"><Icon name="search" className="text-gray-400" /></div><input type="search" placeholder="Buscar por nombre, usuario o comentario..." className="block w-full rounded-lg border border-gray-300 dark:border-zinc-600 bg-gray-50 dark:bg-zinc-700 py-3 pl-10 pr-4 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500" onChange={handleSearchChange} /></div><div className="mt-4 flex justify-center"><div className="inline-flex rounded-md shadow-sm" role="group">{filterOptions.map(tag => (<button key={tag} type="button" onClick={() => onFilter(tag)} className={`py-2 px-4 text-sm font-medium ${ currentFilter === tag ? 'bg-blue-600 text-white' : 'bg-white dark:bg-zinc-700 text-gray-900 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-zinc-600' } border-t border-b border-gray-200 dark:border-zinc-600 first:border-l first:rounded-l-lg last:border-r last:rounded-r-lg focus:z-10 focus:ring-2 focus:ring-blue-500 transition-colors`}>{tag}</button>))}</div></div></div>); };
+    
+    const SearchBar = ({ onSearch, onFilterChange, selectedTags, allTags }) => {
+        const { useState, useRef, useEffect } = React;
+        const [isOpen, setIsOpen] = useState(false);
+        const dropdownRef = useRef(null);
+
+        useEffect(() => {
+            const handleClickOutside = (event) => {
+                if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+                    setIsOpen(false);
+                }
+            };
+            document.addEventListener("mousedown", handleClickOutside);
+            return () => document.removeEventListener("mousedown", handleClickOutside);
+        }, []);
+
+        const handleTagChange = (tagName) => {
+            const newSelection = selectedTags.includes(tagName)
+                ? selectedTags.filter(t => t !== tagName)
+                : [...selectedTags, tagName];
+            onFilterChange(newSelection);
+        };
+        
+        return (
+            <div className="mb-6 space-y-4">
+                <div className="relative">
+                    <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
+                        <Icon name="search" className="text-gray-400" />
+                    </div>
+                    <input type="search" placeholder="Buscar por nombre, usuario o comentario..." className="block w-full rounded-lg border border-gray-300 dark:border-zinc-600 bg-gray-50 dark:bg-zinc-700 py-3 pl-10 pr-4 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500" onChange={(e) => onSearch(e.target.value)} />
+                </div>
+                <div className="relative" ref={dropdownRef}>
+                    <button onClick={() => setIsOpen(!isOpen)} className="w-full flex justify-between items-center py-2 px-4 text-left bg-white dark:bg-zinc-700 text-gray-900 dark:text-gray-200 border border-gray-300 dark:border-zinc-600 rounded-md shadow-sm">
+                        <span>{selectedTags.length > 0 ? `Etiquetas (${selectedTags.length})` : 'Filtrar por Etiqueta'}</span>
+                        <Icon name={isOpen ? 'arrow_drop_up' : 'arrow_drop_down'} />
+                    </button>
+                    {isOpen && (
+                        <div className="absolute z-10 mt-1 w-full bg-white dark:bg-zinc-800 border border-gray-300 dark:border-zinc-600 rounded-md shadow-lg max-h-60 overflow-y-auto">
+                           <div className="p-2 space-y-1">
+                                {allTags.map(tag => (
+                                    <label key={tag.id} className="flex items-center px-2 py-1.5 rounded-md hover:bg-gray-100 dark:hover:bg-zinc-700 cursor-pointer">
+                                        <input type="checkbox" checked={selectedTags.includes(tag.name)} onChange={() => handleTagChange(tag.name)} className="h-4 w-4 rounded border-gray-300 dark:border-zinc-500 text-blue-600 focus:ring-blue-500 bg-gray-100 dark:bg-zinc-900" />
+                                        <span className="ml-3 text-sm text-gray-800 dark:text-gray-200">{tag.name}</span>
+                                    </label>
+                                ))}
+                            </div>
+                            <div className="p-2 border-t border-gray-200 dark:border-zinc-700">
+                                <button onClick={() => onFilterChange([])} className="w-full text-sm text-blue-600 dark:text-blue-400 hover:underline">Limpiar selección</button>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            </div>
+        );
+    };
+
     const MainInterface = ({ db, masterKey, onSignOut, onSaveChanges, hasUnsavedChanges, setHasUnsavedChanges, googleUser }) => {
       const { useState, useEffect, useCallback, useMemo } = React;
       const [credentials, setCredentials] = useState([]);
@@ -223,7 +234,7 @@
       const [isSettingsOpen, setIsSettingsOpen] = useState(false);
       const [editingCredential, setEditingCredential] = useState(null);
       const [searchTerm, setSearchTerm] = useState('');
-      const [filterTag, setFilterTag] = useState('ALL');
+      const [selectedTags, setSelectedTags] = useState([]);
 
       const refreshData = useCallback(async () => {
         setIsLoading(true);
@@ -237,11 +248,8 @@
           setTags(getTags(db));
           setKeychainNameState(getKeychainName(db));
         } catch (error) {
-          alert('Error fatal al descifrar datos. La contraseña maestra puede ser incorrecta o el archivo está dañado.');
-          onSignOut();
-        } finally {
-          setIsLoading(false);
-        }
+          alert('Error fatal al descifrar datos. La contraseña maestra puede ser incorrecta o el archivo está dañado.'); onSignOut();
+        } finally { setIsLoading(false); }
       }, [db, masterKey, onSignOut]);
 
       useEffect(() => { refreshData(); }, [refreshData]);
@@ -250,10 +258,7 @@
         const [encryptedPassword, encryptedUsername] = await Promise.all([encrypt(credential.password, masterKey), encrypt(credential.username, masterKey)]);
         const credToSave = { ...credential, encryptedPassword, encryptedUsername };
         if (credential.id && credential.id > 0) updateCredential(db, credToSave); else addCredential(db, credToSave);
-        setHasUnsavedChanges(true);
-        await refreshData();
-        setIsModalOpen(false);
-        setEditingCredential(null);
+        setHasUnsavedChanges(true); await refreshData(); setIsModalOpen(false); setEditingCredential(null);
       };
       const handleDelete = async (id) => { if (window.confirm('¿Está seguro?')) { deleteCredential(db, id); setHasUnsavedChanges(true); await refreshData(); }};
       const handleEdit = (credential) => { setEditingCredential(credential); setIsModalOpen(true); };
@@ -262,20 +267,20 @@
       const handleAddTag = (tagName) => { try { addTag(db, tagName); setHasUnsavedChanges(true); setTags(getTags(db)); } catch(e) { alert("Error: " + e.message); } };
       const handleDeleteTag = (tagId) => { try { deleteTag(db, tagId); setHasUnsavedChanges(true); refreshData(); } catch(e) { alert("Error: " + e.message); } };
       
-      const filteredCredentials = useMemo(() => credentials.filter(c => (filterTag === 'ALL' || c.tag === filterTag) && (searchTerm.length === 0 || c.name.toLowerCase().includes(searchTerm.toLowerCase()) || c.username.toLowerCase().includes(searchTerm.toLowerCase()) || (c.comment && c.comment.toLowerCase().includes(searchTerm.toLowerCase())))).sort((a, b) => a.name.localeCompare(b.name)), [credentials, searchTerm, filterTag]);
+      const filteredCredentials = useMemo(() => credentials.filter(c => (selectedTags.length === 0 || selectedTags.includes(c.tag)) && (searchTerm.length === 0 || c.name.toLowerCase().includes(searchTerm.toLowerCase()) || c.username.toLowerCase().includes(searchTerm.toLowerCase()) || (c.comment && c.comment.toLowerCase().includes(searchTerm.toLowerCase())))).sort((a, b) => a.name.localeCompare(b.name)), [credentials, searchTerm, selectedTags]);
 
       return (
         <div className="max-w-4xl mx-auto min-h-screen bg-white dark:bg-zinc-800 shadow-lg md:mt-8 md:rounded-2xl flex flex-col">
-           <header className="sticky top-0 z-10 flex flex-col md:flex-row md:items-center justify-between gap-4 md:gap-0 p-4 border-b border-gray-200 dark:border-zinc-700 bg-gray-50/80 dark:bg-zinc-800/80 backdrop-blur-sm">
-            <h1 className="text-xl font-bold text-gray-900 dark:text-white truncate text-center md:text-left">Randall Duk Kim APP v{APP_VERSION}</h1>
+           <header className="sticky top-0 z-10 flex flex-col md:flex-row md:items-center justify-between gap-4 p-4 border-b border-gray-200 dark:border-zinc-700 bg-gray-50/80 dark:bg-zinc-800/80 backdrop-blur-sm">
+            <div className="flex-1 min-w-0"><h1 className="text-xl font-bold text-gray-900 dark:text-white truncate text-center md:text-left">Randall Duk Kim APP v{APP_VERSION}</h1></div>
             <div className="flex items-center justify-center md:justify-end flex-wrap gap-2">
                 <div className="text-right font-semibold text-gray-700 dark:text-gray-200 truncate">{keychainName}</div>
-                <button onClick={onSaveChanges} className={`flex items-center px-3 py-2 rounded-lg text-sm font-semibold transition-all ${hasUnsavedChanges ? 'bg-blue-600 text-white hover:bg-blue-700 animate-pulse' : 'bg-gray-200 dark:bg-zinc-700 text-gray-800 dark:text-gray-200'}`}><Icon name="save" className="text-lg mr-1" />Guardar en Drive</button>
+                <button onClick={onSaveChanges} className={`flex items-center px-3 py-2 rounded-lg text-sm font-semibold transition-all ${hasUnsavedChanges ? 'bg-blue-600 text-white hover:bg-blue-700 animate-pulse' : 'bg-gray-200 dark:bg-zinc-700 text-gray-800 dark:text-gray-200'}`}><Icon name="save" className="text-lg mr-1" />Guardar</button>
                 <button onClick={() => setIsSettingsOpen(true)} className="p-2 rounded-full hover:bg-gray-200 dark:hover:bg-zinc-700 text-gray-600 dark:text-gray-300" title="Configuración"><Icon name="settings" /></button>
                 <button onClick={onSignOut} className="p-2 rounded-full hover:bg-gray-200 dark:hover:bg-zinc-700 text-gray-600 dark:text-gray-300" title="Salir y cerrar sesión"><Icon name="exit_to_app" /></button>
             </div>
           </header>
-          <main className="flex-grow p-4 sm:p-6 pb-24 overflow-y-auto"><SearchBar onSearch={setSearchTerm} onFilter={setFilterTag} currentFilter={filterTag} tags={tags} />{isLoading ? <p>Cargando...</p> : <CredentialList credentials={filteredCredentials} onEdit={handleEdit} onDelete={handleDelete} />}</main>
+          <main className="flex-grow p-4 sm:p-6 pb-24 overflow-y-auto"><SearchBar onSearch={setSearchTerm} onFilterChange={setSelectedTags} selectedTags={selectedTags} allTags={tags} />{isLoading ? <p>Cargando...</p> : <CredentialList credentials={filteredCredentials} onEdit={handleEdit} onDelete={handleDelete} />}</main>
           <footer className="fixed bottom-0 left-0 right-0 bg-white dark:bg-zinc-800 border-t border-gray-200 dark:border-zinc-700 p-2 text-center text-sm text-gray-500 dark:text-gray-400 z-10">Creado por: Mario Almada PY - 2025</footer>
           <div className="fixed bottom-16 right-4 sm:right-6 z-20"><button onClick={handleAddNew} className="bg-blue-600 hover:bg-blue-700 text-white rounded-full p-4 shadow-lg"><Icon name="add" className="text-2xl" /></button></div>
           <CredentialModal isOpen={isModalOpen} onClose={() => { setIsModalOpen(false); setEditingCredential(null); }} onSave={handleAddOrUpdate} credential={editingCredential} tags={tags} />
@@ -284,115 +289,20 @@
       );
     };
 
-    // --- NEW LOGIN FLOW COMPONENTS ---
-    const LoadingScreen = ({ message }) => (
-        <div className="flex flex-col items-center justify-center min-h-screen bg-gray-100 dark:bg-zinc-900 text-gray-800 dark:text-gray-200">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
-            <p className="mt-4 text-lg">{message}</p>
-        </div>
-    );
+    const LoadingScreen = ({ message }) => (<div className="flex flex-col items-center justify-center min-h-screen bg-gray-100 dark:bg-zinc-900 text-gray-800 dark:text-gray-200"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div><p className="mt-4 text-lg">{message}</p></div>);
+    const GoogleLoginScreen = ({ onLogin, configError }) => (<div className="flex items-center justify-center min-h-screen bg-gray-100 dark:bg-zinc-900 p-4"><div className="w-full max-w-md bg-white dark:bg-zinc-800 rounded-2xl shadow-lg p-8 space-y-6 text-center"><Icon name="key" className="text-5xl text-blue-500 mx-auto" /><h1 className="mt-4 text-3xl font-bold text-gray-900 dark:text-white">Randall Duk Kim APP v{APP_VERSION}</h1><p className="mt-2 text-sm text-gray-600 dark:text-gray-400">Su gestor de contraseñas seguro, ahora en la nube.</p>{configError ? (<div className="bg-red-100 dark:bg-red-900/50 border-l-4 border-red-500 text-red-700 dark:text-red-200 p-4 text-left"><p className="font-bold">Error de Configuración</p><p>{configError}</p></div>) : (<button onClick={onLogin} className="w-full flex justify-center items-center py-3 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700"><Icon name="cloud" className="text-lg mr-2"/> Conectar con Google Drive</button>)}</div></div>);
+    const CreateKeychainModal = ({ isOpen, onClose, onCreate }) => { const [name, setName] = React.useState(''); if (!isOpen) return null; const handleSubmit = (e) => { e.preventDefault(); if (name.trim()) { onCreate(name.trim()); } else { alert("El nombre del llavero no puede estar vacío."); } }; return (<div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50" onClick={onClose}><div className="bg-white dark:bg-zinc-800 rounded-lg shadow-xl w-full max-w-sm m-4" onClick={(e) => e.stopPropagation()}><form onSubmit={handleSubmit}><div className="p-6"><h2 className="text-xl font-bold text-gray-900 dark:text-white">Crear Nuevo Llavero</h2><p className="mt-2 text-sm text-gray-600 dark:text-gray-400">Asigne un nombre a su nuevo llavero.</p><div className="mt-4"><label htmlFor="newKeychainName" className="sr-only">Nombre del Llavero</label><input type="text" name="newKeychainName" id="newKeychainName" autoFocus value={name} onChange={e => setName(e.target.value)} placeholder="Ej: Llavero Principal" required className="block w-full rounded-md border-gray-300 dark:border-zinc-600 shadow-sm bg-gray-50 dark:bg-zinc-700 text-gray-900 dark:text-white" /></div></div><div className="bg-gray-50 dark:bg-zinc-900/50 px-6 py-4 flex justify-end space-x-3"><button type="button" onClick={onClose} className="py-2 px-4 border border-gray-300 dark:border-zinc-600 rounded-md shadow-sm text-sm font-medium text-gray-700 dark:text-gray-200 bg-white dark:bg-zinc-700 hover:bg-gray-50 dark:hover:bg-zinc-600">Cancelar</button><button type="submit" className="py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700">Crear</button></div></form></div></div>); };
+    const KeychainSelector = ({ onShowCreateModal, onOpen }) => (<div className="flex items-center justify-center min-h-screen bg-gray-100 dark:bg-zinc-900 p-4"><div className="w-full max-w-md bg-white dark:bg-zinc-800 rounded-2xl shadow-lg p-8 space-y-6 text-center"><Icon name="folder_managed" className="text-5xl text-blue-500 mx-auto" /><h2 className="text-2xl font-bold text-gray-900 dark:text-white">Bienvenido</h2><p className="text-gray-600 dark:text-gray-400">Cree un nuevo llavero o abra uno existente.</p><div className="space-y-4 pt-4"><button onClick={onShowCreateModal} className="w-full flex justify-center items-center py-3 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700"><Icon name="note_add" className="text-lg mr-2"/> Crear Nuevo Llavero</button><button onClick={onOpen} className="w-full flex justify-center items-center py-3 px-4 border border-gray-300 dark:border-zinc-500 rounded-md shadow-sm text-sm font-medium text-gray-700 dark:text-gray-200 bg-transparent hover:bg-gray-50 dark:hover:bg-zinc-700"><Icon name="folder_open" className="text-lg mr-2"/> Abrir desde Google Drive</button></div></div></div>);
+    const UnlockScreen = ({ onUnlock, keychainName, isCreating }) => { const [password, setPassword] = React.useState(''); const handleSubmit = (e) => { e.preventDefault(); onUnlock(password); }; const title = isCreating ? "Crear Contraseña Maestra" : `Desbloquear "${keychainName}"`; const prompt = isCreating ? "Establezca una contraseña maestra." : "Ingrese su contraseña maestra."; const buttonText = isCreating ? "Establecer Contraseña" : "Desbloquear"; return (<div className="flex items-center justify-center min-h-screen bg-gray-100 dark:bg-zinc-900 p-4"><div className="w-full max-w-md bg-white dark:bg-zinc-800 rounded-2xl shadow-lg p-8 space-y-6 text-center"><Icon name={isCreating ? "password" : "lock_open"} className="text-5xl text-blue-500 mx-auto" /><h2 className="text-2xl font-bold text-gray-900 dark:text-white truncate" title={keychainName}>{title}</h2><p className="text-gray-600 dark:text-gray-400">{prompt}</p><form onSubmit={handleSubmit}><input type="password" autoFocus value={password} onChange={e => setPassword(e.target.value)} placeholder="Contraseña Maestra" required className="appearance-none block w-full px-3 py-2 border border-gray-300 dark:border-zinc-600 rounded-md shadow-sm bg-gray-50 dark:bg-zinc-700 text-gray-900 dark:text-white" /><button type="submit" className="mt-4 w-full flex justify-center items-center py-3 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700">{buttonText}</button></form></div></div>); };
     
-    const GoogleLoginScreen = ({ onLogin, configError }) => (
-        <div className="flex items-center justify-center min-h-screen bg-gray-100 dark:bg-zinc-900 p-4">
-            <div className="w-full max-w-md bg-white dark:bg-zinc-800 rounded-2xl shadow-lg p-8 space-y-6 text-center">
-                <Icon name="key" className="text-5xl text-blue-500 mx-auto" />
-                <h1 className="mt-4 text-3xl font-bold text-gray-900 dark:text-white">Randall Duk Kim APP v{APP_VERSION}</h1>
-                <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">Su gestor de contraseñas seguro, ahora en la nube.</p>
-                {configError ? (
-                  <div className="bg-red-100 dark:bg-red-900/50 border-l-4 border-red-500 text-red-700 dark:text-red-200 p-4 text-left">
-                    <p className="font-bold">Error de Configuración</p>
-                    <p>{configError}</p>
-                  </div>
-                ) : (
-                  <button onClick={onLogin} className="w-full flex justify-center items-center py-3 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700"><Icon name="cloud" className="text-lg mr-2"/> Conectar con Google Drive</button>
-                )}
-            </div>
-        </div>
-    );
-
-    const CreateKeychainModal = ({ isOpen, onClose, onCreate }) => {
-        const [name, setName] = React.useState('');
-        if (!isOpen) return null;
-        
-        const handleSubmit = (e) => {
-            e.preventDefault();
-            if (name.trim()) {
-                onCreate(name.trim());
-            } else {
-                alert("El nombre del llavero no puede estar vacío.");
-            }
-        };
-
-        return (
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50" onClick={onClose}>
-                <div className="bg-white dark:bg-zinc-800 rounded-lg shadow-xl w-full max-w-sm m-4" onClick={(e) => e.stopPropagation()}>
-                    <form onSubmit={handleSubmit}>
-                        <div className="p-6">
-                            <h2 className="text-xl font-bold text-gray-900 dark:text-white">Crear Nuevo Llavero</h2>
-                            <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">Asigne un nombre a su nuevo llavero. Este nombre se usará en el archivo de Google Drive.</p>
-                            <div className="mt-4">
-                                <label htmlFor="newKeychainName" className="sr-only">Nombre del Llavero</label>
-                                <input type="text" name="newKeychainName" id="newKeychainName" autoFocus value={name} onChange={e => setName(e.target.value)} placeholder="Ej: Llavero Principal" required className="block w-full rounded-md border-gray-300 dark:border-zinc-600 shadow-sm bg-gray-50 dark:bg-zinc-700 text-gray-900 dark:text-white" />
-                            </div>
-                        </div>
-                        <div className="bg-gray-50 dark:bg-zinc-900/50 px-6 py-4 flex justify-end space-x-3">
-                            <button type="button" onClick={onClose} className="py-2 px-4 border border-gray-300 dark:border-zinc-600 rounded-md shadow-sm text-sm font-medium text-gray-700 dark:text-gray-200 bg-white dark:bg-zinc-700 hover:bg-gray-50 dark:hover:bg-zinc-600">Cancelar</button>
-                            <button type="submit" className="py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700">Crear</button>
-                        </div>
-                    </form>
-                </div>
-            </div>
-        );
-    };
-
-    const KeychainSelector = ({ onShowCreateModal, onOpen }) => (
-        <div className="flex items-center justify-center min-h-screen bg-gray-100 dark:bg-zinc-900 p-4">
-             <div className="w-full max-w-md bg-white dark:bg-zinc-800 rounded-2xl shadow-lg p-8 space-y-6 text-center">
-                <Icon name="folder_managed" className="text-5xl text-blue-500 mx-auto" />
-                <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Bienvenido</h2>
-                <p className="text-gray-600 dark:text-gray-400">¿Desea crear un nuevo llavero en su Google Drive o abrir uno existente?</p>
-                <div className="space-y-4 pt-4">
-                    <button onClick={onShowCreateModal} className="w-full flex justify-center items-center py-3 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700"><Icon name="note_add" className="text-lg mr-2"/> Crear Nuevo Llavero</button>
-                    <button onClick={onOpen} className="w-full flex justify-center items-center py-3 px-4 border border-gray-300 dark:border-zinc-500 rounded-md shadow-sm text-sm font-medium text-gray-700 dark:text-gray-200 bg-transparent hover:bg-gray-50 dark:hover:bg-zinc-700"><Icon name="folder_open" className="text-lg mr-2"/> Abrir desde Google Drive</button>
-                </div>
-            </div>
-        </div>
-    );
-    
-    const UnlockScreen = ({ onUnlock, keychainName, isCreating }) => {
-        const [password, setPassword] = React.useState('');
-        const handleSubmit = (e) => { e.preventDefault(); onUnlock(password); };
-        const title = isCreating ? "Crear Contraseña Maestra" : `Desbloquear "${keychainName}"`;
-        const prompt = isCreating ? "Establezca una contraseña maestra para su nuevo llavero." : "Ingrese su contraseña maestra para descifrar el llavero.";
-        const buttonText = isCreating ? "Establecer Contraseña" : "Desbloquear";
-
-        return (
-            <div className="flex items-center justify-center min-h-screen bg-gray-100 dark:bg-zinc-900 p-4">
-                <div className="w-full max-w-md bg-white dark:bg-zinc-800 rounded-2xl shadow-lg p-8 space-y-6 text-center">
-                    <Icon name={isCreating ? "password" : "lock_open"} className="text-5xl text-blue-500 mx-auto" />
-                    <h2 className="text-2xl font-bold text-gray-900 dark:text-white truncate" title={keychainName}>{title}</h2>
-                    <p className="text-gray-600 dark:text-gray-400">{prompt}</p>
-                    <form onSubmit={handleSubmit}>
-                      <input type="password" autoFocus value={password} onChange={e => setPassword(e.target.value)} placeholder="Contraseña Maestra" required className="appearance-none block w-full px-3 py-2 border border-gray-300 dark:border-zinc-600 rounded-md shadow-sm bg-gray-50 dark:bg-zinc-700 text-gray-900 dark:text-white" />
-                      <button type="submit" className="mt-4 w-full flex justify-center items-center py-3 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700">{buttonText}</button>
-                    </form>
-                </div>
-            </div>
-        );
-    };
-
-    // --- MAIN APP COMPONENT ---
     const App = () => {
       const { useState, useCallback, useEffect } = React;
-      // App State
-      const [appStatus, setAppStatus] = useState('initializing'); // initializing, google_login, select_keychain, unlock_keychain, unlocked, error
+      const [appStatus, setAppStatus] = useState('initializing');
       const [configError, setConfigError] = useState(null);
       const [errorMessage, setErrorMessage] = useState('');
       const [isCreateModalOpen, setCreateModalOpen] = useState(false);
-      // API clients and tokens
       const [googleTokenClient, setGoogleTokenClient] = useState(null);
       const [googleUser, setGoogleUser] = useState(null);
-      // Keychain state
       const [db, setDb] = useState(null);
       const [dbFileId, setDbFileId] = useState(null);
       const [dbFilename, setDbFilename] = useState('');
@@ -408,13 +318,11 @@
             }
             await Promise.all([window.gapiLoadPromise, window.gisLoadPromise]);
             window.SQL = await window.initSqlJs({ locateFile: file => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/${file}` });
-            
             await new Promise((resolve, reject) => gapi.load('client:picker', { callback: resolve, onerror: reject }));
             await gapi.client.init({ 
                 apiKey: GOOGLE_API_KEY,
                 discoveryDocs: ["https://www.googleapis.com/discovery/v1/apis/drive/v3/rest"]
             });
-            
             const tokenClient = google.accounts.oauth2.initTokenClient({
               client_id: GOOGLE_CLIENT_ID, scope: SCOPES, callback: '',
             });
@@ -452,32 +360,23 @@
       }, [googleTokenClient]);
 
       const handleConfirmCreate = useCallback(async (keychainName) => {
-          setCreateModalOpen(false);
-          setAppStatus('loading');
+          setCreateModalOpen(false); setAppStatus('loading');
           const { database: newDb } = await initDb(null);
-          setKeychainName(newDb, keychainName);
-          setDb(newDb);
-          setDbFileId(null);
-          setDbFilename(keychainName); // Use the provided name directly
-          setAppStatus('unlock_keychain');
+          setKeychainName(newDb, keychainName); setDb(newDb); setDbFileId(null);
+          setDbFilename(keychainName); setAppStatus('unlock_keychain');
       }, []);
       
       const openKeychain = useCallback(() => {
           try {
             const view = new google.picker.View(google.picker.ViewId.DOCS);
             view.setQuery('*.db');
-            
             const picker = new google.picker.PickerBuilder()
-                .setAppId(APP_ID)
-                .setOrigin(window.location.origin)
+                .setAppId(APP_ID).setOrigin(window.location.origin)
                 .setOAuthToken(gapi.client.getToken().access_token)
-                .addView(view)
-                .setCallback(async (data) => {
+                .addView(view).setCallback(async (data) => {
                     if (data.action === google.picker.Action.PICKED) {
-                        setAppStatus('loading');
-                        const file = data.docs[0];
-                        setDbFileId(file.id);
-                        setDbFilename(file.name);
+                        setAppStatus('loading'); const file = data.docs[0];
+                        setDbFileId(file.id); setDbFilename(file.name);
                         setAppStatus('unlock_keychain');
                     }
                 }).build();
@@ -490,31 +389,23 @@
           setAppStatus('loading');
           try {
               if (dbFileId) {
-                  // Use robust fetch API to get raw binary data
                   const accessToken = gapi.client.getToken().access_token;
                   const response = await fetch(`https://www.googleapis.com/drive/v3/files/${dbFileId}?alt=media`, {
-                      method: 'GET',
                       headers: { 'Authorization': `Bearer ${accessToken}` }
                   });
-
-                  if (!response.ok) {
-                      throw new Error(`Error al descargar el archivo: ${response.statusText}`);
-                  }
-                  
+                  if (!response.ok) throw new Error(`Error al descargar: ${response.statusText}`);
                   const dbArrayBuffer = await response.arrayBuffer();
-                  
                   const { database, salt } = await initDb(dbArrayBuffer);
                   const key = await deriveKey(password, salt);
                   setDb(database); setMasterKey(key); setAppStatus('unlocked'); setHasUnsavedChanges(false);
               } else {
-                  const salt = getSalt(db);
-                  const key = await deriveKey(password, salt);
+                  const salt = getSalt(db); const key = await deriveKey(password, salt);
                   setMasterKey(key); setAppStatus('unlocked'); setHasUnsavedChanges(true);
               }
           } catch (error) {
-              console.error("Failed to unlock/set password:", error);
+              console.error("Failed to unlock:", error);
               alert("Fallo al procesar. Verifique su contraseña o el archivo puede estar dañado.");
-              setAppStatus('select_keychain'); // Return to selection on failure
+              setAppStatus('select_keychain');
           }
       }, [db, dbFileId]);
 
@@ -527,49 +418,39 @@
         if (!db) return;
         setAppStatus('loading');
         try {
-            const dbData = exportDb(db); // Uint8Array
+            const dbData = exportDb(db);
             const accessToken = gapi.client.getToken().access_token;
             const keychainName = getKeychainName(db);
             const metadata = {
                 name: `RandallDukKimApp_${keychainName}_${generateTimestamp()}.db`,
                 mimeType: 'application/octet-stream'
             };
-
-            if (dbFileId) { // Update existing file
+            if (dbFileId) {
                  await fetch(`https://www.googleapis.com/upload/drive/v3/files/${dbFileId}?uploadType=media`, {
-                    method: 'PATCH',
-                    headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/octet-stream' },
-                    body: dbData
+                    method: 'PATCH', headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/octet-stream' }, body: dbData
                 });
-            } else { // Create new file
+            } else {
                 const createResponse = await fetch(`https://www.googleapis.com/drive/v3/files`, {
-                    method: 'POST',
-                    headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ name: metadata.name, mimeType: metadata.mimeType })
+                    method: 'POST', headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ name: metadata.name, mimeType: metadata.mimeType })
                 });
                 const newFile = await createResponse.json();
-                
                 await fetch(`https://www.googleapis.com/upload/drive/v3/files/${newFile.id}?uploadType=media`, {
-                    method: 'PATCH',
-                    headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/octet-stream' },
-                    body: dbData
+                    method: 'PATCH', headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/octet-stream' }, body: dbData
                 });
-                setDbFileId(newFile.id);
-                setDbFilename(metadata.name);
+                setDbFileId(newFile.id); setDbFilename(metadata.name);
             }
-            
             setHasUnsavedChanges(false);
             setAppStatus('unlocked');
             alert('¡Llavero guardado en Google Drive con éxito!');
         } catch (error) {
-            console.error("Error saving to Drive:", error);
+            console.error("Error saving:", error);
             setAppStatus('unlocked');
-            alert("Error al guardar en Google Drive. Verifique la consola para más detalles.");
+            alert("Error al guardar en Google Drive.");
         }
     }, [db, dbFileId]);
       
       const handleSignOut = useCallback(() => {
-          if (hasUnsavedChanges && !window.confirm("Tiene cambios sin guardar que se perderán. ¿Seguro que quiere cerrar sesión?")) return;
+          if (hasUnsavedChanges && !window.confirm("Tiene cambios sin guardar que se perderán. ¿Seguro?")) return;
           if (gapi.client.getToken()) {
             google.accounts.oauth2.revoke(gapi.client.getToken().access_token, () => {
                 gapi.client.setToken(null);
@@ -579,7 +460,6 @@
           }
       }, [hasUnsavedChanges]);
 
-      // --- RENDER LOGIC ---
       return (<>
         {appStatus === 'initializing' && <LoadingScreen message="Inicializando APIs..." />}
         {appStatus === 'error' && <LoadingScreen message={errorMessage} />}
@@ -592,7 +472,6 @@
       </>);
     };
     
-    // --- RENDER APP ---
     const rootElement = document.getElementById('root');
     const root = ReactDOM.createRoot(rootElement);
     root.render(<App />);
