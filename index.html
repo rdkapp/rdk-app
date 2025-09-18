@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Randall Duk Kim APP v1.2.0</title>
+  <title>Randall Duk Kim APP v1.3.0</title>
   
   <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -61,7 +61,7 @@
     // Toda la aplicación está contenida en este script.
 
     // --- APP CONFIGURATION ---
-    const APP_VERSION = "1.2.0";
+    const APP_VERSION = "1.3.0";
 
     // --- GOOGLE API CONFIGURATION ---
     // IMPORTANTE: Reemplace estos valores con sus propias credenciales de Google Cloud.
@@ -77,14 +77,6 @@
     const PBKDF2_ITERATIONS = 100000;
 
     // --- CRYPTO SERVICE ---
-    const rawStringToUint8Array = (str) => {
-        const len = str.length;
-        const bytes = new Uint8Array(len);
-        for (let i = 0; i < len; i++) {
-            bytes[i] = str.charCodeAt(i);
-        }
-        return bytes;
-    };
     const bufferToBase64 = (buffer) => btoa(String.fromCharCode(...new Uint8Array(buffer)));
     const base64ToUint8Array = (base64) => {
       const binaryString = atob(base64);
@@ -361,10 +353,8 @@
             window.SQL = await window.initSqlJs({ locateFile: file => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/${file}` });
             
             await new Promise((resolve, reject) => gapi.load('client:picker', { callback: resolve, onerror: reject }));
-            await gapi.client.init({
-                apiKey: GOOGLE_API_KEY,
-                discoveryDocs: ["https://www.googleapis.com/discovery/v1/apis/drive/v3/rest"],
-            });
+            await gapi.client.init({ apiKey: GOOGLE_API_KEY });
+            await gapi.client.load('drive', 'v3');
             
             const tokenClient = google.accounts.oauth2.initTokenClient({
               client_id: GOOGLE_CLIENT_ID, scope: SCOPES, callback: '',
@@ -441,15 +431,20 @@
           setAppStatus('loading');
           try {
               if (dbFileId) {
-                  const res = await gapi.client.request({
-                      path: `/drive/v3/files/${dbFileId}`,
-                      params: { alt: 'media' }
+                  // Use robust fetch API to get raw binary data
+                  const accessToken = gapi.client.getToken().access_token;
+                  const response = await fetch(`https://www.googleapis.com/drive/v3/files/${dbFileId}?alt=media`, {
+                      method: 'GET',
+                      headers: { 'Authorization': `Bearer ${accessToken}` }
                   });
 
-                  // Correctly convert raw binary string to Uint8Array buffer
-                  const dbUint8Array = rawStringToUint8Array(res.body);
+                  if (!response.ok) {
+                      throw new Error(`Error al descargar el archivo: ${response.statusText}`);
+                  }
                   
-                  const { database, salt } = await initDb(dbUint8Array.buffer);
+                  const dbArrayBuffer = await response.arrayBuffer();
+                  
+                  const { database, salt } = await initDb(dbArrayBuffer);
                   const key = await deriveKey(password, salt);
                   setDb(database); setMasterKey(key); setAppStatus('unlocked'); setHasUnsavedChanges(false);
               } else {
