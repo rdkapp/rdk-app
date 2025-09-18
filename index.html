@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Randall Duk Kim APP v1.5.0</title>
+  <title>Randall Duk Kim APP v1.5.1</title>
   
   <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -61,7 +61,7 @@
     // Toda la aplicación está contenida en este script.
 
     // --- APP CONFIGURATION ---
-    const APP_VERSION = "1.5.0";
+    const APP_VERSION = "1.5.1";
 
     // --- GOOGLE API CONFIGURATION ---
     // IMPORTANTE: Reemplace estos valores con sus propias credenciales de Google Cloud.
@@ -77,12 +77,23 @@
     const PBKDF2_ITERATIONS = 100000;
 
     // --- CRYPTO SERVICE ---
-    const bufferToBase64 = (buffer) => btoa(String.fromCharCode(...new Uint8Array(buffer)));
+    // Robust Base64 conversion functions that handle all byte values correctly.
+    const bufferToBase64 = (buffer) => {
+        let binary = '';
+        const bytes = new Uint8Array(buffer);
+        const len = bytes.byteLength;
+        for (let i = 0; i < len; i++) {
+            binary += String.fromCharCode(bytes[i]);
+        }
+        return window.btoa(binary);
+    };
     const base64ToUint8Array = (base64) => {
-      const binaryString = atob(base64);
+      const binaryString = window.atob(base64);
       const len = binaryString.length;
       const bytes = new Uint8Array(len);
-      for (let i = 0; i < len; i++) bytes[i] = binaryString.charCodeAt(i);
+      for (let i = 0; i < len; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+      }
       return bytes;
     };
     const deriveKey = async (password, salt) => {
@@ -467,7 +478,7 @@
           } catch (error) {
               console.error("Failed to unlock/set password:", error);
               alert("Fallo al procesar. Verifique su contraseña o el archivo puede estar dañado.");
-              setAppStatus('unlock_keychain');
+              setAppStatus('select_keychain'); // Return to selection on failure
           }
       }, [db, dbFileId]);
 
@@ -507,7 +518,7 @@
                         'Authorization': `Bearer ${accessToken}`,
                         'Content-Type': 'application/json'
                     },
-                    body: JSON.stringify({ name: filename })
+                    body: JSON.stringify({ name: filename, mimeType: 'application/octet-stream' })
                 });
 
                 if (!createMetaResponse.ok) throw new Error(`Error al crear metadatos: ${await createMetaResponse.text()}`);
