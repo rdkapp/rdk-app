@@ -287,7 +287,18 @@
 
       useEffect(() => { refreshData(); }, [refreshData]);
       
-      const handleAddOrUpdate = (credential) => { if (credential.id && credential.id > 0) updateCredential(db, credential); else addCredential(db, credential); setHasUnsavedChanges(true); refreshData(); setIsModalOpen(false); setEditingCredential(null); };
+      const handleAddOrUpdate = async (credential) => {
+          if (credential.id && credential.id > 0) {
+              updateCredential(db, credential);
+          } else {
+              addCredential(db, credential);
+          }
+          setHasUnsavedChanges(true);
+          refreshData();
+          setIsModalOpen(false);
+          setEditingCredential(null);
+          await onSaveChanges();
+      };
       const handleDelete = (id) => { if (window.confirm('¿Está seguro?')) { deleteCredential(db, id); setHasUnsavedChanges(true); refreshData(); }};
       const handleEdit = (credential) => { setEditingCredential(credential); setIsModalOpen(true); };
       const handleAddNew = () => { setEditingCredential(null); setIsModalOpen(true); };
