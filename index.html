@@ -4,7 +4,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Randall Duk Kim APP v2.1.0</title>
+  <title>Randall Duk Kim APP v2.1.0 - Supabase Edition</title>
   
   <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -55,7 +55,9 @@
     // --- SUPABASE CLIENT INITIALIZATION ---
     let supabase;
     try {
-        supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        // `window.supabase` refers to the global object from the CDN script.
+        // The local `supabase` variable will hold the client instance.
+        supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
     } catch(e) {
         // This will be caught later and an error will be displayed
     }
@@ -300,7 +302,7 @@
     const LoadingScreen = ({ message }) => (<div className="flex flex-col items-center justify-center min-h-screen bg-gray-100 dark:bg-zinc-900 text-gray-800 dark:text-gray-200"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div><p className="mt-4 text-lg">{message}</p></div>);
     
     const AuthScreen = ({ onLogin, onSignUp, error, loading, configError }) => {
-        const [isLoginView, React.useState(true);
+        const [isLoginView, setIsLoginView] = React.useState(true);
         const [email, setEmail] = React.useState('');
         const [password, setPassword] = React.useState('');
 
