@@ -155,10 +155,105 @@
         if (!isOpen) return null;
         return (<div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50" onClick={onClose}><div className="bg-white dark:bg-zinc-800 rounded-lg shadow-xl w-full max-w-lg m-4" onClick={(e) => e.stopPropagation()}><form onSubmit={handleSubmit}><div className="p-6"><h2 className="text-xl font-bold text-gray-900 dark:text-white">{credential ? 'Editar Credencial' : 'Agregar Nueva Credencial'}</h2><div className="mt-6 space-y-4"><div><label htmlFor="name" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Nombre de llave</label><input type="text" name="name" id="name" value={formData.name} onChange={handleChange} required className="mt-1 block w-full rounded-md border-gray-300 dark:border-zinc-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 bg-gray-50 dark:bg-zinc-700 text-gray-900 dark:text-white" /></div><div><label htmlFor="username" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Usuario / Email</label><input type="text" name="username" id="username" value={formData.username} onChange={handleChange} required className="mt-1 block w-full rounded-md border-gray-300 dark:border-zinc-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 bg-gray-50 dark:bg-zinc-700 text-gray-900 dark:text-white" /></div><div><label htmlFor="password" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Contraseña</label><div className="relative mt-1"><input type={isPasswordVisibleInModal ? 'text' : 'password'} name="password" id="password" value={formData.password} onChange={handleChange} required className="block w-full rounded-md border-gray-300 dark:border-zinc-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 bg-gray-50 dark:bg-zinc-700 text-gray-900 dark:text-white pr-10" /><button type="button" onClick={() => setIsPasswordVisibleInModal(!isPasswordVisibleInModal)} className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300" title={isPasswordVisibleInModal ? 'Ocultar contraseña' : 'Mostrar contraseña'}><Icon name={isPasswordVisibleInModal ? 'visibility_off' : 'visibility'} /></button></div></div><div><label htmlFor="comment" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Comentario</label><textarea name="comment" id="comment" value={formData.comment} onChange={handleChange} rows={3} className="mt-1 block w-full rounded-md border-gray-300 dark:border-zinc-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 bg-gray-50 dark:bg-zinc-700 text-gray-900 dark:text-white"></textarea></div><div><label htmlFor="tag" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Etiqueta</label><select name="tag" id="tag" value={formData.tag} onChange={handleChange} className="mt-1 block w-full rounded-md border-gray-300 dark:border-zinc-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 bg-gray-50 dark:bg-zinc-700 text-gray-900 dark:text-white" disabled={tags.length === 0}>{tags.length === 0 ? <option>Cree una etiqueta primero</option> : tags.map(tag => <option key={tag.id} value={tag.name}>{tag.name}</option>)}</select></div></div></div><div className="bg-gray-50 dark:bg-zinc-900/50 px-6 py-4 flex justify-end space-x-3"><button type="button" onClick={onClose} className="py-2 px-4 border border-gray-300 dark:border-zinc-600 rounded-md shadow-sm text-sm font-medium text-gray-700 dark:text-gray-200 bg-white dark:bg-zinc-700 hover:bg-gray-50 dark:hover:bg-zinc-600">Cancelar</button><button type="submit" className="py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700">Guardar</button></div></form></div></div>); };
     const CredentialItem = ({ credential, onEdit, onDelete, masterKey }) => { const { useState } = React; const [isExpanded, setIsExpanded] = useState(false); const [isPasswordVisible, setIsPasswordVisible] = useState(false); const [decryptedPassword, setDecryptedPassword] = useState(null); const [isUsernameVisible, setIsUsernameVisible] = useState(false); const [decryptedUsername, setDecryptedUsername] = useState(null); const addToast = useNotifier(); const handleToggleUsername = async () => { if (isUsernameVisible) { setIsUsernameVisible(false); setDecryptedUsername(null); } else { const decUsername = await decryptField(credential.username, masterKey); setDecryptedUsername(decUsername); setIsUsernameVisible(true); } }; const handleTogglePassword = async () => { if (isPasswordVisible) { setIsPasswordVisible(false); setDecryptedPassword(null); } else { const decPassword = await decryptField(credential.password, masterKey); setDecryptedPassword(decPassword); setIsPasswordVisible(true); } }; const handleCopy = async (encryptedValue, field) => { const decryptedValue = await decryptField(encryptedValue, masterKey); navigator.clipboard.writeText(decryptedValue); addToast(`${field} copiado al portapapeles.`, 'success'); }; const getTagColor = (tagName) => { if(!tagName) tagName = 'Sin Etiqueta'; let hash = 0; for (let i = 0; i < tagName.length; i++) { hash = tagName.charCodeAt(i) + ((hash << 5) - hash); } const color = (hash & 0x00FFFFFF).toString(16).toUpperCase(); const hexColor = "00000".substring(0, 6 - color.length) + color; const r = parseInt(hexColor.substring(0,2), 16); const g = parseInt(hexColor.substring(2,4), 16); const b = parseInt(hexColor.substring(4,6), 16); const brightness = (r * 299 + g * 587 + b * 114) / 1000; const textColor = brightness > 125 ? 'text-black' : 'text-white'; return { backgroundColor: `#${hexColor}`, colorClass: textColor }; }; const tagStyle = getTagColor(credential.tag); return (<div className="bg-gray-50 dark:bg-zinc-700/50 rounded-lg shadow-sm transition-shadow hover:shadow-md"><button onClick={() => setIsExpanded(!isExpanded)} className="w-full flex items-center justify-between p-4 text-left"><div className="flex items-center min-w-0 mr-4"><div className={`flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center mr-4 text-lg font-bold text-white bg-gradient-to-br from-blue-500 to-indigo-600`}>{credential.name.charAt(0).toUpperCase()}</div><div className="truncate"><p className="font-semibold text-gray-900 dark:text-white truncate">{credential.name}</p></div></div><div className='flex items-center flex-shrink-0'><span className={`text-xs font-medium mr-2 sm:mr-4 px-2.5 py-0.5 rounded-full truncate ${tagStyle.colorClass}`} style={{ backgroundColor: tagStyle.backgroundColor }}>{credential.tag}</span><Icon name="expand_more" className={`text-gray-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`} /></div></button>{isExpanded && (<div className="px-4 pb-4 border-t border-gray-200 dark:border-zinc-600"><div className="mt-4 space-y-4"><div><label className="text-xs font-medium text-gray-500 dark:text-gray-400">Usuario / Email</label><div className="flex items-center mt-1"><input type={isUsernameVisible ? 'text' : 'password'} readOnly value={isUsernameVisible ? decryptedUsername : "●●●●●●●●"} className="w-full bg-transparent text-gray-900 dark:text-white focus:outline-none" /><button onClick={handleToggleUsername} className="p-1 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"><Icon name={isUsernameVisible ? 'visibility_off' : 'visibility'} className="text-xl"/></button><button onClick={() => handleCopy(credential.username, 'Usuario')} className="p-1 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"><Icon name="content_copy" className="text-xl"/></button></div></div><div><label className="text-xs font-medium text-gray-500 dark:text-gray-400">Contraseña</label><div className="flex items-center mt-1"><input type={isPasswordVisible ? 'text' : 'password'} readOnly value={isPasswordVisible ? decryptedPassword : "●●●●●●●●"} className="w-full bg-transparent text-gray-900 dark:text-white focus:outline-none" /><button onClick={handleTogglePassword} className="p-1 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"><Icon name={isPasswordVisible ? 'visibility_off' : 'visibility'} className="text-xl"/></button><button onClick={() => handleCopy(credential.password, 'Contraseña')} className="p-1 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"><Icon name="content_copy" className="text-xl"/></button></div></div>{credential.comment && (<div><label className="text-xs font-medium text-gray-500 dark:text-gray-400">Comentario</label><p className="mt-1 text-sm text-gray-800 dark:text-gray-200 whitespace-pre-wrap">{credential.comment}</p></div>)}</div><div className="mt-4 flex justify-end space-x-2"><button onClick={() => onEdit(credential)} className="flex items-center text-sm text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 p-2 rounded-md hover:bg-gray-100 dark:hover:bg-zinc-600"><Icon name="edit" className="text-base mr-1"/> Editar</button><button onClick={() => onDelete(credential.id)} className="flex items-center text-sm text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300 p-2 rounded-md hover:bg-gray-100 dark:hover:bg-zinc-600"><Icon name="delete" className="text-base mr-1"/> Borrar</button></div></div>)}</div>); };
-    const CredentialList = ({ credentials, onEdit, onDelete, masterKey }) => { if (credentials.length === 0) { return (<div className="text-center py-16"><Icon name="key_off" className="text-5xl text-gray-400 mx-auto" /><h3 className="mt-2 text-lg font-medium text-gray-900 dark:text-white">No se encontraron credenciales</h3><p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Comience agregando una nueva credencial.</p><p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Haga clic en el botón <Icon name="add" className="inline-block text-base" /> para comenzar.</p></div>); } return (<div className="space-y-3">{credentials.map(cred => (<CredentialItem key={cred.id} credential={cred} onEdit={onEdit} onDelete={onDelete} masterKey={masterKey} />))}</div>); };
+    const CredentialCard = ({ credential, onEdit, onDelete, masterKey }) => {
+        const { useState } = React;
+        const [isPasswordVisible, setIsPasswordVisible] = useState(false);
+        const [decryptedPassword, setDecryptedPassword] = useState(null);
+        const [isUsernameVisible, setIsUsernameVisible] = useState(false);
+        const [decryptedUsername, setDecryptedUsername] = useState(null);
+        const addToast = useNotifier();
+
+        const handleToggleUsername = async () => { if (isUsernameVisible) { setIsUsernameVisible(false); setDecryptedUsername(null); } else { const decUsername = await decryptField(credential.username, masterKey); setDecryptedUsername(decUsername); setIsUsernameVisible(true); } };
+        const handleTogglePassword = async () => { if (isPasswordVisible) { setIsPasswordVisible(false); setDecryptedPassword(null); } else { const decPassword = await decryptField(credential.password, masterKey); setDecryptedPassword(decPassword); setIsPasswordVisible(true); } };
+        const handleCopy = async (encryptedValue, field) => { const decryptedValue = await decryptField(encryptedValue, masterKey); navigator.clipboard.writeText(decryptedValue); addToast(`${field} copiado al portapapeles.`, 'success'); };
+        const getTagColor = (tagName) => { if(!tagName) tagName = 'Sin Etiqueta'; let hash = 0; for (let i = 0; i < tagName.length; i++) { hash = tagName.charCodeAt(i) + ((hash << 5) - hash); } const color = (hash & 0x00FFFFFF).toString(16).toUpperCase(); const hexColor = "00000".substring(0, 6 - color.length) + color; const r = parseInt(hexColor.substring(0,2), 16); const g = parseInt(hexColor.substring(2,4), 16); const b = parseInt(hexColor.substring(4,6), 16); const brightness = (r * 299 + g * 587 + b * 114) / 1000; const textColor = brightness > 125 ? 'text-black' : 'text-white'; return { backgroundColor: `#${hexColor}`, colorClass: textColor }; };
+        
+        const tagStyle = getTagColor(credential.tag);
+
+        return (
+            <div className="bg-gray-50 dark:bg-zinc-700/50 rounded-lg shadow-sm transition-shadow hover:shadow-md flex flex-col h-full p-4">
+                <div className="flex items-start mb-4">
+                    <div className={`flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center mr-3 text-lg font-bold text-white bg-gradient-to-br from-blue-500 to-indigo-600`}>
+                        {credential.name.charAt(0).toUpperCase()}
+                    </div>
+                    <div className="truncate flex-grow">
+                        <p className="font-semibold text-gray-900 dark:text-white truncate">{credential.name}</p>
+                        <span className={`text-xs font-medium px-2.5 py-0.5 rounded-full ${tagStyle.colorClass}`} style={{ backgroundColor: tagStyle.backgroundColor }}>
+                            {credential.tag}
+                        </span>
+                    </div>
+                </div>
+                <div className="space-y-4 flex-grow">
+                    <div>
+                        <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Usuario / Email</label>
+                        <div className="flex items-center mt-1">
+                            <input type={isUsernameVisible ? 'text' : 'password'} readOnly value={isUsernameVisible ? decryptedUsername : "●●●●●●●●"} className="w-full bg-transparent text-gray-900 dark:text-white focus:outline-none" />
+                            <button onClick={handleToggleUsername} className="p-1 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"><Icon name={isUsernameVisible ? 'visibility_off' : 'visibility'} className="text-xl"/></button>
+                            <button onClick={() => handleCopy(credential.username, 'Usuario')} className="p-1 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"><Icon name="content_copy" className="text-xl"/></button>
+                        </div>
+                    </div>
+                    <div>
+                        <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Contraseña</label>
+                        <div className="flex items-center mt-1">
+                            <input type={isPasswordVisible ? 'text' : 'password'} readOnly value={isPasswordVisible ? decryptedPassword : "●●●●●●●●"} className="w-full bg-transparent text-gray-900 dark:text-white focus:outline-none" />
+                            <button onClick={handleTogglePassword} className="p-1 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"><Icon name={isPasswordVisible ? 'visibility_off' : 'visibility'} className="text-xl"/></button>
+                            <button onClick={() => handleCopy(credential.password, 'Contraseña')} className="p-1 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"><Icon name="content_copy" className="text-xl"/></button>
+                        </div>
+                    </div>
+                    {credential.comment && (
+                        <div>
+                            <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Comentario</label>
+                            <p className="mt-1 text-sm text-gray-800 dark:text-gray-200 whitespace-pre-wrap break-words">{credential.comment}</p>
+                        </div>
+                    )}
+                </div>
+                <div className="mt-4 pt-4 border-t border-gray-200 dark:border-zinc-600 flex justify-end space-x-2">
+                    <button onClick={() => onEdit(credential)} className="flex items-center text-sm text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 p-2 rounded-md hover:bg-gray-100 dark:hover:bg-zinc-600"><Icon name="edit" className="text-base mr-1"/> Editar</button>
+                    <button onClick={() => onDelete(credential.id)} className="flex items-center text-sm text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300 p-2 rounded-md hover:bg-gray-100 dark:hover:bg-zinc-600"><Icon name="delete" className="text-base mr-1"/> Borrar</button>
+                </div>
+            </div>
+        );
+    };
+    const CredentialList = ({ credentials, onEdit, onDelete, masterKey, viewMode }) => { 
+        if (credentials.length === 0) { 
+            return (<div className="text-center py-16"><Icon name="key_off" className="text-5xl text-gray-400 mx-auto" /><h3 className="mt-2 text-lg font-medium text-gray-900 dark:text-white">No se encontraron credenciales</h3><p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Comience agregando una nueva credencial.</p><p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Haga clic en el botón <Icon name="add" className="inline-block text-base" /> para comenzar.</p></div>); 
+        } 
+        
+        const containerClasses = viewMode === 'list'
+            ? "space-y-3"
+            : "grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4";
+            
+        return (
+            <div className={containerClasses}>
+                {credentials.map(cred => (
+                    viewMode === 'list' 
+                        ? <CredentialItem key={cred.id} credential={cred} onEdit={onEdit} onDelete={onDelete} masterKey={masterKey} />
+                        : <CredentialCard key={cred.id} credential={cred} onEdit={onEdit} onDelete={onDelete} masterKey={masterKey} />
+                ))}
+            </div>
+        );
+    };
     
     const FilterDropdown = ({ tags, onFilterChange, activeFilters }) => { const { useState, useRef, useEffect } = React; const [isOpen, setIsOpen] = useState(false); const [selectedTags, setSelectedTags] = useState(new Set(activeFilters)); const wrapperRef = useRef(null); const handleToggleTag = (tagName) => { setSelectedTags(prev => { const newSet = new Set(prev); if (newSet.has(tagName)) newSet.delete(tagName); else newSet.add(tagName); return newSet; }); }; const handleApply = () => { onFilterChange(Array.from(selectedTags)); setIsOpen(false); }; const handleClear = () => { setSelectedTags(new Set()); onFilterChange([]); setIsOpen(false); }; useEffect(() => { function handleClickOutside(event) { if (wrapperRef.current && !wrapperRef.current.contains(event.target)) setIsOpen(false); } document.addEventListener("mousedown", handleClickOutside); return () => document.removeEventListener("mousedown", handleClickOutside); }, [wrapperRef]); return ( <div className="relative inline-block text-left" ref={wrapperRef}> <button onClick={() => setIsOpen(!isOpen)} className="inline-flex justify-center w-full rounded-md border border-gray-300 dark:border-zinc-600 shadow-sm px-4 py-2 bg-white dark:bg-zinc-700 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-zinc-600"> <Icon name="filter_list" className="mr-2 -ml-1"/> Filtros {activeFilters.length > 0 && `(${activeFilters.length})`} <Icon name="expand_more" className="ml-2 -mr-1"/> </button> {isOpen && ( <div className="origin-top-right absolute right-0 mt-2 w-56 rounded-md shadow-lg bg-white dark:bg-zinc-800 ring-1 ring-black ring-opacity-5 z-20"> <div className="p-2 text-gray-900 dark:text-gray-100 font-semibold">Filtrar por Etiqueta</div> <div className="py-1 max-h-60 overflow-y-auto"> {tags.map(tag => ( <label key={tag.id} className="flex items-center px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-zinc-700 cursor-pointer"> <input type="checkbox" checked={selectedTags.has(tag.name)} onChange={() => handleToggleTag(tag.name)} className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"/> <span className="ml-3">{tag.name}</span> </label> ))} </div> <div className="p-2 border-t border-gray-200 dark:border-zinc-700 flex justify-between"> <button onClick={handleClear} className="text-sm text-gray-500 hover:text-gray-700 dark:hover:text-gray-300">Limpiar</button> <button onClick={handleApply} className="text-sm font-semibold text-blue-600 hover:text-blue-800 dark:text-blue-400">Aplicar</button> </div> </div> )} </div> ); };
-    const SearchBar = ({ onSearch, onFilterChange, activeFilters, tags }) => ( <div className="mb-6 space-y-4"> <div className="relative"> <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3"><Icon name="search" className="text-gray-400" /></div> <input type="search" onChange={(e) => onSearch(e.target.value)} placeholder="Buscar por nombre o comentario..." className="block w-full rounded-lg border border-gray-300 dark:border-zinc-600 bg-gray-50 dark:bg-zinc-700 py-3 pl-10 pr-4 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500" /> </div> <div className="flex justify-center"> <FilterDropdown tags={tags} onFilterChange={onFilterChange} activeFilters={activeFilters} /> </div> </div> );
+    const SearchBar = ({ onSearch, onFilterChange, activeFilters, tags, viewMode, onViewModeChange }) => ( 
+        <div className="mb-6 space-y-4"> 
+            <div className="relative"> 
+                <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3"><Icon name="search" className="text-gray-400" /></div> 
+                <input type="search" onChange={(e) => onSearch(e.target.value)} placeholder="Buscar por nombre o comentario..." className="block w-full rounded-lg border border-gray-300 dark:border-zinc-600 bg-gray-50 dark:bg-zinc-700 py-3 pl-10 pr-4 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500" /> 
+            </div> 
+            <div className="flex justify-between items-center gap-4"> 
+                <FilterDropdown tags={tags} onFilterChange={onFilterChange} activeFilters={activeFilters} /> 
+                <div className="flex items-center space-x-1 p-1 bg-gray-200 dark:bg-zinc-800 rounded-lg">
+                    <button onClick={() => onViewModeChange('list')} className={`p-1.5 rounded-md transition-colors ${viewMode === 'list' ? 'bg-white dark:bg-zinc-600 text-blue-600 dark:text-blue-400 shadow-sm' : 'text-gray-500 hover:bg-gray-300/50 dark:hover:bg-zinc-700/50'}`} title="Vista de lista">
+                        <Icon name="view_list" />
+                    </button>
+                    <button onClick={() => onViewModeChange('grid')} className={`p-1.5 rounded-md transition-colors ${viewMode === 'grid' ? 'bg-white dark:bg-zinc-600 text-blue-600 dark:text-blue-400 shadow-sm' : 'text-gray-500 hover:bg-gray-300/50 dark:hover:bg-zinc-700/50'}`} title="Vista de tarjetas">
+                        <Icon name="grid_view" />
+                    </button>
+                </div>
+            </div> 
+        </div> 
+    );
     
     // --- Main Interface Core ---
     const MainInterface = ({ db, masterKey, onSignOut, onChangeKeychain, onSaveChanges, hasUnsavedChanges, setHasUnsavedChanges, user, saveStatus, onModalStateChange }) => {
@@ -172,6 +267,7 @@
       const [editingCredential, setEditingCredential] = useState(null);
       const [searchTerm, setSearchTerm] = useState('');
       const [filterTags, setFilterTags] = useState([]);
+      const [viewMode, setViewMode] = useState('list');
       const addToast = useNotifier();
 
       useEffect(() => {
@@ -227,7 +323,25 @@
                 <button onClick={onSignOut} className="p-2 rounded-full hover:bg-gray-200 dark:hover:bg-zinc-700 text-gray-600 dark:text-gray-300" title="Salir y cerrar sesión"><Icon name="exit_to_app" /></button>
             </div>
           </div>
-          <main className="flex-grow p-4 sm:p-6 pb-24 overflow-y-auto"><SearchBar onSearch={setSearchTerm} onFilterChange={setFilterTags} activeFilters={filterTags} tags={tags} />{isLoading ? <p>Cargando...</p> : <CredentialList credentials={filteredCredentials} onEdit={handleEdit} onDelete={handleDelete} masterKey={masterKey} />}</main>
+          <main className="flex-grow p-4 sm:p-6 pb-24 overflow-y-auto">
+            <SearchBar 
+                onSearch={setSearchTerm} 
+                onFilterChange={setFilterTags} 
+                activeFilters={filterTags} 
+                tags={tags} 
+                viewMode={viewMode}
+                onViewModeChange={setViewMode}
+            />
+            {isLoading ? <p>Cargando...</p> : 
+                <CredentialList 
+                    credentials={filteredCredentials} 
+                    onEdit={handleEdit} 
+                    onDelete={handleDelete} 
+                    masterKey={masterKey} 
+                    viewMode={viewMode}
+                />
+            }
+          </main>
           <div className="fixed bottom-16 right-4 sm:right-6 z-20"><button onClick={handleAddNew} className="bg-blue-600 hover:bg-blue-700 text-white rounded-full p-4 shadow-lg"><Icon name="add" className="text-2xl" /></button></div>
           <CredentialModal isOpen={isModalOpen} onClose={handleCloseCredentialModal} onSave={handleAddOrUpdate} credential={editingCredential} tags={tags} addToast={addToast} masterKey={masterKey} />
           <SettingsModal isOpen={isSettingsOpen} onClose={handleCloseSettings} keychainName={keychainName} onSaveKeychainName={handleSaveKeychainName} tags={tags} onAddTag={handleAddTag} onDeleteTag={handleDeleteTag} addToast={addToast}/>
