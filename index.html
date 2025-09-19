@@ -156,7 +156,7 @@
     const SearchBar = ({ onSearch, onFilterChange, activeFilters, tags }) => ( <div className="mb-6 space-y-4"> <div className="relative"> <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3"><Icon name="search" className="text-gray-400" /></div> <input type="search" onChange={(e) => onSearch(e.target.value)} placeholder="Buscar por nombre o comentario..." className="block w-full rounded-lg border border-gray-300 dark:border-zinc-600 bg-gray-50 dark:bg-zinc-700 py-3 pl-10 pr-4 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500" /> </div> <div className="flex justify-center"> <FilterDropdown tags={tags} onFilterChange={onFilterChange} activeFilters={activeFilters} /> </div> </div> );
     
     // --- Main Interface Core ---
-    const MainInterface = ({ db, masterKey, onSignOut, onSaveChanges, hasUnsavedChanges, setHasUnsavedChanges, user, saveStatus, onModalStateChange }) => {
+    const MainInterface = ({ db, masterKey, onSignOut, onChangeKeychain, onSaveChanges, hasUnsavedChanges, setHasUnsavedChanges, user, saveStatus, onModalStateChange }) => {
       const { useState, useEffect, useCallback, useMemo } = React;
       const [credentials, setCredentials] = useState([]);
       const [tags, setTags] = useState([]);
@@ -212,10 +212,13 @@
       return (
         <div className="max-w-4xl mx-auto min-h-screen bg-white dark:bg-zinc-800 shadow-lg md:rounded-2xl flex flex-col">
           <div className="sticky top-16 z-20 flex flex-col md:flex-row md:items-center justify-between gap-4 p-4 border-b border-gray-200 dark:border-zinc-700 bg-gray-50/80 dark:bg-zinc-800/80 backdrop-blur-sm">
-            <div className="font-semibold text-gray-700 dark:text-gray-200 truncate text-center md:text-left">{keychainName}</div>
+            <div className="font-semibold text-gray-700 dark:text-gray-200 truncate text-center md:text-left">
+                <span className="font-normal text-gray-500 dark:text-gray-400">Llavero: </span>{keychainName}
+            </div>
             <div className="flex items-center justify-center md:justify-end flex-wrap gap-2">
                 <SaveButton/>
                 <button onClick={() => setIsSettingsOpen(true)} className="p-2 rounded-full hover:bg-gray-200 dark:hover:bg-zinc-700 text-gray-600 dark:text-gray-300" title="Configuración"><Icon name="settings" /></button>
+                <button onClick={onChangeKeychain} className="p-2 rounded-full hover:bg-gray-200 dark:hover:bg-zinc-700 text-gray-600 dark:text-gray-300" title="Cambiar llavero"><Icon name="refresh" /></button>
                 <button onClick={onSignOut} className="p-2 rounded-full hover:bg-gray-200 dark:hover:bg-zinc-700 text-gray-600 dark:text-gray-300" title="Salir y cerrar sesión"><Icon name="exit_to_app" /></button>
             </div>
           </div>
@@ -349,13 +352,20 @@
       }, [db, dbFilename, user, keychains, addToast]);
       
       const goBackToSelector = () => { setDb(null); setDbFilename(''); setMasterKey(null); setAppStatus('select_keychain'); };
+      
+      const handleChangeKeychain = useCallback(() => {
+        if (hasUnsavedChangesRef.current && !window.confirm("Tiene cambios sin guardar que se perderán. ¿Desea continuar?")) {
+            return;
+        }
+        goBackToSelector();
+      }, []);
 
       const ActiveComponent = () => {
           if (appStatus === 'initializing') return <LoadingScreen message="Inicializando..." />;
           if (appStatus === 'auth') return <AuthScreen onLogin={handleLogin} onSignUp={handleSignUp} error={authError} loading={loading} configError={configError} />;
           if (appStatus === 'select_keychain') return (<> <KeychainSelector onSelectKeychain={handleSelectKeychain} onCreate={() => setCreateModalOpen(true)} onSignOut={handleSignOut} keychains={keychains} user={user} /> <CreateKeychainModal isOpen={isCreateModalOpen} onClose={() => setCreateModalOpen(false)} onCreate={handleCreateNewKeychain} addToast={addToast} /> </>);
           if (appStatus === 'unlock_keychain') return <UnlockScreen onUnlock={handleUnlockKeychain} keychainName={dbFilename} isCreating={!keychains.some(k => k.name === dbFilename)} onBack={goBackToSelector} addToast={addToast} />;
-          if (appStatus === 'unlocked' && db && masterKey) return <MainInterface db={db} masterKey={masterKey} onSignOut={handleSignOut} onSaveChanges={handleSaveChanges} hasUnsavedChanges={hasUnsavedChanges} setHasUnsavedChanges={setHasUnsavedChanges} user={user} saveStatus={saveStatus} onModalStateChange={onModalStateChange} />;
+          if (appStatus === 'unlocked' && db && masterKey) return <MainInterface db={db} masterKey={masterKey} onSignOut={handleSignOut} onChangeKeychain={handleChangeKeychain} onSaveChanges={handleSaveChanges} hasUnsavedChanges={hasUnsavedChanges} setHasUnsavedChanges={setHasUnsavedChanges} user={user} saveStatus={saveStatus} onModalStateChange={onModalStateChange} />;
           return <LoadingScreen message="Cargando..." />;
       }
       
