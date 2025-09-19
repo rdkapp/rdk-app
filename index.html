@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>RDK APP v2.2.0 - Supabase Edition</title>
+  <title>RDK APP v2.2.1</title>
   
   <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -44,7 +44,7 @@
 
   <script type="text/babel">
     // --- APP CONFIGURATION ---
-    const APP_VERSION = "2.2.0";
+    const APP_VERSION = "2.2.1";
     const SESSION_TIMEOUT_MS = 1 * 60 * 1000; // 1 minuto
 
     // --- SUPABASE CONFIGURATION ---
@@ -64,7 +64,7 @@
     const SALT_LENGTH = 16;
     const IV_LENGTH = 12;
     const PBKDF2_ITERATIONS = 100000;
-    const AUTOSAVE_DELAY = 2500; // 2.5 seconds
+    const AUTOSAVE_DELAY = 30000; // 30 seconds
 
     // --- CRYPTO SERVICE ---
     const bufferToBase64 = (buffer) => { let binary = ''; const bytes = new Uint8Array(buffer); const len = bytes.byteLength; for (let i = 0; i < len; i++) { binary += String.fromCharCode(bytes[i]); } return window.btoa(binary); };
