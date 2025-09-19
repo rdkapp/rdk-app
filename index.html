@@ -113,7 +113,7 @@
     const GlobalFooter = () => (<footer className="fixed bottom-0 left-0 right-0 bg-gray-100 dark:bg-zinc-800 border-t border-gray-200 dark:border-zinc-700 p-2 text-center text-sm text-gray-500 dark:text-gray-400 z-30 h-10 flex items-center justify-center">Solution by Ale Fernández 2025 - PY - v{APP_VERSION}</footer>);
 
     // --- Other UI Components ---
-    const SettingsModal = ({ isOpen, onClose, keychainName, onSaveKeychainName, tags, onAddTag, onDeleteTag, addToast }) => { const { useState, useEffect } = React; const [name, setName] = useState(keychainName); const [newTagName, setNewTagName] = useState(''); useEffect(() => { setName(keychainName); }, [isOpen, keychainName]); if (!isOpen) return null; const handleSaveName = () => { if (name.trim()) { onSaveKeychainName(name.trim()); } }; const handleAddTag = (e) => { e.preventDefault(); if (newTagName.trim() && !tags.some(t => t.name.toLowerCase() === newTagName.trim().toLowerCase())) { onAddTag(newTagName.trim()); setNewTagName(''); } else { addToast("La etiqueta no puede estar vacía o ya existe.", "error"); } }; return (<div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50" onClick={onClose}><div className="bg-white dark:bg-zinc-800 rounded-lg shadow-xl w-full max-w-lg m-4" onClick={(e) => e.stopPropagation()}><div className="p-6"><h2 className="text-xl font-bold text-gray-900 dark:text-white">Configuración</h2><div className="mt-6 space-y-6"><div><label htmlFor="keychainName" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Nombre del Llavero</label><div className="flex mt-1"><input type="text" name="keychainName" id="keychainName" value={name} onChange={(e) => setName(e.target.value)} className="flex-grow block w-full rounded-l-md border-gray-300 dark:border-zinc-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 bg-gray-50 dark:bg-zinc-700 text-gray-900 dark:text-white" /><button onClick={handleSaveName} className="px-4 py-2 border border-blue-600 bg-blue-600 text-white rounded-r-md hover:bg-blue-700 text-sm font-medium">Guardar Nombre</button></div></div><div><h3 className="text-lg font-medium text-gray-900 dark:text-white">Gestionar Etiquetas</h3><form onSubmit={handleAddTag} className="flex mt-2"><input type="text" value={newTagName} onChange={(e) => setNewTagName(e.target.value)} placeholder="Nueva etiqueta" className="flex-grow block w-full rounded-l-md border-gray-300 dark:border-zinc-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 bg-gray-50 dark:bg-zinc-700 text-gray-900 dark:text-white" /><button type="submit" className="px-4 py-2 border border-blue-600 bg-blue-600 text-white rounded-r-md hover:bg-blue-700 text-sm font-medium">Agregar</button></form><div className="mt-3 max-h-40 overflow-y-auto space-y-2 pr-2">{tags.map(tag => (<div key={tag.id} className="flex justify-between items-center bg-gray-100 dark:bg-zinc-700 p-2 rounded-md"><span className="text-sm text-gray-800 dark:text-gray-200">{tag.name}</span><button onClick={() => onDeleteTag(tag.id)} className="text-red-500 hover:text-red-700 dark:hover:text-red-400"><Icon name="delete" className="text-base" /></button></div>))}</div></div></div></div><div className="bg-gray-50 dark:bg-zinc-900/50 px-6 py-4 flex justify-end"><button type="button" onClick={onClose} className="py-2 px-4 border border-gray-300 dark:border-zinc-600 rounded-md shadow-sm text-sm font-medium text-gray-700 dark:text-gray-200 bg-white dark:bg-zinc-700 hover:bg-gray-50 dark:hover:bg-zinc-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">Cerrar</button></div></div></div>); };
+    const SettingsModal = ({ isOpen, onClose, keychainName, onSaveKeychainName, tags, onAddTag, onDeleteTag, addToast }) => { const { useState, useEffect } = React; const [name, setName] = useState(keychainName); const [newTagName, setNewTagName] = useState(''); useEffect(() => { setName(keychainName); }, [isOpen, keychainName]); if (!isOpen) return null; const handleSaveName = () => { if (name.trim()) { onSaveKeychainName(name.trim()); addToast("Nombre guardado.", "success"); } }; const handleAddTag = (e) => { e.preventDefault(); if (newTagName.trim() && !tags.some(t => t.name.toLowerCase() === newTagName.trim().toLowerCase())) { onAddTag(newTagName.trim()); setNewTagName(''); addToast("Etiqueta agregada.", "success"); } else { addToast("La etiqueta no puede estar vacía o ya existe.", "error"); } }; return (<div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50" onClick={onClose}><div className="bg-white dark:bg-zinc-800 rounded-lg shadow-xl w-full max-w-lg m-4" onClick={(e) => e.stopPropagation()}><div className="p-6"><h2 className="text-xl font-bold text-gray-900 dark:text-white">Configuración</h2><div className="mt-6 space-y-6"><div><label htmlFor="keychainName" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Nombre del Llavero</label><div className="flex mt-1"><input type="text" name="keychainName" id="keychainName" value={name} onChange={(e) => setName(e.target.value)} className="flex-grow block w-full rounded-l-md border-gray-300 dark:border-zinc-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 bg-gray-50 dark:bg-zinc-700 text-gray-900 dark:text-white" /><button type="button" onClick={handleSaveName} className="px-4 py-2 border border-blue-600 bg-blue-600 text-white rounded-r-md hover:bg-blue-700 text-sm font-medium">Guardar Nombre</button></div></div><div><h3 className="text-lg font-medium text-gray-900 dark:text-white">Gestionar Etiquetas</h3><form onSubmit={handleAddTag} className="flex mt-2"><input type="text" value={newTagName} onChange={(e) => setNewTagName(e.target.value)} placeholder="Nueva etiqueta" className="flex-grow block w-full rounded-l-md border-gray-300 dark:border-zinc-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 bg-gray-50 dark:bg-zinc-700 text-gray-900 dark:text-white" /><button type="submit" className="px-4 py-2 border border-blue-600 bg-blue-600 text-white rounded-r-md hover:bg-blue-700 text-sm font-medium">Agregar</button></form><div className="mt-3 max-h-40 overflow-y-auto space-y-2 pr-2">{tags.map(tag => (<div key={tag.id} className="flex justify-between items-center bg-gray-100 dark:bg-zinc-700 p-2 rounded-md"><span className="text-sm text-gray-800 dark:text-gray-200">{tag.name}</span><button onClick={() => onDeleteTag(tag.id)} className="text-red-500 hover:text-red-700 dark:hover:text-red-400"><Icon name="delete" className="text-base" /></button></div>))}</div></div></div></div><div className="bg-gray-50 dark:bg-zinc-900/50 px-6 py-4 flex justify-end"><button type="button" onClick={onClose} className="py-2 px-4 border border-gray-300 dark:border-zinc-600 rounded-md shadow-sm text-sm font-medium text-gray-700 dark:text-gray-200 bg-white dark:bg-zinc-700 hover:bg-gray-50 dark:hover:bg-zinc-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">Cerrar</button></div></div></div>); };
     const CredentialModal = ({ isOpen, onClose, onSave, credential, tags, addToast, masterKey }) => {
         const { useState, useEffect } = React;
         const [formData, setFormData] = useState({ name: '', username: '', password: '', comment: '', tag: '' });
@@ -156,7 +156,7 @@
     const SearchBar = ({ onSearch, onFilterChange, activeFilters, tags }) => ( <div className="mb-6 space-y-4"> <div className="relative"> <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3"><Icon name="search" className="text-gray-400" /></div> <input type="search" onChange={(e) => onSearch(e.target.value)} placeholder="Buscar por nombre o comentario..." className="block w-full rounded-lg border border-gray-300 dark:border-zinc-600 bg-gray-50 dark:bg-zinc-700 py-3 pl-10 pr-4 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500" /> </div> <div className="flex justify-center"> <FilterDropdown tags={tags} onFilterChange={onFilterChange} activeFilters={activeFilters} /> </div> </div> );
     
     // --- Main Interface Core ---
-    const MainInterface = ({ db, masterKey, onSignOut, onSaveChanges, hasUnsavedChanges, setHasUnsavedChanges, user, saveStatus }) => {
+    const MainInterface = ({ db, masterKey, onSignOut, onSaveChanges, hasUnsavedChanges, setHasUnsavedChanges, user, saveStatus, onModalStateChange }) => {
       const { useState, useEffect, useCallback, useMemo } = React;
       const [credentials, setCredentials] = useState([]);
       const [tags, setTags] = useState([]);
@@ -168,6 +168,11 @@
       const [searchTerm, setSearchTerm] = useState('');
       const [filterTags, setFilterTags] = useState([]);
       const addToast = useNotifier();
+
+      useEffect(() => {
+        const isAnyModalOpen = isModalOpen || isSettingsOpen;
+        onModalStateChange(isAnyModalOpen);
+      }, [isModalOpen, isSettingsOpen, onModalStateChange]);
 
       const refreshData = useCallback(() => {
         setIsLoading(true);
@@ -189,6 +194,9 @@
       const handleAddTag = (tagName) => { try { addTag(db, tagName); setHasUnsavedChanges(true); setTags(getTags(db)); } catch(e) { addToast("Error: " + e.message, "error"); } };
       const handleDeleteTag = (tagId) => { try { deleteTag(db, tagId); setHasUnsavedChanges(true); refreshData(); } catch(e) { addToast("Error: " + e.message, "error"); } };
       
+      const handleCloseSettings = () => { setIsSettingsOpen(false); if (hasUnsavedChanges) { onSaveChanges(); } };
+      const handleCloseCredentialModal = () => { setIsModalOpen(false); setEditingCredential(null); if (hasUnsavedChanges) { onSaveChanges(); } };
+
       const filteredCredentials = useMemo(() => credentials.filter(c => (filterTags.length === 0 || filterTags.includes(c.tag)) && (searchTerm.length === 0 || c.name.toLowerCase().includes(searchTerm.toLowerCase()) || (c.comment && c.comment.toLowerCase().includes(searchTerm.toLowerCase())))).sort((a, b) => a.name.localeCompare(b.name)), [credentials, searchTerm, filterTags]);
       
       const SaveButton = () => {
@@ -213,8 +221,8 @@
           </div>
           <main className="flex-grow p-4 sm:p-6 pb-24 overflow-y-auto"><SearchBar onSearch={setSearchTerm} onFilterChange={setFilterTags} activeFilters={filterTags} tags={tags} />{isLoading ? <p>Cargando...</p> : <CredentialList credentials={filteredCredentials} onEdit={handleEdit} onDelete={handleDelete} masterKey={masterKey} />}</main>
           <div className="fixed bottom-16 right-4 sm:right-6 z-20"><button onClick={handleAddNew} className="bg-blue-600 hover:bg-blue-700 text-white rounded-full p-4 shadow-lg"><Icon name="add" className="text-2xl" /></button></div>
-          <CredentialModal isOpen={isModalOpen} onClose={() => { setIsModalOpen(false); setEditingCredential(null); }} onSave={handleAddOrUpdate} credential={editingCredential} tags={tags} addToast={addToast} masterKey={masterKey} />
-          <SettingsModal isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} keychainName={keychainName} onSaveKeychainName={handleSaveKeychainName} tags={tags} onAddTag={handleAddTag} onDeleteTag={handleDeleteTag} addToast={addToast}/>
+          <CredentialModal isOpen={isModalOpen} onClose={handleCloseCredentialModal} onSave={handleAddOrUpdate} credential={editingCredential} tags={tags} addToast={addToast} masterKey={masterKey} />
+          <SettingsModal isOpen={isSettingsOpen} onClose={handleCloseSettings} keychainName={keychainName} onSaveKeychainName={handleSaveKeychainName} tags={tags} onAddTag={handleAddTag} onDeleteTag={handleDeleteTag} addToast={addToast}/>
         </div>
       );
     };
@@ -233,7 +241,6 @@
       const [configError, setConfigError] = useState(null);
       const [authError, setAuthError] = useState('');
       const [loading, setLoading] = useState(false);
-      const [isCreateModalOpen, setCreateModalOpen] = useState(false);
       // User & Keychain state
       const [user, setUser] = useState(null);
       const [keychains, setKeychains] = useState([]);
@@ -247,6 +254,11 @@
       const hasUnsavedChangesRef = useRef(hasUnsavedChanges);
       useEffect(() => { hasUnsavedChangesRef.current = hasUnsavedChanges; }, [hasUnsavedChanges]);
       
+      const isModalOpenRef = useRef(false);
+      const onModalStateChange = useCallback((isOpen) => {
+          isModalOpenRef.current = isOpen;
+      }, []);
+
       const fetchKeychains = useCallback(async (userId) => {
         if (!userId) return;
         const { data, error } = await supabase.storage.from(BUCKET_NAME).list(userId, { limit: 100 });
@@ -302,11 +314,13 @@
       const resetInactivityTimer = useCallback(() => { clearTimeout(inactivityTimer.current); inactivityTimer.current = setTimeout(() => { handleSignOut({ reason: 'inactivity' }); }, SESSION_TIMEOUT_MS); }, [handleSignOut]);
       useEffect(() => { const events = ['mousemove', 'mousedown', 'keypress', 'scroll', 'touchstart']; if (appStatus === 'unlocked') { events.forEach(event => window.addEventListener(event, resetInactivityTimer)); resetInactivityTimer(); } return () => { events.forEach(event => window.removeEventListener(event, resetInactivityTimer)); clearTimeout(inactivityTimer.current); }; }, [appStatus, resetInactivityTimer]);
 
-      useEffect(() => { if (hasUnsavedChanges) setSaveStatus('idle'); const debounceTimer = setTimeout(() => { if (hasUnsavedChanges) handleSaveChanges(); }, AUTOSAVE_DELAY); return () => clearTimeout(debounceTimer); }, [hasUnsavedChanges, handleSaveChanges]);
-      useEffect(() => { const handleVisibilityChange = () => { if (document.visibilityState === 'hidden' && hasUnsavedChangesRef.current) handleSaveChanges(); }; document.addEventListener('visibilitychange', handleVisibilityChange); return () => document.removeEventListener('visibilitychange', handleVisibilityChange); }, [handleSaveChanges]);
+      useEffect(() => { if (hasUnsavedChanges) setSaveStatus('idle'); const debounceTimer = setTimeout(() => { if (hasUnsavedChanges && !isModalOpenRef.current) handleSaveChanges(); }, AUTOSAVE_DELAY); return () => clearTimeout(debounceTimer); }, [hasUnsavedChanges, handleSaveChanges]);
+      useEffect(() => { const handleVisibilityChange = () => { if (document.visibilityState === 'hidden' && hasUnsavedChangesRef.current && !isModalOpenRef.current) handleSaveChanges(); }; document.addEventListener('visibilitychange', handleVisibilityChange); return () => document.removeEventListener('visibilitychange', handleVisibilityChange); }, [handleSaveChanges]);
 
       const handleSignUp = async (email, password) => { setLoading(true); setAuthError(''); const { error } = await supabase.auth.signUp({ email, password }); if (error) setAuthError(error.message); else addToast("¡Registro exitoso! Por favor, inicie sesión.", 'success'); setLoading(false); };
       const handleLogin = async (email, password) => { setLoading(true); setAuthError(''); const { data, error } = await supabase.auth.signInWithPassword({ email, password }); if (error) { setAuthError(error.message); } else if (data.user) { setUser(data.user); await fetchKeychains(data.user.id); setAppStatus('select_keychain'); } setLoading(false); };
+      
+      const [isCreateModalOpen, setCreateModalOpen] = useState(false);
       const handleCreateNewKeychain = async (name) => { setCreateModalOpen(false); const filename = name.endsWith('.db') ? name : `${name}.db`; if (keychains.some(kc => kc.name === filename)) { addToast("Ya existe un llavero con este nombre.", "error"); return; } const { database } = await initDb(null); setKeychainName(database, name); setDb(database); setDbFilename(filename); setAppStatus('unlock_keychain'); };
       const handleSelectKeychain = (filename) => { setDbFilename(filename); setAppStatus('unlock_keychain'); };
       const handleUnlockKeychain = useCallback(async (password) => {
@@ -341,7 +355,7 @@
           if (appStatus === 'auth') return <AuthScreen onLogin={handleLogin} onSignUp={handleSignUp} error={authError} loading={loading} configError={configError} />;
           if (appStatus === 'select_keychain') return (<> <KeychainSelector onSelectKeychain={handleSelectKeychain} onCreate={() => setCreateModalOpen(true)} onSignOut={handleSignOut} keychains={keychains} user={user} /> <CreateKeychainModal isOpen={isCreateModalOpen} onClose={() => setCreateModalOpen(false)} onCreate={handleCreateNewKeychain} addToast={addToast} /> </>);
           if (appStatus === 'unlock_keychain') return <UnlockScreen onUnlock={handleUnlockKeychain} keychainName={dbFilename} isCreating={!keychains.some(k => k.name === dbFilename)} onBack={goBackToSelector} addToast={addToast} />;
-          if (appStatus === 'unlocked' && db && masterKey) return <MainInterface db={db} masterKey={masterKey} onSignOut={handleSignOut} onSaveChanges={handleSaveChanges} hasUnsavedChanges={hasUnsavedChanges} setHasUnsavedChanges={setHasUnsavedChanges} user={user} saveStatus={saveStatus} />;
+          if (appStatus === 'unlocked' && db && masterKey) return <MainInterface db={db} masterKey={masterKey} onSignOut={handleSignOut} onSaveChanges={handleSaveChanges} hasUnsavedChanges={hasUnsavedChanges} setHasUnsavedChanges={setHasUnsavedChanges} user={user} saveStatus={saveStatus} onModalStateChange={onModalStateChange} />;
           return <LoadingScreen message="Cargando..." />;
       }
       
