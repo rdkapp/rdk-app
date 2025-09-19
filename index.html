@@ -4,7 +4,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Randall Duk Kim APP v2.1.0 - Supabase Edition</title>
+  <title>Randall Duk Kim APP v2.2.0 - Supabase Edition</title>
   
   <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -45,7 +45,7 @@
 
   <script type="text/babel">
     // --- APP CONFIGURATION ---
-    const APP_VERSION = "2.1.0";
+    const APP_VERSION = "2.2.0";
 
     // --- SUPABASE CONFIGURATION ---
     const SUPABASE_URL = "https://rckbiacihztdsoitbnhn.supabase.co";
@@ -55,8 +55,6 @@
     // --- SUPABASE CLIENT INITIALIZATION ---
     let supabase;
     try {
-        // `window.supabase` refers to the global object from the CDN script.
-        // The local `supabase` variable will hold the client instance.
         supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
     } catch(e) {
         // This will be caught later and an error will be displayed
@@ -66,6 +64,7 @@
     const SALT_LENGTH = 16;
     const IV_LENGTH = 12;
     const PBKDF2_ITERATIONS = 100000;
+    const AUTOSAVE_DELAY = 2500; // 2.5 seconds
 
     // --- CRYPTO SERVICE (Sin cambios) ---
     const bufferToBase64 = (buffer) => { let binary = ''; const bytes = new Uint8Array(buffer); const len = bytes.byteLength; for (let i = 0; i < len; i++) { binary += String.fromCharCode(bytes[i]); } return window.btoa(binary); };
@@ -94,7 +93,7 @@
     
     // --- UI COMPONENTS ---
     const Icon = ({ name, className }) => <span className={`material-symbols-sharp ${className || ''}`}>{name}</span>;
-    const Spinner = () => <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>;
+    const Spinner = ({ className }) => <div className={`animate-spin rounded-full h-5 w-5 border-b-2 ${className || 'border-white'}`}></div>;
     
     // --- NUEVO SISTEMA DE NOTIFICACIONES ---
     const NotificationContext = React.createContext();
@@ -117,7 +116,7 @@
         React.useEffect(() => {
             const timer = setTimeout(() => {
                 setIsExiting(true);
-                setTimeout(onClose, 300); // Wait for animation to finish
+                setTimeout(onClose, 300);
             }, 4000);
             return () => clearTimeout(timer);
         }, [onClose]);
@@ -155,13 +154,13 @@
         );
     };
     
-    // Componentes de UI actualizados/sin cambios
+    // Componentes de UI (Sin cambios funcionales mayores, solo ajustes menores)
     const SettingsModal = ({ isOpen, onClose, keychainName, onSaveKeychainName, tags, onAddTag, onDeleteTag, addToast }) => { const { useState, useEffect } = React; const [name, setName] = useState(keychainName); const [newTagName, setNewTagName] = useState(''); useEffect(() => { setName(keychainName); }, [isOpen, keychainName]); if (!isOpen) return null; const handleSaveName = () => { if (name.trim()) { onSaveKeychainName(name.trim()); } }; const handleAddTag = (e) => { e.preventDefault(); if (newTagName.trim() && !tags.some(t => t.name.toLowerCase() === newTagName.trim().toLowerCase())) { onAddTag(newTagName.trim()); setNewTagName(''); } else { addToast("La etiqueta no puede estar vacía o ya existe.", "error"); } }; return (<div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50" onClick={onClose}><div className="bg-white dark:bg-zinc-800 rounded-lg shadow-xl w-full max-w-lg m-4" onClick={(e) => e.stopPropagation()}><div className="p-6"><h2 className="text-xl font-bold text-gray-900 dark:text-white">Configuración</h2><div className="mt-6 space-y-6"><div><label htmlFor="keychainName" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Nombre del Llavero</label><div className="flex mt-1"><input type="text" name="keychainName" id="keychainName" value={name} onChange={(e) => setName(e.target.value)} className="flex-grow block w-full rounded-l-md border-gray-300 dark:border-zinc-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 bg-gray-50 dark:bg-zinc-700 text-gray-900 dark:text-white" /><button onClick={handleSaveName} className="px-4 py-2 border border-blue-600 bg-blue-600 text-white rounded-r-md hover:bg-blue-700 text-sm font-medium">Guardar Nombre</button></div></div><div><h3 className="text-lg font-medium text-gray-900 dark:text-white">Gestionar Etiquetas</h3><form onSubmit={handleAddTag} className="flex mt-2"><input type="text" value={newTagName} onChange={(e) => setNewTagName(e.target.value)} placeholder="Nueva etiqueta" className="flex-grow block w-full rounded-l-md border-gray-300 dark:border-zinc-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 bg-gray-50 dark:bg-zinc-700 text-gray-900 dark:text-white" /><button type="submit" className="px-4 py-2 border border-blue-600 bg-blue-600 text-white rounded-r-md hover:bg-blue-700 text-sm font-medium">Agregar</button></form><div className="mt-3 max-h-40 overflow-y-auto space-y-2 pr-2">{tags.map(tag => (<div key={tag.id} className="flex justify-between items-center bg-gray-100 dark:bg-zinc-700 p-2 rounded-md"><span className="text-sm text-gray-800 dark:text-gray-200">{tag.name}</span><button onClick={() => onDeleteTag(tag.id)} className="text-red-500 hover:text-red-700 dark:hover:text-red-400"><Icon name="delete" className="text-base" /></button></div>))}</div></div></div></div><div className="bg-gray-50 dark:bg-zinc-900/50 px-6 py-4 flex justify-end"><button type="button" onClick={onClose} className="py-2 px-4 border border-gray-300 dark:border-zinc-600 rounded-md shadow-sm text-sm font-medium text-gray-700 dark:text-gray-200 bg-white dark:bg-zinc-700 hover:bg-gray-50 dark:hover:bg-zinc-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">Cerrar</button></div></div></div>); };
     const CredentialModal = ({ isOpen, onClose, onSave, credential, tags, addToast }) => { const { useState, useEffect } = React; const [formData, setFormData] = useState({ name: '', username: '', password: '', comment: '', tag: tags.length > 0 ? tags[0].name : '', }); useEffect(() => { if (credential) { setFormData({ ...credential, tag: credential.tag || (tags.length > 0 ? tags[0].name : '') }); } else { setFormData({ name: '', username: '', password: '', comment: '', tag: tags.length > 0 ? tags[0].name : '' }); } }, [credential, tags, isOpen]); const handleChange = (e) => { const { name, value } = e.target; setFormData(prev => ({ ...prev, [name]: value })); }; const handleSubmit = (e) => { e.preventDefault(); if (!formData.name || !formData.username || !formData.password) { addToast("Nombre, Usuario y Contraseña son requeridos.", "error"); return; } if (tags.length > 0 && !formData.tag) { addToast("Debe seleccionar una etiqueta.", "error"); return; } onSave(formData); }; if (!isOpen) return null; return (<div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50" onClick={onClose}><div className="bg-white dark:bg-zinc-800 rounded-lg shadow-xl w-full max-w-lg m-4" onClick={(e) => e.stopPropagation()}><form onSubmit={handleSubmit}><div className="p-6"><h2 className="text-xl font-bold text-gray-900 dark:text-white">{credential ? 'Editar Credencial' : 'Agregar Nueva Credencial'}</h2><div className="mt-6 space-y-4"><div><label htmlFor="name" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Nombre</label><input type="text" name="name" id="name" value={formData.name} onChange={handleChange} required className="mt-1 block w-full rounded-md border-gray-300 dark:border-zinc-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 bg-gray-50 dark:bg-zinc-700 text-gray-900 dark:text-white" /></div><div><label htmlFor="username" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Usuario / Email</label><input type="text" name="username" id="username" value={formData.username} onChange={handleChange} required className="mt-1 block w-full rounded-md border-gray-300 dark:border-zinc-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 bg-gray-50 dark:bg-zinc-700 text-gray-900 dark:text-white" /></div><div><label htmlFor="password" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Contraseña</label><input type="password" name="password" id="password" value={formData.password} onChange={handleChange} required className="mt-1 block w-full rounded-md border-gray-300 dark:border-zinc-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 bg-gray-50 dark:bg-zinc-700 text-gray-900 dark:text-white" /></div><div><label htmlFor="comment" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Comentario</label><textarea name="comment" id="comment" value={formData.comment} onChange={handleChange} rows={3} className="mt-1 block w-full rounded-md border-gray-300 dark:border-zinc-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 bg-gray-50 dark:bg-zinc-700 text-gray-900 dark:text-white"></textarea></div><div><label htmlFor="tag" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Etiqueta</label><select name="tag" id="tag" value={formData.tag} onChange={handleChange} className="mt-1 block w-full rounded-md border-gray-300 dark:border-zinc-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 bg-gray-50 dark:bg-zinc-700 text-gray-900 dark:text-white" disabled={tags.length === 0}>{tags.length === 0 ? <option>Cree una etiqueta primero</option> : tags.map(tag => <option key={tag.id} value={tag.name}>{tag.name}</option>)}</select></div></div></div><div className="bg-gray-50 dark:bg-zinc-900/50 px-6 py-4 flex justify-end space-x-3"><button type="button" onClick={onClose} className="py-2 px-4 border border-gray-300 dark:border-zinc-600 rounded-md shadow-sm text-sm font-medium text-gray-700 dark:text-gray-200 bg-white dark:bg-zinc-700 hover:bg-gray-50 dark:hover:bg-zinc-600">Cancelar</button><button type="submit" className="py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700">Guardar</button></div></form></div></div>); };
     const CredentialItem = ({ credential, onEdit, onDelete }) => { const { useState } = React; const [isExpanded, setIsExpanded] = useState(false); const [isPasswordVisible, setIsPasswordVisible] = useState(false); const [isUsernameVisible, setIsUsernameVisible] = useState(false); const addToast = useNotifier(); const handleCopy = (text, field) => { navigator.clipboard.writeText(text); addToast(`${field} copiado al portapapeles.`, 'success'); }; const getTagColor = (tagName) => { if(!tagName) tagName = 'Sin Etiqueta'; let hash = 0; for (let i = 0; i < tagName.length; i++) { hash = tagName.charCodeAt(i) + ((hash << 5) - hash); } const color = (hash & 0x00FFFFFF).toString(16).toUpperCase(); const hexColor = "00000".substring(0, 6 - color.length) + color; const r = parseInt(hexColor.substring(0,2), 16); const g = parseInt(hexColor.substring(2,4), 16); const b = parseInt(hexColor.substring(4,6), 16); const brightness = (r * 299 + g * 587 + b * 114) / 1000; const textColor = brightness > 125 ? 'text-black' : 'text-white'; return { backgroundColor: `#${hexColor}`, colorClass: textColor }; }; const tagStyle = getTagColor(credential.tag); return (<div className="bg-gray-50 dark:bg-zinc-700/50 rounded-lg shadow-sm transition-shadow hover:shadow-md"><button onClick={() => setIsExpanded(!isExpanded)} className="w-full flex items-center justify-between p-4 text-left"><div className="flex items-center min-w-0 mr-4"><div className={`flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center mr-4 text-lg font-bold text-white bg-gradient-to-br from-blue-500 to-indigo-600`}>{credential.name.charAt(0).toUpperCase()}</div><div className="truncate"><p className="font-semibold text-gray-900 dark:text-white truncate">{credential.name}</p></div></div><div className='flex items-center flex-shrink-0'><span className={`text-xs font-medium mr-2 sm:mr-4 px-2.5 py-0.5 rounded-full truncate ${tagStyle.colorClass}`} style={{ backgroundColor: tagStyle.backgroundColor }}>{credential.tag}</span><Icon name="expand_more" className={`text-gray-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`} /></div></button>{isExpanded && (<div className="px-4 pb-4 border-t border-gray-200 dark:border-zinc-600"><div className="mt-4 space-y-4"><div><label className="text-xs font-medium text-gray-500 dark:text-gray-400">Usuario / Email</label><div className="flex items-center mt-1"><input type={isUsernameVisible ? 'text' : 'password'} readOnly value={credential.username} className="w-full bg-transparent text-gray-900 dark:text-white focus:outline-none" /><button onClick={() => setIsUsernameVisible(!isUsernameVisible)} className="p-1 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"><Icon name={isUsernameVisible ? 'visibility_off' : 'visibility'} className="text-xl"/></button><button onClick={() => handleCopy(credential.username || '', 'Usuario')} className="p-1 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"><Icon name="content_copy" className="text-xl"/></button></div></div><div><label className="text-xs font-medium text-gray-500 dark:text-gray-400">Contraseña</label><div className="flex items-center mt-1"><input type={isPasswordVisible ? 'text' : 'password'} readOnly value={credential.password} className="w-full bg-transparent text-gray-900 dark:text-white focus:outline-none" /><button onClick={() => setIsPasswordVisible(!isPasswordVisible)} className="p-1 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"><Icon name={isPasswordVisible ? 'visibility_off' : 'visibility'} className="text-xl"/></button><button onClick={() => handleCopy(credential.password || '', 'Contraseña')} className="p-1 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"><Icon name="content_copy" className="text-xl"/></button></div></div>{credential.comment && (<div><label className="text-xs font-medium text-gray-500 dark:text-gray-400">Comentario</label><p className="mt-1 text-sm text-gray-800 dark:text-gray-200 whitespace-pre-wrap">{credential.comment}</p></div>)}</div><div className="mt-4 flex justify-end space-x-2"><button onClick={() => onEdit(credential)} className="flex items-center text-sm text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 p-2 rounded-md hover:bg-gray-100 dark:hover:bg-zinc-600"><Icon name="edit" className="text-base mr-1"/> Editar</button><button onClick={() => onDelete(credential.id)} className="flex items-center text-sm text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300 p-2 rounded-md hover:bg-gray-100 dark:hover:bg-zinc-600"><Icon name="delete" className="text-base mr-1"/> Borrar</button></div></div>)}</div>); };
     const CredentialList = ({ credentials, onEdit, onDelete }) => { if (credentials.length === 0) { return (<div className="text-center py-16"><Icon name="key_off" className="text-5xl text-gray-400 mx-auto" /><h3 className="mt-2 text-lg font-medium text-gray-900 dark:text-white">No se encontraron credenciales</h3><p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Comience agregando una nueva credencial.</p><p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Haga clic en el botón <Icon name="add" className="inline-block text-base" /> para comenzar.</p></div>); } return (<div className="space-y-3">{credentials.map(cred => (<CredentialItem key={cred.id} credential={cred} onEdit={onEdit} onDelete={onDelete} />))}</div>); };
     
-    // --- NUEVO COMPONENTE DE FILTROS ---
+    // --- COMPONENTE DE FILTROS ---
     const FilterDropdown = ({ tags, onFilterChange, activeFilters }) => {
         const { useState, useRef, useEffect } = React;
         const [isOpen, setIsOpen] = useState(false);
@@ -225,9 +224,9 @@
         </div>
     );
     
-    // --- COMPONENTES DE FLUJO ---
+    // --- NÚCLEO DE LA INTERFAZ PRINCIPAL ---
     
-    const MainInterface = ({ db, masterKey, onSignOut, onSaveChanges, hasUnsavedChanges, setHasUnsavedChanges, user }) => {
+    const MainInterface = ({ db, masterKey, onSignOut, onSaveChanges, hasUnsavedChanges, setHasUnsavedChanges, user, saveStatus }) => {
       const { useState, useEffect, useCallback, useMemo } = React;
       const [credentials, setCredentials] = useState([]);
       const [tags, setTags] = useState([]);
@@ -237,7 +236,7 @@
       const [isSettingsOpen, setIsSettingsOpen] = useState(false);
       const [editingCredential, setEditingCredential] = useState(null);
       const [searchTerm, setSearchTerm] = useState('');
-      const [filterTags, setFilterTags] = useState([]); // Ahora es un array
+      const [filterTags, setFilterTags] = useState([]);
       const addToast = useNotifier();
 
       const refreshData = useCallback(async () => {
@@ -260,7 +259,7 @@
       }, [db, masterKey, onSignOut, addToast]);
 
       useEffect(() => { refreshData(); }, [refreshData]);
-
+      
       const handleAddOrUpdate = async (credential) => {
         const [encryptedPassword, encryptedUsername] = await Promise.all([encrypt(credential.password, masterKey), encrypt(credential.username, masterKey)]);
         const credToSave = { ...credential, encryptedPassword, encryptedUsername };
@@ -278,14 +277,34 @@
       const handleDeleteTag = (tagId) => { try { deleteTag(db, tagId); setHasUnsavedChanges(true); refreshData(); } catch(e) { addToast("Error: " + e.message, "error"); } };
       
       const filteredCredentials = useMemo(() => credentials.filter(c => (filterTags.length === 0 || filterTags.includes(c.tag)) && (searchTerm.length === 0 || c.name.toLowerCase().includes(searchTerm.toLowerCase()) || c.username.toLowerCase().includes(searchTerm.toLowerCase()) || (c.comment && c.comment.toLowerCase().includes(searchTerm.toLowerCase())))).sort((a, b) => a.name.localeCompare(b.name)), [credentials, searchTerm, filterTags]);
+      
+      const SaveButton = () => {
+        let content;
+        switch (saveStatus) {
+            case 'saving':
+                content = <><Spinner className="border-gray-400" /> Guardando...</>;
+                return <div className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold bg-gray-200 dark:bg-zinc-700 text-gray-800 dark:text-gray-200"> {content} </div>;
+            case 'saved':
+                content = <><Icon name="cloud_done" className="text-lg mr-1 text-green-500" /> Guardado</>;
+                return <div className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold bg-gray-200 dark:bg-zinc-700 text-gray-800 dark:text-gray-200"> {content} </div>;
+            case 'error':
+                 content = <><Icon name="error" className="text-lg mr-1 text-red-500" /> Error al guardar</>;
+                 return <button onClick={onSaveChanges} className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-200 hover:bg-red-200 dark:hover:bg-red-900">{content}</button>;
+            default: // idle
+                 if (hasUnsavedChanges) {
+                    return <button onClick={onSaveChanges} className="flex items-center px-3 py-2 rounded-lg text-sm font-semibold transition-all bg-blue-600 text-white hover:bg-blue-700 animate-pulse"><Icon name="save" className="text-lg mr-1" />Guardar Cambios</button>;
+                 }
+                 return <div className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold bg-gray-200 dark:bg-zinc-700 text-gray-800 dark:text-gray-200"><Icon name="cloud_done" className="text-lg mr-1 text-green-500" /> Guardado</div>;
+        }
+      };
 
       return (
         <div className="max-w-4xl mx-auto min-h-screen bg-white dark:bg-zinc-800 shadow-lg md:mt-8 md:rounded-2xl flex flex-col">
            <header className="sticky top-0 z-10 flex flex-col md:flex-row md:items-center justify-between gap-4 p-4 border-b border-gray-200 dark:border-zinc-700 bg-gray-50/80 dark:bg-zinc-800/80 backdrop-blur-sm">
-            <h1 className="text-xl font-bold text-gray-900 dark:text-white truncate text-center md:text-left">Randall Duk Kim APP v{APP_VERSION}</h1>
+            <h1 className="text-xl font-bold text-gray-900 dark:text-white truncate text-center md:text-left">RDK APP v{APP_VERSION}</h1>
             <div className="flex items-center justify-center md:justify-end flex-wrap gap-2">
                 <div className="text-right font-semibold text-gray-700 dark:text-gray-200">{keychainName}</div>
-                <button onClick={onSaveChanges} className={`flex items-center px-3 py-2 rounded-lg text-sm font-semibold transition-all ${hasUnsavedChanges ? 'bg-blue-600 text-white hover:bg-blue-700 animate-pulse' : 'bg-gray-200 dark:bg-zinc-700 text-gray-800 dark:text-gray-200'}`}><Icon name="save" className="text-lg mr-1" />Guardar Cambios</button>
+                <SaveButton/>
                 <button onClick={() => setIsSettingsOpen(true)} className="p-2 rounded-full hover:bg-gray-200 dark:hover:bg-zinc-700 text-gray-600 dark:text-gray-300" title="Configuración"><Icon name="settings" /></button>
                 <button onClick={onSignOut} className="p-2 rounded-full hover:bg-gray-200 dark:hover:bg-zinc-700 text-gray-600 dark:text-gray-300" title="Salir y cerrar sesión"><Icon name="exit_to_app" /></button>
             </div>
@@ -299,130 +318,17 @@
       );
     };
 
-    const LoadingScreen = ({ message }) => (<div className="flex flex-col items-center justify-center min-h-screen bg-gray-100 dark:bg-zinc-900 text-gray-800 dark:text-gray-200"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div><p className="mt-4 text-lg">{message}</p></div>);
-    
-    const AuthScreen = ({ onLogin, onSignUp, error, loading, configError }) => {
-        const [isLoginView, setIsLoginView] = React.useState(true);
-        const [email, setEmail] = React.useState('');
-        const [password, setPassword] = React.useState('');
-
-        const handleSubmit = (e) => {
-            e.preventDefault();
-            if (isLoginView) onLogin(email, password);
-            else onSignUp(email, password);
-        };
-        
-        if (configError) {
-          return (<div className="flex items-center justify-center min-h-screen bg-gray-100 dark:bg-zinc-900 p-4">
-            <div className="w-full max-w-md bg-white dark:bg-zinc-800 rounded-2xl shadow-lg p-8 space-y-6 text-center">
-              <div className="bg-red-100 dark:bg-red-900/50 border-l-4 border-red-500 text-red-700 dark:text-red-200 p-4 text-left">
-                <p className="font-bold">Error de Configuración</p><p>{configError}</p>
-              </div>
-            </div>
-          </div>);
-        }
-
-        return (
-            <div className="flex items-center justify-center min-h-screen bg-gray-100 dark:bg-zinc-900 p-4">
-                <div className="w-full max-w-md bg-white dark:bg-zinc-800 rounded-2xl shadow-lg p-8 space-y-6">
-                    <div className="text-center">
-                        <Icon name="key" className="text-5xl text-blue-500 mx-auto" />
-                        <h1 className="mt-4 text-3xl font-bold text-gray-900 dark:text-white">Randall Duk Kim APP</h1>
-                        <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">Su gestor de contraseñas seguro en la nube.</p>
-                    </div>
-                    <form className="space-y-6" onSubmit={handleSubmit}>
-                        <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="Email" required className="block w-full px-3 py-2 border border-gray-300 dark:border-zinc-600 rounded-md shadow-sm bg-gray-50 dark:bg-zinc-700 text-gray-900 dark:text-white" />
-                        <input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="Contraseña" required className="block w-full px-3 py-2 border border-gray-300 dark:border-zinc-600 rounded-md shadow-sm bg-gray-50 dark:bg-zinc-700 text-gray-900 dark:text-white" />
-                        {error && <p className="text-red-500 text-sm text-center">{error}</p>}
-                        <button type="submit" disabled={loading} className="w-full flex justify-center items-center py-3 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50">{loading ? <Spinner /> : (isLoginView ? 'Iniciar Sesión' : 'Registrarse')}</button>
-                    </form>
-                    <p className="text-center text-sm text-gray-600 dark:text-gray-400">
-                        {isLoginView ? '¿No tiene cuenta?' : '¿Ya tiene una cuenta?'}
-                        <button onClick={() => setIsLoginView(!isLoginView)} className="font-medium text-blue-600 hover:text-blue-500 ml-1">
-                            {isLoginView ? 'Regístrese' : 'Inicie sesión'}
-                        </button>
-                    </p>
-                </div>
-            </div>
-        );
-    };
-
-    const CreateKeychainModal = ({ isOpen, onClose, onCreate, addToast }) => {
-        const [name, setName] = React.useState('');
-        if (!isOpen) return null;
-        const handleSubmit = (e) => { e.preventDefault(); if (name.trim()) onCreate(name.trim()); else addToast("El nombre no puede estar vacío.", "error"); };
-        return (
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50" onClick={onClose}>
-                <div className="bg-white dark:bg-zinc-800 rounded-lg shadow-xl w-full max-w-sm m-4" onClick={(e) => e.stopPropagation()}>
-                    <form onSubmit={handleSubmit}>
-                        <div className="p-6">
-                            <h2 className="text-xl font-bold text-gray-900 dark:text-white">Crear Nuevo Llavero</h2>
-                            <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">Asigne un nombre a su nuevo archivo de llavero.</p>
-                            <input type="text" autoFocus value={name} onChange={e => setName(e.target.value)} placeholder="Ej: Llavero Principal" required className="mt-4 block w-full rounded-md border-gray-300 dark:border-zinc-600 shadow-sm bg-gray-50 dark:bg-zinc-700 text-gray-900 dark:text-white" />
-                        </div>
-                        <div className="bg-gray-50 dark:bg-zinc-900/50 px-6 py-4 flex justify-end space-x-3">
-                            <button type="button" onClick={onClose} className="py-2 px-4 border border-gray-300 dark:border-zinc-600 rounded-md">Cancelar</button>
-                            <button type="submit" className="py-2 px-4 border border-transparent rounded-md text-white bg-blue-600 hover:bg-blue-700">Crear</button>
-                        </div>
-                    </form>
-                </div>
-            </div>
-        );
-    };
-
-    const KeychainSelector = ({ onSelectKeychain, onCreate, onSignOut, keychains, user }) => (
-        <div className="flex items-center justify-center min-h-screen bg-gray-100 dark:bg-zinc-900 p-4">
-             <div className="w-full max-w-md bg-white dark:bg-zinc-800 rounded-2xl shadow-lg p-8">
-                <div className="flex justify-between items-center mb-6">
-                  <div>
-                    <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Bienvenido,</h2>
-                    <p className="text-gray-600 dark:text-gray-400 truncate max-w-[200px]">{user.email}</p>
-                  </div>
-                  <button onClick={onSignOut} className="text-sm text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 flex items-center gap-1"><Icon name="logout"/> Salir</button>
-                </div>
-
-                <button onClick={onCreate} className="w-full flex justify-center items-center py-3 px-4 mb-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700"><Icon name="note_add" className="text-lg mr-2"/> Crear Nuevo Llavero</button>
-                
-                <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-200 mt-6 mb-3 border-b border-gray-200 dark:border-zinc-600 pb-2">O abrir uno existente:</h3>
-                <div className="max-h-60 overflow-y-auto space-y-2">
-                  {keychains.length > 0 ? keychains.map(kc => (
-                    <button key={kc.id} onClick={() => onSelectKeychain(kc.name)} className="w-full text-left p-3 rounded-md hover:bg-gray-100 dark:hover:bg-zinc-700 flex items-center">
-                        <Icon name="database" className="text-blue-500 mr-3"/> <span className="text-gray-800 dark:text-gray-100">{kc.name}</span>
-                    </button>
-                  )) : <p className="text-center text-gray-500 dark:text-gray-400 p-4">No hay llaveros existentes.</p>}
-                </div>
-            </div>
-        </div>
-    );
-    
-    const UnlockScreen = ({ onUnlock, keychainName, isCreating, onBack, addToast }) => {
-        const [password, setPassword] = React.useState('');
-        const handleSubmit = (e) => { e.preventDefault(); if (password) onUnlock(password); else addToast("La contraseña no puede estar vacía.", "error"); };
-        const title = isCreating ? "Crear Contraseña Maestra" : `Desbloquear "${keychainName}"`;
-        const prompt = isCreating ? "Establezca una contraseña maestra para su nuevo llavero." : "Ingrese su contraseña maestra para descifrar el llavero.";
-        const buttonText = isCreating ? "Establecer y Guardar" : "Desbloquear";
-
-        return (
-            <div className="flex items-center justify-center min-h-screen bg-gray-100 dark:bg-zinc-900 p-4">
-                <div className="w-full max-w-md bg-white dark:bg-zinc-800 rounded-2xl shadow-lg p-8 space-y-6 text-center relative">
-                    <button onClick={onBack} className="absolute top-4 left-4 text-gray-500 hover:text-gray-800 dark:hover:text-gray-200"><Icon name="arrow_back"/></button>
-                    <Icon name={isCreating ? "password" : "lock_open"} className="text-5xl text-blue-500 mx-auto" />
-                    <h2 className="text-2xl font-bold text-gray-900 dark:text-white">{title}</h2>
-                    <p className="text-gray-600 dark:text-gray-400">{prompt}</p>
-                    <form onSubmit={handleSubmit}>
-                      <input type="password" autoFocus value={password} onChange={e => setPassword(e.target.value)} placeholder="Contraseña Maestra" required className="block w-full px-3 py-2 border border-gray-300 dark:border-zinc-600 rounded-md shadow-sm bg-gray-50 dark:bg-zinc-700 text-gray-900 dark:text-white" />
-                      <button type="submit" className="mt-4 w-full flex justify-center items-center py-3 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700">{buttonText}</button>
-                    </form>
-                </div>
-            </div>
-        );
-    };
+    const LoadingScreen = ({ message }) => (<div className="flex flex-col items-center justify-center min-h-screen bg-gray-100 dark:bg-zinc-900 text-gray-800 dark:text-gray-200"><Spinner className="border-blue-500" /><p className="mt-4 text-lg">{message}</p></div>);
+    const AuthScreen = ({ onLogin, onSignUp, error, loading, configError }) => { const [isLoginView, setIsLoginView] = React.useState(true); const [email, setEmail] = React.useState(''); const [password, setPassword] = React.useState(''); const handleSubmit = (e) => { e.preventDefault(); if (isLoginView) onLogin(email, password); else onSignUp(email, password); }; if (configError) { return (<div className="flex items-center justify-center min-h-screen bg-gray-100 dark:bg-zinc-900 p-4"><div className="w-full max-w-md bg-white dark:bg-zinc-800 rounded-2xl shadow-lg p-8 space-y-6 text-center"><div className="bg-red-100 dark:bg-red-900/50 border-l-4 border-red-500 text-red-700 dark:text-red-200 p-4 text-left"><p className="font-bold">Error de Configuración</p><p>{configError}</p></div></div></div>); } return (<div className="flex items-center justify-center min-h-screen bg-gray-100 dark:bg-zinc-900 p-4"><div className="w-full max-w-md bg-white dark:bg-zinc-800 rounded-2xl shadow-lg p-8 space-y-6"><div className="text-center"><Icon name="key" className="text-5xl text-blue-500 mx-auto" /><h1 className="mt-4 text-3xl font-bold text-gray-900 dark:text-white">RDK APP</h1><p className="mt-2 text-sm text-gray-600 dark:text-gray-400">Su gestor de contraseñas seguro en la nube.</p></div><form className="space-y-6" onSubmit={handleSubmit}><input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="Email" required className="block w-full px-3 py-2 border border-gray-300 dark:border-zinc-600 rounded-md shadow-sm bg-gray-50 dark:bg-zinc-700 text-gray-900 dark:text-white" /><input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="Contraseña" required className="block w-full px-3 py-2 border border-gray-300 dark:border-zinc-600 rounded-md shadow-sm bg-gray-50 dark:bg-zinc-700 text-gray-900 dark:text-white" />{error && <p className="text-red-500 text-sm text-center">{error}</p>}<button type="submit" disabled={loading} className="w-full flex justify-center items-center py-3 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50">{loading ? <Spinner /> : (isLoginView ? 'Iniciar Sesión' : 'Registrarse')}</button></form><p className="text-center text-sm text-gray-600 dark:text-gray-400">{isLoginView ? '¿No tiene cuenta?' : '¿Ya tiene una cuenta?'} <button onClick={() => setIsLoginView(!isLoginView)} className="font-medium text-blue-600 hover:text-blue-500 ml-1">{isLoginView ? 'Regístrese' : 'Inicie sesión'}</button></p></div></div>); };
+    const CreateKeychainModal = ({ isOpen, onClose, onCreate, addToast }) => { const [name, setName] = React.useState(''); if (!isOpen) return null; const handleSubmit = (e) => { e.preventDefault(); if (name.trim()) onCreate(name.trim()); else addToast("El nombre no puede estar vacío.", "error"); }; return ( <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50" onClick={onClose}><div className="bg-white dark:bg-zinc-800 rounded-lg shadow-xl w-full max-w-sm m-4" onClick={(e) => e.stopPropagation()}><form onSubmit={handleSubmit}><div className="p-6"><h2 className="text-xl font-bold text-gray-900 dark:text-white">Crear Nuevo Llavero</h2><p className="mt-2 text-sm text-gray-600 dark:text-gray-400">Asigne un nombre a su nuevo archivo de llavero.</p><input type="text" autoFocus value={name} onChange={e => setName(e.target.value)} placeholder="Ej: Llavero Principal" required className="mt-4 block w-full rounded-md border-gray-300 dark:border-zinc-600 shadow-sm bg-gray-50 dark:bg-zinc-700 text-gray-900 dark:text-white" /></div><div className="bg-gray-50 dark:bg-zinc-900/50 px-6 py-4 flex justify-end space-x-3"><button type="button" onClick={onClose} className="py-2 px-4 border border-gray-300 dark:border-zinc-600 rounded-md">Cancelar</button><button type="submit" className="py-2 px-4 border border-transparent rounded-md text-white bg-blue-600 hover:bg-blue-700">Crear</button></div></form></div></div>); };
+    const KeychainSelector = ({ onSelectKeychain, onCreate, onSignOut, keychains, user }) => ( <div className="flex items-center justify-center min-h-screen bg-gray-100 dark:bg-zinc-900 p-4"> <div className="w-full max-w-md bg-white dark:bg-zinc-800 rounded-2xl shadow-lg p-8"><div className="flex justify-between items-center mb-6"><div><h2 className="text-2xl font-bold text-gray-900 dark:text-white">Bienvenido,</h2><p className="text-gray-600 dark:text-gray-400 truncate max-w-[200px]">{user.email}</p></div><button onClick={onSignOut} className="text-sm text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 flex items-center gap-1"><Icon name="logout"/> Salir</button></div><button onClick={onCreate} className="w-full flex justify-center items-center py-3 px-4 mb-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700"><Icon name="note_add" className="text-lg mr-2"/> Crear Nuevo Llavero</button><h3 className="text-lg font-semibold text-gray-800 dark:text-gray-200 mt-6 mb-3 border-b border-gray-200 dark:border-zinc-600 pb-2">O abrir uno existente:</h3><div className="max-h-60 overflow-y-auto space-y-2">{keychains.length > 0 ? keychains.map(kc => (<button key={kc.id} onClick={() => onSelectKeychain(kc.name)} className="w-full text-left p-3 rounded-md hover:bg-gray-100 dark:hover:bg-zinc-700 flex items-center"><Icon name="database" className="text-blue-500 mr-3"/> <span className="text-gray-800 dark:text-gray-100">{kc.name}</span></button>)) : <p className="text-center text-gray-500 dark:text-gray-400 p-4">No hay llaveros existentes.</p>}</div></div></div>);
+    const UnlockScreen = ({ onUnlock, keychainName, isCreating, onBack, addToast }) => { const [password, setPassword] = React.useState(''); const handleSubmit = (e) => { e.preventDefault(); if (password) onUnlock(password); else addToast("La contraseña no puede estar vacía.", "error"); }; const title = isCreating ? "Crear Contraseña Maestra" : `Desbloquear "${keychainName}"`; const prompt = isCreating ? "Establezca una contraseña maestra para su nuevo llavero." : "Ingrese su contraseña maestra para descifrar el llavero."; const buttonText = isCreating ? "Establecer y Guardar" : "Desbloquear"; return (<div className="flex items-center justify-center min-h-screen bg-gray-100 dark:bg-zinc-900 p-4"><div className="w-full max-w-md bg-white dark:bg-zinc-800 rounded-2xl shadow-lg p-8 space-y-6 text-center relative"><button onClick={onBack} className="absolute top-4 left-4 text-gray-500 hover:text-gray-800 dark:hover:text-gray-200"><Icon name="arrow_back"/></button><Icon name={isCreating ? "password" : "lock_open"} className="text-5xl text-blue-500 mx-auto" /><h2 className="text-2xl font-bold text-gray-900 dark:text-white">{title}</h2><p className="text-gray-600 dark:text-gray-400">{prompt}</p><form onSubmit={handleSubmit}><input type="password" autoFocus value={password} onChange={e => setPassword(e.target.value)} placeholder="Contraseña Maestra" required className="block w-full px-3 py-2 border border-gray-300 dark:border-zinc-600 rounded-md shadow-sm bg-gray-50 dark:bg-zinc-700 text-gray-900 dark:text-white" /><button type="submit" className="mt-4 w-full flex justify-center items-center py-3 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700">{buttonText}</button></form></div></div>); };
 
     // --- MAIN APP COMPONENT ---
     const App = () => {
-      const { useState, useCallback, useEffect } = React;
+      const { useState, useCallback, useEffect, useRef } = React;
       // App State
-      const [appStatus, setAppStatus] = useState('initializing'); // initializing, auth, select_keychain, unlock_keychain, unlocked, error
+      const [appStatus, setAppStatus] = useState('initializing');
       const [configError, setConfigError] = useState(null);
       const [authError, setAuthError] = useState('');
       const [loading, setLoading] = useState(false);
@@ -434,7 +340,11 @@
       const [dbFilename, setDbFilename] = useState('');
       const [masterKey, setMasterKey] = useState(null);
       const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+      const [saveStatus, setSaveStatus] = useState('saved'); // saved, saving, error, idle (dirty)
       const addToast = useNotifier();
+
+      const hasUnsavedChangesRef = useRef(hasUnsavedChanges);
+      useEffect(() => { hasUnsavedChangesRef.current = hasUnsavedChanges; }, [hasUnsavedChanges]);
       
       const fetchKeychains = useCallback(async (userId) => {
         if (!userId) return;
@@ -443,88 +353,9 @@
         else { setKeychains(data.filter(f => f.name.endsWith('.db'))); }
       }, []);
 
-      useEffect(() => {
-        const init = async () => {
-          if (SUPABASE_URL.includes('YOUR_') || SUPABASE_ANON_KEY.includes('YOUR_')) {
-            setConfigError("Las credenciales de Supabase no están configuradas en el código fuente.");
-            setAppStatus('auth'); return;
-          }
-          if (!supabase) {
-            setConfigError("No se pudo inicializar el cliente de Supabase. Verifique las credenciales.");
-            setAppStatus('auth'); return;
-          }
-
-          window.SQL = await window.initSqlJs({ locateFile: file => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/${file}` });
-          
-          const { data: { session } } = await supabase.auth.getSession();
-          if (session) {
-            setUser(session.user);
-            await fetchKeychains(session.user.id);
-            setAppStatus('select_keychain');
-          } else {
-            setAppStatus('auth');
-          }
-        };
-        init();
-      }, [fetchKeychains]);
-      
-      useEffect(() => {
-          const handleBeforeUnload = (e) => { if (hasUnsavedChanges) { e.preventDefault(); e.returnValue = ''; } };
-          window.addEventListener('beforeunload', handleBeforeUnload);
-          return () => window.removeEventListener('beforeunload', handleBeforeUnload);
-      }, [hasUnsavedChanges]);
-
-      const handleSignUp = async (email, password) => { setLoading(true); setAuthError(''); const { error } = await supabase.auth.signUp({ email, password }); if (error) setAuthError(error.message); else addToast("¡Registro exitoso! Por favor, inicie sesión.", 'success'); setLoading(false); };
-      const handleLogin = async (email, password) => { setLoading(true); setAuthError(''); const { data, error } = await supabase.auth.signInWithPassword({ email, password }); if (error) { setAuthError(error.message); } else if (data.user) { setUser(data.user); await fetchKeychains(data.user.id); setAppStatus('select_keychain'); } setLoading(false); };
-      const handleSignOut = async () => { if (hasUnsavedChanges && !window.confirm("Tiene cambios sin guardar que se perderán. ¿Seguro que quiere salir?")) return; await supabase.auth.signOut(); setUser(null); setDb(null); setMasterKey(null); setHasUnsavedChanges(false); setAppStatus('auth'); };
-
-      const handleCreateNewKeychain = async (name) => {
-          setCreateModalOpen(false);
-          const filename = name.endsWith('.db') ? name : `${name}.db`;
-          if (keychains.some(kc => kc.name === filename)) {
-            addToast("Ya existe un llavero con este nombre.", "error");
-            return;
-          }
-          const { database } = await initDb(null);
-          setKeychainName(database, name);
-          setDb(database);
-          setDbFilename(filename);
-          setAppStatus('unlock_keychain');
-      };
-      
-      const handleSelectKeychain = (filename) => { setDbFilename(filename); setAppStatus('unlock_keychain'); };
-      
-      const handleUnlockKeychain = useCallback(async (password) => {
-          setLoading(true);
-          try {
-              let isNewFile = !keychains.some(kc => kc.name === dbFilename);
-              if (!isNewFile) {
-                  const path = `${user.id}/${dbFilename}`;
-                  const { data: blob, error } = await supabase.storage.from(BUCKET_NAME).download(path);
-                  if (error) throw error;
-                  const dbArrayBuffer = await blob.arrayBuffer();
-                  const { database, salt } = await initDb(dbArrayBuffer);
-                  const key = await deriveKey(password, salt);
-                  setDb(database); setMasterKey(key); setAppStatus('unlocked'); setHasUnsavedChanges(false);
-              } else {
-                  const salt = getSalt(db);
-                  const key = await deriveKey(password, salt);
-                  setMasterKey(key); 
-                  setAppStatus('unlocked');
-                  setHasUnsavedChanges(true);
-              }
-          } catch (error) {
-              console.error("Failed to unlock/set password:", error);
-              addToast("Fallo al procesar. Verifique su contraseña.", "error");
-              setAppStatus('select_keychain');
-          } finally {
-            setLoading(false);
-          }
-      }, [db, dbFilename, user, keychains, addToast]);
-      
       const handleSaveChanges = useCallback(async () => {
-        if (!db || !user) return;
-        setLoading(true);
+        if (!db || !user || saveStatus === 'saving') return;
+        setSaveStatus('saving');
         try {
             const dbData = exportDb(db);
             const path = `${user.id}/${dbFilename}`;
@@ -537,35 +368,86 @@
             if (error) throw error;
             
             setHasUnsavedChanges(false);
+            setSaveStatus('saved');
             await fetchKeychains(user.id);
-            addToast('¡Llavero guardado con éxito!', 'success');
+            addToast('¡Llavero guardado en la nube!', 'success');
         } catch (error) {
             console.error("Error saving to Supabase:", error);
+            setSaveStatus('error');
             addToast("Error al guardar en la nube.", "error");
-        } finally {
-            setLoading(false);
         }
-    }, [db, dbFilename, user, fetchKeychains, addToast]);
+      }, [db, dbFilename, user, fetchKeychains, addToast, saveStatus]);
+
+      useEffect(() => {
+        const init = async () => {
+          if (SUPABASE_URL.includes('YOUR_') || SUPABASE_ANON_KEY.includes('YOUR_')) { setConfigError("Las credenciales de Supabase no están configuradas."); setAppStatus('auth'); return; }
+          if (!supabase) { setConfigError("No se pudo inicializar el cliente de Supabase."); setAppStatus('auth'); return; }
+          window.SQL = await window.initSqlJs({ locateFile: file => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/${file}` });
+          const { data: { session } } = await supabase.auth.getSession();
+          if (session) { setUser(session.user); await fetchKeychains(session.user.id); setAppStatus('select_keychain'); } 
+          else { setAppStatus('auth'); }
+        };
+        init();
+      }, [fetchKeychains]);
+
+      // --- AUTOSAVE LOGIC ---
+      useEffect(() => {
+        if (hasUnsavedChanges) setSaveStatus('idle');
+        const debounceTimer = setTimeout(() => {
+          if (hasUnsavedChanges) handleSaveChanges();
+        }, AUTOSAVE_DELAY);
+        return () => clearTimeout(debounceTimer);
+      }, [hasUnsavedChanges, handleSaveChanges]);
       
-      const goBackToSelector = () => {
-          setDb(null);
-          setDbFilename('');
-          setMasterKey(null);
-          setAppStatus('select_keychain');
-      };
+      // Save on tab hide
+      useEffect(() => {
+        const handleVisibilityChange = () => {
+          if (document.visibilityState === 'hidden' && hasUnsavedChangesRef.current) {
+            handleSaveChanges();
+          }
+        };
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+        return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+      }, [handleSaveChanges]);
+
+      const handleSignUp = async (email, password) => { setLoading(true); setAuthError(''); const { error } = await supabase.auth.signUp({ email, password }); if (error) setAuthError(error.message); else addToast("¡Registro exitoso! Por favor, inicie sesión.", 'success'); setLoading(false); };
+      const handleLogin = async (email, password) => { setLoading(true); setAuthError(''); const { data, error } = await supabase.auth.signInWithPassword({ email, password }); if (error) { setAuthError(error.message); } else if (data.user) { setUser(data.user); await fetchKeychains(data.user.id); setAppStatus('select_keychain'); } setLoading(false); };
+      const handleSignOut = async () => { if (hasUnsavedChangesRef.current && !window.confirm("Tiene cambios sin guardar que se perderán. ¿Seguro que quiere salir?")) return; await supabase.auth.signOut(); setUser(null); setDb(null); setMasterKey(null); setHasUnsavedChanges(false); setAppStatus('auth'); };
+      const handleCreateNewKeychain = async (name) => { setCreateModalOpen(false); const filename = name.endsWith('.db') ? name : `${name}.db`; if (keychains.some(kc => kc.name === filename)) { addToast("Ya existe un llavero con este nombre.", "error"); return; } const { database } = await initDb(null); setKeychainName(database, name); setDb(database); setDbFilename(filename); setAppStatus('unlock_keychain'); };
+      const handleSelectKeychain = (filename) => { setDbFilename(filename); setAppStatus('unlock_keychain'); };
+      const handleUnlockKeychain = useCallback(async (password) => {
+          setLoading(true);
+          try {
+              let isNewFile = !keychains.some(kc => kc.name === dbFilename);
+              if (!isNewFile) {
+                  const path = `${user.id}/${dbFilename}`;
+                  const { data: blob, error } = await supabase.storage.from(BUCKET_NAME).download(path);
+                  if (error) throw error;
+                  const dbArrayBuffer = await blob.arrayBuffer();
+                  const { database, salt } = await initDb(dbArrayBuffer);
+                  const key = await deriveKey(password, salt);
+                  setDb(database); setMasterKey(key); setAppStatus('unlocked'); setHasUnsavedChanges(false); setSaveStatus('saved');
+              } else {
+                  const salt = getSalt(db);
+                  const key = await deriveKey(password, salt);
+                  setMasterKey(key); setAppStatus('unlocked'); setHasUnsavedChanges(true); setSaveStatus('idle');
+              }
+          } catch (error) {
+              console.error("Failed to unlock/set password:", error);
+              addToast("Fallo al procesar. Verifique su contraseña.", "error");
+              setAppStatus('select_keychain');
+          } finally { setLoading(false); }
+      }, [db, dbFilename, user, keychains, addToast]);
+      
+      const goBackToSelector = () => { setDb(null); setDbFilename(''); setMasterKey(null); setAppStatus('select_keychain'); };
 
       const ActiveComponent = () => {
-          if (loading) return <LoadingScreen message="Procesando..." />;
           if (appStatus === 'initializing') return <LoadingScreen message="Inicializando..." />;
           if (appStatus === 'auth') return <AuthScreen onLogin={handleLogin} onSignUp={handleSignUp} error={authError} loading={loading} configError={configError} />;
-          if (appStatus === 'select_keychain') return (<>
-            <KeychainSelector onSelectKeychain={handleSelectKeychain} onCreate={() => setCreateModalOpen(true)} onSignOut={handleSignOut} keychains={keychains} user={user} />
-            <CreateKeychainModal isOpen={isCreateModalOpen} onClose={() => setCreateModalOpen(false)} onCreate={handleCreateNewKeychain} addToast={addToast} />
-          </>);
+          if (appStatus === 'select_keychain') return (<> <KeychainSelector onSelectKeychain={handleSelectKeychain} onCreate={() => setCreateModalOpen(true)} onSignOut={handleSignOut} keychains={keychains} user={user} /> <CreateKeychainModal isOpen={isCreateModalOpen} onClose={() => setCreateModalOpen(false)} onCreate={handleCreateNewKeychain} addToast={addToast} /> </>);
           if (appStatus === 'unlock_keychain') return <UnlockScreen onUnlock={handleUnlockKeychain} keychainName={dbFilename} isCreating={!keychains.some(k => k.name === dbFilename)} onBack={goBackToSelector} addToast={addToast} />;
-          if (appStatus === 'unlocked' && db && masterKey) return <MainInterface db={db} masterKey={masterKey} onSignOut={handleSignOut} onSaveChanges={handleSaveChanges} hasUnsavedChanges={hasUnsavedChanges} setHasUnsavedChanges={setHasUnsavedChanges} user={user} />;
-          
-          return <LoadingScreen message="Estado de aplicación desconocido." />;
+          if (appStatus === 'unlocked' && db && masterKey) return <MainInterface db={db} masterKey={masterKey} onSignOut={handleSignOut} onSaveChanges={handleSaveChanges} hasUnsavedChanges={hasUnsavedChanges} setHasUnsavedChanges={setHasUnsavedChanges} user={user} saveStatus={saveStatus} />;
+          return <LoadingScreen message="Cargando..." />;
       }
       
       return <ActiveComponent />;
