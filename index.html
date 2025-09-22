@@ -4,7 +4,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>RDK APP v4.0.1</title>
+  <title>RDK APP v4.1.0</title>
   
   <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -26,20 +26,14 @@
       // After gapi.js loads, we need to load the 'client' library
       gapi.load('client', () => {
         window.gapiClientIsLoaded = true;
-        // If the app's handler is ready, call it
-        if (window.onGapiClientReady) {
-          window.onGapiClientReady();
-        }
+        if (window.onGapiClientReady) window.onGapiClientReady();
       });
     }
 
     // This function is called by gsi/client script tag on load
     function gisLoaded() {
       window.gsiClientIsLoaded = true;
-      // If the app's handler is ready, call it
-      if (window.onGsiClientReady) {
-        window.onGsiClientReady();
-      }
+      if (window.onGsiClientReady) window.onGsiClientReady();
     }
   </script>
 
@@ -70,13 +64,10 @@
 
   <script type="text/babel">
     // --- APP CONFIGURATION ---
-    const APP_VERSION = "4.0.0";
+    const APP_VERSION = "4.1.0";
     const SESSION_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutos
 
     // --- GOOGLE API CONFIGURATION ---
-    // IMPORTANTE: Debes obtener estas credenciales desde tu proyecto en Google Cloud Console.
-    // Habilita la "Google Drive API" y crea credenciales "OAuth 2.0 Client ID" para una aplicación web.
-    // También crea una "API Key".
     const GOOGLE_CLIENT_ID = '576080826935-2mtnj52ndc8plnsjodjevt3e2gsh4m3a.apps.googleusercontent.com'; // Reemplazar
     const GOOGLE_API_KEY = 'AIzaSyC3aFfyDSQ181xr-JK9VKEG3OkK5gY0D-8';       // Reemplazar
     const DRIVE_API_SCOPE = 'https://www.googleapis.com/auth/drive.appdata https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile';
@@ -115,7 +106,7 @@
     const addTag = (db, name) => { db.run('INSERT INTO tags (name) VALUES (?)', [name]); };
     const deleteTag = (db, id) => { const usage = db.exec('SELECT COUNT(*) FROM credentials WHERE tag_id = ?', [id]); if (usage[0].values[0][0] > 0) throw new Error("No se puede eliminar la etiqueta porque está en uso."); db.run('DELETE FROM tags WHERE id = ?', [id]); };
     
-    // --- UI COMPONENTS --- (Re-using existing components, no major changes here)
+    // --- UI COMPONENTS ---
     const Icon = ({ name, className }) => <span className={`material-symbols-sharp ${className || ''}`}>{name}</span>;
     const Spinner = ({ className }) => <div className={`animate-spin rounded-full h-5 w-5 border-b-2 ${className || 'border-white'}`}></div>;
     const NotificationContext = React.createContext();
@@ -190,29 +181,29 @@
             const metadata = { name: activeKeychain.name, mimeType: 'text/plain' };
 
             const form = new FormData();
+            
+            let path = '/upload/drive/v3/files';
+            let method = 'POST';
+
+            if (activeKeychain.id) {
+                path = `/upload/drive/v3/files/${activeKeychain.id}`;
+                method = 'PATCH';
+            } else {
+                metadata.parents = ['appDataFolder'];
+            }
+
             form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
             form.append('file', file);
             
-            let response;
-            if (activeKeychain.id) { // Update existing file
-                response = await gapi.client.request({
-                    path: `/upload/drive/v3/files/${activeKeychain.id}`,
-                    method: 'PATCH',
-                    params: { uploadType: 'multipart' },
-                    body: form
-                });
-            } else { // Create new file
-                metadata.parents = ['appDataFolder'];
-                const createForm = new FormData();
-                createForm.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
-                createForm.append('file', file);
-                response = await gapi.client.request({
-                    path: `/upload/drive/v3/files`,
-                    method: 'POST',
-                    params: { uploadType: 'multipart' },
-                    body: createForm
-                });
-                setActiveKeychain({ name: activeKeychain.name, id: response.result.id });
+            const response = await gapi.client.request({
+                path: path,
+                method: method,
+                params: { uploadType: 'multipart' },
+                body: form
+            });
+            
+            if (!activeKeychain.id && response.result.id) {
+                setActiveKeychain(prev => ({ ...prev, id: response.result.id }));
             }
             
             setHasUnsavedChanges(false);
@@ -220,68 +211,77 @@
             await fetchKeychains();
         } catch (error) {
             console.error("Error saving to Drive:", error);
+            const errorDetails = error.result?.error?.message || error.message || 'Unknown error';
+            addToast(`Error al guardar: ${errorDetails}`, "error");
             setSaveStatus('error');
-            addToast("Error al guardar en Google Drive.", "error");
         }
       }, [db, activeKeychain, masterKey, fetchKeychains, addToast, saveStatus]);
 
       // Initialization effect
       useEffect(() => {
-        const initApp = async () => {
+        const initLibs = async () => {
             if (GOOGLE_CLIENT_ID.includes('YOUR_') || GOOGLE_API_KEY.includes('YOUR_')) {
                 setConfigError("Las credenciales de Google API no están configuradas.");
                 setAppStatus('auth');
                 return;
             }
-            window.SQL = await window.initSqlJs({ locateFile: file => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/${file}` });
+            
+            await window.initSqlJs({ locateFile: file => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/${file}` });
+            
+            const checkApisLoaded = new Promise((resolve) => {
+                const interval = setInterval(() => {
+                    if (window.gapiClientIsLoaded && window.gsiClientIsLoaded) {
+                        clearInterval(interval);
+                        resolve();
+                    }
+                }, 100);
+            });
+            
+            await checkApisLoaded;
             
             try {
                 await gapi.client.init({ apiKey: GOOGLE_API_KEY, discoveryDocs: DISCOVERY_DOCS });
+
                 const client = google.accounts.oauth2.initTokenClient({
                     client_id: GOOGLE_CLIENT_ID,
                     scope: DRIVE_API_SCOPE,
                     callback: async (tokenResponse) => {
+                        if (tokenResponse.error) {
+                            setAuthError(`Error de autenticación: ${tokenResponse.error}`);
+                            setAppStatus('auth');
+                            return;
+                        }
                         gapi.client.setToken(tokenResponse);
                         try {
-                            const profileRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', { headers: { 'Authorization': `Bearer ${tokenResponse.access_token}` } });
-                            if (!profileRes.ok) throw new Error('Failed to fetch user profile');
-                            const profile = await profileRes.json();
+                            const profileRes = await gapi.client.request({ path: 'https://www.googleapis.com/oauth2/v3/userinfo'});
+                            const profile = profileRes.result;
                             setUser({ name: profile.name, email: profile.email, picture: profile.picture });
                             await fetchKeychains();
                             setAppStatus('select_keychain');
                         } catch (e) {
                             setAuthError("No se pudo obtener la información del usuario.");
+                            setAppStatus('auth');
                         }
                     },
                 });
                 setTokenClient(client);
-                setAppStatus('auth');
+                setAppStatus('auth'); // Assume manual login required, silent login will override
             } catch (error) {
                 console.error("Error initializing Google API client:", error);
-                setAuthError("No se pudo inicializar la API de Google. Verifique la API Key y la configuración de la consola.");
+                setAuthError("No se pudo inicializar la API de Google. Verifique la API Key.");
                 setAppStatus('auth');
             }
         };
 
-        const checkApisAndInit = () => {
-            if (window.gapiClientIsLoaded && window.gsiClientIsLoaded) {
-                initApp();
-            }
-        };
-
-        // Define handlers for the global callbacks
-        window.onGapiClientReady = checkApisAndInit;
-        window.onGsiClientReady = checkApisAndInit;
-
-        // Immediately check if they are already loaded (in case React loads after them)
-        checkApisAndInit();
-
-        // Cleanup
-        return () => {
-            window.onGapiClientReady = null;
-            window.onGsiClientReady = null;
-        };
+        initLibs();
       }, [fetchKeychains]);
+
+      // Silent login attempt effect
+      useEffect(() => {
+        if (tokenClient && appStatus === 'auth') {
+          tokenClient.requestAccessToken({ prompt: 'none' });
+        }
+      }, [tokenClient, appStatus]);
 
       const handleSignOut = useCallback(async (options = {}) => {
         if (hasUnsavedChangesRef.current && !window.confirm("Tiene cambios sin guardar que se perderán. ¿Seguro?")) return;
@@ -314,7 +314,7 @@
       useEffect(() => { const autoSaveInterval = setInterval(() => { if (hasUnsavedChangesRef.current && !isModalOpenRef.current) { handleSaveChanges(); } }, AUTOSAVE_DELAY); return () => clearInterval(autoSaveInterval); }, [handleSaveChanges]);
       useEffect(() => { const handleBeforeUnload = (e) => { if (hasUnsavedChangesRef.current) { e.preventDefault(); e.returnValue = ''; } }; const handleVisibilityChange = () => { if (document.visibilityState === 'hidden' && hasUnsavedChangesRef.current) { handleSaveChanges(); } }; window.addEventListener('beforeunload', handleBeforeUnload); document.addEventListener('visibilitychange', handleVisibilityChange); return () => { window.removeEventListener('beforeunload', handleBeforeUnload); document.removeEventListener('visibilitychange', handleVisibilityChange); }; }, [handleSaveChanges]);
 
-      const handleAuthClick = () => { if (tokenClient) { setLoading(true); tokenClient.requestAccessToken(); setLoading(false); } else { setAuthError("Cliente de autenticación no inicializado."); } };
+      const handleAuthClick = () => { if (tokenClient) { setLoading(true); tokenClient.requestAccessToken({ prompt: 'consent' }); setLoading(false); } else { setAuthError("Cliente de autenticación no inicializado."); } };
       
       const [isCreateModalOpen, setCreateModalOpen] = useState(false);
       const handleCreateNewKeychain = async (name) => { setCreateModalOpen(false); const filename = name.endsWith('.db') ? name : `${name}.db`; if (keychains.some(kc => kc.name === filename)) { addToast("Ya existe un llavero con este nombre.", "error"); return; } const { database } = await initDb(null); setKeychainName(database, name); setDb(database); setActiveKeychain({id: null, name: filename}); setAppStatus('unlock_keychain'); };
@@ -377,4 +377,3 @@
   </script>
 </body>
 </html>
-
