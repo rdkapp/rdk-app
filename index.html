@@ -4,7 +4,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>RDK APP v4.1.0</title>
+  <title>RDK APP v4.2.0</title>
   
   <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -64,14 +64,17 @@
 
   <script type="text/babel">
     // --- APP CONFIGURATION ---
-    const APP_VERSION = "4.1.0";
+    const APP_VERSION = "4.2.0";
     const SESSION_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutos
 
     // --- GOOGLE API CONFIGURATION ---
-    const GOOGLE_CLIENT_ID = '576080826935-2mtnj52ndc8plnsjodjevt3e2gsh4m3a.apps.googleusercontent.com'; // Reemplazar
-    const GOOGLE_API_KEY = 'AIzaSyC3aFfyDSQ181xr-JK9VKEG3OkK5gY0D-8';       // Reemplazar
+    const GOOGLE_CLIENT_ID = 'YOUR_GOOGLE_CLIENT_ID'; // Reemplazar
+    const GOOGLE_API_KEY = 'YOUR_GOOGLE_API_KEY';       // Reemplazar
     const DRIVE_API_SCOPE = 'https://www.googleapis.com/auth/drive.appdata https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile';
-    const DISCOVERY_DOCS = ["https://www.googleapis.com/discovery/v1/apis/drive/v3/rest"];
+    const DISCOVERY_DOCS = [
+      "https://www.googleapis.com/discovery/v1/apis/drive/v3/rest",
+      "https://www.googleapis.com/discovery/v1/apis/people/v1/rest"
+    ];
 
     // --- CONSTANTS ---
     const SALT_LENGTH = 16;
@@ -253,12 +256,19 @@
                         }
                         gapi.client.setToken(tokenResponse);
                         try {
-                            const profileRes = await gapi.client.request({ path: 'https://www.googleapis.com/oauth2/v3/userinfo'});
-                            const profile = profileRes.result;
-                            setUser({ name: profile.name, email: profile.email, picture: profile.picture });
+                            const peopleRes = await gapi.client.people.people.get({
+                                'resourceName': 'people/me',
+                                'personFields': 'names,emailAddresses,photos',
+                            });
+                            const profile = peopleRes.result;
+                            const primaryName = profile.names && profile.names.length > 0 ? profile.names[0].displayName : 'Usuario';
+                            const primaryEmail = profile.emailAddresses && profile.emailAddresses.length > 0 ? profile.emailAddresses[0].value : '';
+                            const primaryPhoto = profile.photos && profile.photos.length > 0 ? profile.photos[0].url : '';
+                            setUser({ name: primaryName, email: primaryEmail, picture: primaryPhoto });
                             await fetchKeychains();
                             setAppStatus('select_keychain');
                         } catch (e) {
+                            console.error("Error fetching user profile:", e);
                             setAuthError("No se pudo obtener la información del usuario.");
                             setAppStatus('auth');
                         }
