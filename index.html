@@ -45,7 +45,7 @@
   <script type="text/babel">
     // --- APP CONFIGURATION ---
     const APP_VERSION = "2.2.1";
-    const SESSION_TIMEOUT_MS = 1 * 60 * 1000; // 1 minuto
+    const SESSION_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutos
 
     // --- SUPABASE CONFIGURATION ---
     const SUPABASE_URL = "https://rckbiacihztdsoitbnhn.supabase.co";
@@ -510,9 +510,47 @@
         }
       }, [addToast]);
       
-      const inactivityTimer = useRef(null);
-      const resetInactivityTimer = useCallback(() => { clearTimeout(inactivityTimer.current); inactivityTimer.current = setTimeout(() => { handleSignOut({ reason: 'inactivity' }); }, SESSION_TIMEOUT_MS); }, [handleSignOut]);
-      useEffect(() => { const events = ['mousemove', 'mousedown', 'keypress', 'scroll', 'touchstart']; if (appStatus === 'unlocked') { events.forEach(event => window.addEventListener(event, resetInactivityTimer)); resetInactivityTimer(); } return () => { events.forEach(event => window.removeEventListener(event, resetInactivityTimer)); clearTimeout(inactivityTimer.current); }; }, [appStatus, resetInactivityTimer]);
+      const lastActivityTimestamp = useRef(Date.now());
+      useEffect(() => {
+        if (appStatus !== 'unlocked') {
+            return;
+        }
+
+        const resetTimer = () => {
+            lastActivityTimestamp.current = Date.now();
+        };
+
+        const checkInactivity = () => {
+            if (isModalOpenRef.current) {
+                resetTimer();
+                return;
+            }
+            if (Date.now() - lastActivityTimestamp.current > SESSION_TIMEOUT_MS) {
+                handleSignOut({ reason: 'inactivity' });
+            }
+        };
+
+        const handleVisibilityChange = () => {
+            if (document.visibilityState === 'visible') {
+                checkInactivity();
+            }
+        };
+
+        const intervalId = setInterval(checkInactivity, 5000); // Check every 5 seconds
+        const activityEvents = ['mousemove', 'mousedown', 'keypress', 'scroll', 'touchstart'];
+        
+        activityEvents.forEach(event => window.addEventListener(event, resetTimer));
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+        
+        resetTimer();
+
+        return () => {
+            clearInterval(intervalId);
+            activityEvents.forEach(event => window.removeEventListener(event, resetTimer));
+            document.removeEventListener('visibilitychange', handleVisibilityChange);
+        };
+      }, [appStatus, handleSignOut]);
+
 
       // Effect for managing the save status display
       useEffect(() => {
@@ -534,7 +572,6 @@
       useEffect(() => { 
         const handleBeforeUnload = (e) => {
             if (hasUnsavedChangesRef.current) {
-                // This message is often ignored by modern browsers, but it's good practice.
                 e.preventDefault();
                 e.returnValue = '';
             }
