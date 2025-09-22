@@ -1,9 +1,10 @@
+
 <!DOCTYPE html>
 <html lang="es">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>RDK APP v4.4.0</title>
+  <title>RDK APP v4.5.0</title>
   
   <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -25,14 +26,12 @@
       // After gapi.js loads, we need to load the 'client' library
       gapi.load('client', () => {
         window.gapiClientIsLoaded = true;
-        if (window.onGapiClientReady) window.onGapiClientReady();
       });
     }
 
     // This function is called by gsi/client script tag on load
     function gisLoaded() {
       window.gsiClientIsLoaded = true;
-      if (window.onGsiClientReady) window.onGsiClientReady();
     }
   </script>
 
@@ -63,7 +62,7 @@
 
   <script type="text/babel">
     // --- APP CONFIGURATION ---
-    const APP_VERSION = "4.4.0";
+    const APP_VERSION = "4.5.0";
     const SESSION_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutos
 
     // --- GOOGLE API CONFIGURATION ---
@@ -250,26 +249,28 @@
       // Initialization effect
       useEffect(() => {
         const initLibs = async () => {
-            if (GOOGLE_CLIENT_ID.includes('YOUR_') || GOOGLE_API_KEY.includes('YOUR_')) {
-                setConfigError("Las credenciales de Google API no están configuradas.");
-                setAppStatus('auth');
-                return;
-            }
-            
-            await window.initSqlJs({ locateFile: file => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/${file}` });
-            
-            const checkApisLoaded = new Promise((resolve) => {
-                const interval = setInterval(() => {
-                    if (window.gapiClientIsLoaded && window.gsiClientIsLoaded) {
-                        clearInterval(interval);
-                        resolve();
-                    }
-                }, 100);
-            });
-            
-            await checkApisLoaded;
-            
             try {
+                if (GOOGLE_CLIENT_ID.includes('YOUR_') || GOOGLE_API_KEY.includes('YOUR_')) {
+                    setConfigError("Las credenciales de Google API no están configuradas.");
+                    setAppStatus('auth');
+                    return;
+                }
+                
+                await window.initSqlJs({ locateFile: file => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/${file}` });
+                
+                const checkApisLoaded = new Promise((resolve, reject) => {
+                    const timeout = setTimeout(() => reject(new Error("Los scripts de Google API no cargaron a tiempo.")), 10000);
+                    const interval = setInterval(() => {
+                        if (window.gapiClientIsLoaded && window.gsiClientIsLoaded) {
+                            clearInterval(interval);
+                            clearTimeout(timeout);
+                            resolve();
+                        }
+                    }, 100);
+                });
+                
+                await checkApisLoaded;
+                
                 await gapi.client.init({ apiKey: GOOGLE_API_KEY, discoveryDocs: DISCOVERY_DOCS });
 
                 const client = google.accounts.oauth2.initTokenClient({
@@ -279,18 +280,18 @@
                       if (tokenResponse && !tokenResponse.error) {
                         handleAuthSuccess(tokenResponse);
                       }
-                      // Error is handled by error_callback for silent, or user sees popup for manual.
                     },
                     error_callback: (error) => {
-                      // This primarily catches silent auth failures
                       console.log("Silent auth failed:", error);
-                      setAppStatus('auth'); // Stay on auth screen
+                      // On silent auth fail, we simply remain on the auth screen.
+                      // The app status is already 'auth'.
                     }
                 });
                 setTokenClient(client);
+                setAppStatus('auth'); // Explicitly move out of initializing state
             } catch (error) {
                 console.error("Error initializing Google API client:", error);
-                setAuthError("No se pudo inicializar la API de Google. Verifique la API Key.");
+                setAuthError("No se pudo inicializar la API de Google. " + error.message);
                 setAppStatus('auth');
             }
         };
@@ -300,11 +301,11 @@
 
       // Silent login attempt effect
       useEffect(() => {
-        if (tokenClient) {
+        if (tokenClient && appStatus === 'auth') {
           // This will trigger either the 'callback' or 'error_callback' set during init
           tokenClient.requestAccessToken({ prompt: 'none' });
         }
-      }, [tokenClient]);
+      }, [tokenClient, appStatus]);
 
       const handleSignOut = useCallback(async (options = {}) => {
         if (hasUnsavedChangesRef.current && !window.confirm("Tiene cambios sin guardar que se perderán. ¿Seguro?")) return;
