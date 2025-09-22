@@ -90,11 +90,11 @@
     const initDb = async (dbBuffer) => { const SQL = window.SQL; let database; let isNew = false; if (dbBuffer && dbBuffer.byteLength > 0) { database = new SQL.Database(new Uint8Array(dbBuffer)); } else { database = new SQL.Database(); isNew = true; } if (isNew) { createTables(database); const salt = window.crypto.getRandomValues(new Uint8Array(SALT_LENGTH)); setSalt(database, salt); setKeychainName(database, 'MiLlavero'); } const salt = getSalt(database); if (!salt) throw new Error("Archivo de base de datos inválido o corrupto: falta salt."); return { database, salt }; };
     const exportDb = (db) => db.export();
     const getCredentials = (db) => { const res = db.exec(`SELECT c.id, c.name, c.encrypted_username, c.encrypted_password, c.comment, t.name FROM credentials c LEFT JOIN tags t ON c.tag_id = t.id`); return res.length === 0 ? [] : res[0].values.map(row => ({ id: row[0], name: row[1], username: row[2], password: row[3], comment: row[4], tag: row[5] || 'Sin Etiqueta' })); };
-    const addCredential = (db, cred) => db.run('INSERT INTO credentials (name, encrypted_username, encrypted_password, comment, tag_id) VALUES (?, ?, ?, ?, (SELECT id FROM tags WHERE name = ?))', [cred.name, cred.username, cred.password, cred.comment, cred.tag]);
-    const updateCredential = (db, cred) => db.run('UPDATE credentials SET name = ?, encrypted_username = ?, encrypted_password = ?, comment = ?, tag_id = (SELECT id FROM tags WHERE name = ?) WHERE id = ?', [cred.name, cred.username, cred.password, cred.comment, cred.tag, cred.id]);
-    const deleteCredential = (db, id) => db.run('DELETE FROM credentials WHERE id = ?', [id]);
+    const addCredential = (db, cred) => { db.run('INSERT INTO credentials (name, encrypted_username, encrypted_password, comment, tag_id) VALUES (?, ?, ?, ?, (SELECT id FROM tags WHERE name = ?))', [cred.name, cred.username, cred.password, cred.comment, cred.tag]); };
+    const updateCredential = (db, cred) => { db.run('UPDATE credentials SET name = ?, encrypted_username = ?, encrypted_password = ?, comment = ?, tag_id = (SELECT id FROM tags WHERE name = ?) WHERE id = ?', [cred.name, cred.username, cred.password, cred.comment, cred.tag, cred.id]); };
+    const deleteCredential = (db, id) => { db.run('DELETE FROM credentials WHERE id = ?', [id]); };
     const getTags = (db) => { const res = db.exec('SELECT id, name FROM tags ORDER BY name'); return res.length === 0 ? [] : res[0].values.map(row => ({ id: row[0], name: row[1] })); };
-    const addTag = (db, name) => db.run('INSERT INTO tags (name) VALUES (?)', [name]);
+    const addTag = (db, name) => { db.run('INSERT INTO tags (name) VALUES (?)', [name]); };
     const deleteTag = (db, id) => { const usage = db.exec('SELECT COUNT(*) FROM credentials WHERE tag_id = ?', [id]); if (usage[0].values[0][0] > 0) throw new Error("No se puede eliminar la etiqueta porque está en uso."); db.run('DELETE FROM tags WHERE id = ?', [id]); };
     
     // --- UI COMPONENTS ---
@@ -248,23 +248,16 @@
             onFilterChange(Array.from(newActiveFilters));
         };
 
-        const handleClear = () => {
-            onFilterChange([]);
-        };
+        const handleClear = () => { onFilterChange([]); };
         
-        // Close on outside click for desktop dropdown
         useEffect(() => {
-            function handleClickOutside(event) {
-                if (window.innerWidth >= 768 && wrapperRef.current && !wrapperRef.current.contains(event.target)) {
-                    setIsOpen(false);
-                }
-            }
+            function handleClickOutside(event) { if (wrapperRef.current && !wrapperRef.current.contains(event.target)) { setIsOpen(false); } }
             document.addEventListener("mousedown", handleClickOutside);
             return () => document.removeEventListener("mousedown", handleClickOutside);
         }, [wrapperRef]);
 
         const FilterContent = () => (
-            <div className="w-full max-w-sm mx-auto bg-white dark:bg-zinc-800 rounded-lg shadow-xl flex flex-col">
+            <div className="w-full max-w-sm mx-auto bg-white dark:bg-zinc-800 rounded-lg shadow-xl flex flex-col md:w-56">
                 <div className="p-4 border-b border-gray-200 dark:border-zinc-700 flex justify-between items-center">
                     <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Filtrar por Etiqueta</h3>
                     <button onClick={() => setIsOpen(false)} className="p-1 rounded-full hover:bg-gray-200 dark:hover:bg-zinc-700 md:hidden"><Icon name="close" /></button>
@@ -272,18 +265,13 @@
                 <div className="py-2 px-2 max-h-60 overflow-y-auto">
                     {tags.length > 0 ? tags.map(tag => (
                         <label key={tag.id} className="flex items-center px-2 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-zinc-700 rounded-md cursor-pointer">
-                            <input
-                                type="checkbox"
-                                checked={activeFilters.includes(tag.name)}
-                                onChange={() => handleToggleTag(tag.name)}
-                                className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                            />
+                            <input type="checkbox" checked={activeFilters.includes(tag.name)} onChange={() => handleToggleTag(tag.name)} className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
                             <span className="ml-3">{tag.name}</span>
                         </label>
-                    )) : <p className="px-2 py-4 text-sm text-center text-gray-500 dark:text-gray-400">No hay etiquetas para filtrar.</p>}
+                    )) : <p className="px-2 py-4 text-sm text-center text-gray-500 dark:text-gray-400">No hay etiquetas.</p>}
                 </div>
                 <div className="p-4 border-t border-gray-200 dark:border-zinc-700 flex justify-between items-center">
-                     <button onClick={handleClear} disabled={activeFilters.length === 0} className="text-sm font-medium text-gray-600 hover:text-gray-800 dark:text-gray-300 dark:hover:text-white disabled:opacity-50">Limpiar Filtros</button>
+                     <button onClick={handleClear} disabled={activeFilters.length === 0} className="text-sm font-medium text-gray-600 hover:text-gray-800 dark:text-gray-300 dark:hover:text-white disabled:opacity-50">Limpiar</button>
                      <button onClick={() => setIsOpen(false)} className="py-2 px-4 rounded-md text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 md:hidden">Cerrar</button>
                 </div>
             </div>
@@ -297,7 +285,7 @@
                     <Icon name="expand_more" className="ml-2 -mr-1" />
                 </button>
                 {isOpen && (
-                    <div className="md:origin-top-right md:absolute md:right-0 mt-2 md:w-56 rounded-md md:shadow-lg md:ring-1 md:ring-black md:ring-opacity-5 z-20 fixed inset-0 bg-black/30 flex items-center justify-center p-4">
+                    <div className="fixed inset-0 bg-black/30 z-20 flex items-center justify-center p-4 md:absolute md:inset-auto md:right-0 md:top-full md:mt-2 md:bg-transparent md:p-0">
                         <FilterContent />
                     </div>
                 )}
@@ -357,7 +345,7 @@
 
       useEffect(() => { refreshData(); }, [refreshData]);
       
-      const handleAddOrUpdate = async (credential) => {
+      const handleAddOrUpdate = (credential) => {
           if (credential.id && credential.id > 0) {
               updateCredential(db, credential);
           } else {
@@ -367,7 +355,6 @@
           refreshData();
           setIsModalOpen(false);
           setEditingCredential(null);
-          await onSaveChanges();
       };
       const handleDelete = (id) => { if (window.confirm('¿Está seguro?')) { deleteCredential(db, id); setHasUnsavedChanges(true); refreshData(); }};
       const handleEdit = (credential) => { setEditingCredential(credential); setIsModalOpen(true); };
@@ -376,18 +363,29 @@
       const handleAddTag = (tagName) => { try { addTag(db, tagName); setHasUnsavedChanges(true); setTags(getTags(db)); } catch(e) { addToast("Error: " + e.message, "error"); } };
       const handleDeleteTag = (tagId) => { try { deleteTag(db, tagId); setHasUnsavedChanges(true); refreshData(); } catch(e) { addToast("Error: " + e.message, "error"); } };
       
-      const handleCloseSettings = () => { setIsSettingsOpen(false); if (hasUnsavedChanges) { onSaveChanges(); } };
-      const handleCloseCredentialModal = () => { setIsModalOpen(false); setEditingCredential(null); if (hasUnsavedChanges) { onSaveChanges(); } };
+      const handleCloseSettings = () => { setIsSettingsOpen(false); };
+      const handleCloseCredentialModal = () => { setIsModalOpen(false); setEditingCredential(null); };
 
       const filteredCredentials = useMemo(() => credentials.filter(c => (filterTags.length === 0 || filterTags.includes(c.tag)) && (searchTerm.length === 0 || c.name.toLowerCase().includes(searchTerm.toLowerCase()) || (c.comment && c.comment.toLowerCase().includes(searchTerm.toLowerCase())))).sort((a, b) => a.name.localeCompare(b.name)), [credentials, searchTerm, filterTags]);
       
-      const SaveButton = () => {
+      const SaveStatusIndicator = () => {
         let content;
+        let baseClasses = "flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-semibold";
+        
         switch (saveStatus) {
-            case 'saving': content = <><Spinner className="border-gray-400" /> Guardando...</>; return <div className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold bg-gray-200 dark:bg-zinc-700 text-gray-800 dark:text-gray-200"> {content} </div>;
-            case 'saved': content = <><Icon name="cloud_done" className="text-lg mr-1 text-green-500" /> Guardado</>; return <div className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold bg-gray-200 dark:bg-zinc-700 text-gray-800 dark:text-gray-200"> {content} </div>;
-            case 'error': content = <><Icon name="error" className="text-lg mr-1 text-red-500" /> Error</>; return <button onClick={onSaveChanges} className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-200 hover:bg-red-200 dark:hover:bg-red-900">{content}</button>;
-            default: if (hasUnsavedChanges) { return <button onClick={onSaveChanges} className="flex items-center px-3 py-2 rounded-lg text-sm font-semibold transition-all bg-blue-600 text-white hover:bg-blue-700 animate-pulse"><Icon name="save" className="text-lg mr-1" />Guardar Cambios</button>; } return <div className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold bg-gray-200 dark:bg-zinc-700 text-gray-800 dark:text-gray-200"><Icon name="cloud_done" className="text-lg mr-1 text-green-500" /> Guardado</div>;
+            case 'saving':
+                content = <><Spinner className="border-gray-400 h-4 w-4" /> Guardando...</>;
+                return <div className={`${baseClasses} bg-gray-200 dark:bg-zinc-700 text-gray-600 dark:text-gray-300`}>{content}</div>;
+            case 'error':
+                content = <><Icon name="error" className="text-base mr-1"/> Error. Reintentar</>;
+                return <button onClick={onSaveChanges} className={`${baseClasses} bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-200 hover:bg-red-200 dark:hover:bg-red-900`}>{content}</button>;
+            case 'idle': // Unsaved changes
+                content = <> <Icon name="save" className="text-base mr-1"/> Cambios sin guardar</>;
+                 return <div className={`${baseClasses} bg-gray-200 dark:bg-zinc-700 text-gray-800 dark:text-gray-200`}>{content}</div>;
+            case 'saved':
+            default:
+                content = <><Icon name="cloud_done" className="text-base mr-1 text-green-500"/> Guardado</>;
+                return <div className={`${baseClasses} bg-gray-200 dark:bg-zinc-700 text-gray-800 dark:text-gray-200`}>{content}</div>;
         }
       };
 
@@ -398,7 +396,7 @@
                 <span className="font-normal text-gray-500 dark:text-gray-400">Llavero: </span>{keychainName}
             </div>
             <div className="flex items-center justify-center md:justify-end flex-wrap gap-2">
-                <SaveButton/>
+                <SaveStatusIndicator/>
                 <button onClick={() => setIsSettingsOpen(true)} className="p-2 rounded-full hover:bg-gray-200 dark:hover:bg-zinc-700 text-gray-600 dark:text-gray-300" title="Configuración"><Icon name="settings" /></button>
                 <button onClick={onChangeKeychain} className="p-2 rounded-full hover:bg-gray-200 dark:hover:bg-zinc-700 text-gray-600 dark:text-gray-300" title="Cambiar llavero"><Icon name="refresh" /></button>
                 <button onClick={onSignOut} className="p-2 rounded-full hover:bg-gray-200 dark:hover:bg-zinc-700 text-gray-600 dark:text-gray-300" title="Salir y cerrar sesión"><Icon name="exit_to_app" /></button>
@@ -451,7 +449,7 @@
       const [dbFilename, setDbFilename] = useState('');
       const [masterKey, setMasterKey] = useState(null);
       const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
-      const [saveStatus, setSaveStatus] = useState('saved');
+      const [saveStatus, setSaveStatus] = useState('saved'); // 'saved', 'idle', 'saving', 'error'
       const addToast = useNotifier();
 
       const hasUnsavedChangesRef = useRef(hasUnsavedChanges);
@@ -484,7 +482,6 @@
             setHasUnsavedChanges(false);
             setSaveStatus('saved');
             await fetchKeychains(user.id);
-            addToast('¡Llavero guardado en la nube!', 'success');
         } catch (error) {
             console.error("Error saving to Supabase:", error);
             setSaveStatus('error');
@@ -517,8 +514,27 @@
       const resetInactivityTimer = useCallback(() => { clearTimeout(inactivityTimer.current); inactivityTimer.current = setTimeout(() => { handleSignOut({ reason: 'inactivity' }); }, SESSION_TIMEOUT_MS); }, [handleSignOut]);
       useEffect(() => { const events = ['mousemove', 'mousedown', 'keypress', 'scroll', 'touchstart']; if (appStatus === 'unlocked') { events.forEach(event => window.addEventListener(event, resetInactivityTimer)); resetInactivityTimer(); } return () => { events.forEach(event => window.removeEventListener(event, resetInactivityTimer)); clearTimeout(inactivityTimer.current); }; }, [appStatus, resetInactivityTimer]);
 
-      useEffect(() => { if (hasUnsavedChanges) setSaveStatus('idle'); const debounceTimer = setTimeout(() => { if (hasUnsavedChanges && !isModalOpenRef.current) handleSaveChanges(); }, AUTOSAVE_DELAY); return () => clearTimeout(debounceTimer); }, [hasUnsavedChanges, handleSaveChanges]);
-      useEffect(() => { const handleVisibilityChange = () => { if (document.visibilityState === 'hidden' && hasUnsavedChangesRef.current && !isModalOpenRef.current) handleSaveChanges(); }; document.addEventListener('visibilitychange', handleVisibilityChange); return () => document.removeEventListener('visibilitychange', handleVisibilityChange); }, [handleSaveChanges]);
+      useEffect(() => {
+        if (hasUnsavedChanges) {
+          setSaveStatus('idle');
+          const debounceTimer = setTimeout(() => {
+            if (hasUnsavedChangesRef.current && !isModalOpenRef.current) {
+                handleSaveChanges();
+            }
+          }, AUTOSAVE_DELAY);
+          return () => clearTimeout(debounceTimer);
+        }
+      }, [hasUnsavedChanges, handleSaveChanges]);
+      
+      useEffect(() => { 
+        const handleVisibilityChange = () => { 
+            if (document.visibilityState === 'hidden' && hasUnsavedChangesRef.current && !isModalOpenRef.current) {
+                handleSaveChanges();
+            }
+        }; 
+        document.addEventListener('visibilitychange', handleVisibilityChange); 
+        return () => document.removeEventListener('visibilitychange', handleVisibilityChange); 
+      }, [handleSaveChanges]);
 
       const handleSignUp = async (email, password) => { setLoading(true); setAuthError(''); const { error } = await supabase.auth.signUp({ email, password }); if (error) setAuthError(error.message); else addToast("¡Registro exitoso! Por favor, inicie sesión.", 'success'); setLoading(false); };
       const handleLogin = async (email, password) => { setLoading(true); setAuthError(''); const { data, error } = await supabase.auth.signInWithPassword({ email, password }); if (error) { setAuthError(error.message); } else if (data.user) { setUser(data.user); await fetchKeychains(data.user.id); setAppStatus('select_keychain'); } setLoading(false); };
@@ -545,7 +561,7 @@
               } else {
                   const salt = getSalt(db);
                   const key = await deriveKey(password, salt);
-                  setMasterKey(key); setAppStatus('unlocked'); setHasUnsavedChanges(true); setSaveStatus('idle');
+                  setMasterKey(key); setAppStatus('unlocked'); setHasUnsavedChanges(true);
               }
           } catch (error) { console.error("Failed to unlock/set password:", error); addToast(error.message, "error"); setAppStatus('select_keychain'); } 
           finally { setLoading(false); }
