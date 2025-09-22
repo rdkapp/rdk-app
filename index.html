@@ -4,7 +4,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>RDK APP v4.5.0</title>
+  <title>RDK APP v4.6.0</title>
   
   <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -62,7 +62,7 @@
 
   <script type="text/babel">
     // --- APP CONFIGURATION ---
-    const APP_VERSION = "4.5.0";
+    const APP_VERSION = "4.6.0";
     const SESSION_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutos
 
     // --- GOOGLE API CONFIGURATION ---
@@ -174,10 +174,14 @@
           setAuthError('');
           gapi.client.setToken(tokenResponse);
           try {
-              const userInfoRes = await gapi.client.request({
-                  'path': 'https://www.googleapis.com/oauth2/v3/userinfo'
+              const userInfoRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+                headers: { 'Authorization': `Bearer ${tokenResponse.access_token}` }
               });
-              const profile = userInfoRes.result;
+              if (!userInfoRes.ok) {
+                throw new Error(`Google API responded with status ${userInfoRes.status}`);
+              }
+              const profile = await userInfoRes.json();
+
               setUser({
                   name: profile.name || 'Usuario',
                   email: profile.email || '',
@@ -187,10 +191,9 @@
               setAppStatus('select_keychain');
           } catch (e) {
               console.error("Error fetching user profile:", e);
-              const errorMessage = e.result?.error?.message || "No se pudo obtener la información del usuario.";
+              const errorMessage = "No se pudo obtener la información del usuario.";
               setAuthError(errorMessage);
               setAppStatus('auth');
-              // Revoke the token if user info fails, as something is wrong
               google.accounts.oauth2.revoke(tokenResponse.access_token, () => {});
               gapi.client.setToken('');
           } finally {
