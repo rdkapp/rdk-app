@@ -1,10 +1,9 @@
-
 <!DOCTYPE html>
 <html lang="es">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>RDK APP v4.3.0</title>
+  <title>RDK APP v4.4.0</title>
   
   <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -64,7 +63,7 @@
 
   <script type="text/babel">
     // --- APP CONFIGURATION ---
-    const APP_VERSION = "4.3.0";
+    const APP_VERSION = "4.4.0";
     const SESSION_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutos
 
     // --- GOOGLE API CONFIGURATION ---
@@ -170,6 +169,35 @@
             setKeychains([]);
         }
       }, [addToast]);
+
+      const handleAuthSuccess = useCallback(async (tokenResponse) => {
+          setLoading(true);
+          setAuthError('');
+          gapi.client.setToken(tokenResponse);
+          try {
+              const userInfoRes = await gapi.client.request({
+                  'path': 'https://www.googleapis.com/oauth2/v3/userinfo'
+              });
+              const profile = userInfoRes.result;
+              setUser({
+                  name: profile.name || 'Usuario',
+                  email: profile.email || '',
+                  picture: profile.picture || ''
+              });
+              await fetchKeychains();
+              setAppStatus('select_keychain');
+          } catch (e) {
+              console.error("Error fetching user profile:", e);
+              const errorMessage = e.result?.error?.message || "No se pudo obtener la información del usuario.";
+              setAuthError(errorMessage);
+              setAppStatus('auth');
+              // Revoke the token if user info fails, as something is wrong
+              google.accounts.oauth2.revoke(tokenResponse.access_token, () => {});
+              gapi.client.setToken('');
+          } finally {
+              setLoading(false);
+          }
+      }, [fetchKeychains, addToast]);
       
       const handleSaveChanges = useCallback(async () => {
         if (!db || !activeKeychain || !masterKey || saveStatus === 'saving') return;
@@ -247,34 +275,19 @@
                 const client = google.accounts.oauth2.initTokenClient({
                     client_id: GOOGLE_CLIENT_ID,
                     scope: DRIVE_API_SCOPE,
-                    callback: async (tokenResponse) => {
-                        if (tokenResponse.error) {
-                            setAuthError(`Error de autenticación: ${tokenResponse.error}`);
-                            setAppStatus('auth');
-                            return;
-                        }
-                        gapi.client.setToken(tokenResponse);
-                        try {
-                            const userInfoRes = await gapi.client.request({
-                                'path': 'https://www.googleapis.com/oauth2/v3/userinfo'
-                            });
-                            const profile = userInfoRes.result;
-                            setUser({
-                                name: profile.name || 'Usuario',
-                                email: profile.email || '',
-                                picture: profile.picture || ''
-                            });
-                            await fetchKeychains();
-                            setAppStatus('select_keychain');
-                        } catch (e) {
-                            console.error("Error fetching user profile:", e);
-                            setAuthError("No se pudo obtener la información del usuario.");
-                            setAppStatus('auth');
-                        }
+                    callback: (tokenResponse) => {
+                      if (tokenResponse && !tokenResponse.error) {
+                        handleAuthSuccess(tokenResponse);
+                      }
+                      // Error is handled by error_callback for silent, or user sees popup for manual.
                     },
+                    error_callback: (error) => {
+                      // This primarily catches silent auth failures
+                      console.log("Silent auth failed:", error);
+                      setAppStatus('auth'); // Stay on auth screen
+                    }
                 });
                 setTokenClient(client);
-                setAppStatus('auth'); // Assume manual login required, silent login will override
             } catch (error) {
                 console.error("Error initializing Google API client:", error);
                 setAuthError("No se pudo inicializar la API de Google. Verifique la API Key.");
@@ -283,14 +296,15 @@
         };
 
         initLibs();
-      }, [fetchKeychains]);
+      }, [handleAuthSuccess]);
 
       // Silent login attempt effect
       useEffect(() => {
-        if (tokenClient && appStatus === 'auth') {
+        if (tokenClient) {
+          // This will trigger either the 'callback' or 'error_callback' set during init
           tokenClient.requestAccessToken({ prompt: 'none' });
         }
-      }, [tokenClient, appStatus]);
+      }, [tokenClient]);
 
       const handleSignOut = useCallback(async (options = {}) => {
         if (hasUnsavedChangesRef.current && !window.confirm("Tiene cambios sin guardar que se perderán. ¿Seguro?")) return;
@@ -323,7 +337,7 @@
       useEffect(() => { const autoSaveInterval = setInterval(() => { if (hasUnsavedChangesRef.current && !isModalOpenRef.current) { handleSaveChanges(); } }, AUTOSAVE_DELAY); return () => clearInterval(autoSaveInterval); }, [handleSaveChanges]);
       useEffect(() => { const handleBeforeUnload = (e) => { if (hasUnsavedChangesRef.current) { e.preventDefault(); e.returnValue = ''; } }; const handleVisibilityChange = () => { if (document.visibilityState === 'hidden' && hasUnsavedChangesRef.current) { handleSaveChanges(); } }; window.addEventListener('beforeunload', handleBeforeUnload); document.addEventListener('visibilitychange', handleVisibilityChange); return () => { window.removeEventListener('beforeunload', handleBeforeUnload); document.removeEventListener('visibilitychange', handleVisibilityChange); }; }, [handleSaveChanges]);
 
-      const handleAuthClick = () => { if (tokenClient) { setLoading(true); tokenClient.requestAccessToken({ prompt: 'consent' }); setLoading(false); } else { setAuthError("Cliente de autenticación no inicializado."); } };
+      const handleAuthClick = () => { if (tokenClient) { tokenClient.requestAccessToken({ prompt: 'consent' }); } else { setAuthError("Cliente de autenticación no inicializado."); } };
       
       const [isCreateModalOpen, setCreateModalOpen] = useState(false);
       const handleCreateNewKeychain = async (name) => { setCreateModalOpen(false); const filename = name.endsWith('.db') ? name : `${name}.db`; if (keychains.some(kc => kc.name === filename)) { addToast("Ya existe un llavero con este nombre.", "error"); return; } const { database } = await initDb(null); setKeychainName(database, name); setDb(database); setActiveKeychain({id: null, name: filename}); setAppStatus('unlock_keychain'); };
