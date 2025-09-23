@@ -1,9 +1,10 @@
+
 <!DOCTYPE html>
 <html lang="es">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>RDK APP v8.1.0</title>
+  <title>RDK APP v8.3.0</title>
   
   <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -60,13 +61,13 @@
 
   <script type="text/babel">
     // --- APP CONFIGURATION ---
-    const APP_VERSION = "8.1.0";
+    const APP_VERSION = "8.3.0";
     const SESSION_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutos
 
     // --- GOOGLE API CONFIGURATION ---
     const GOOGLE_CLIENT_ID = '576080826935-2mtnj52ndc8plnsjodjevt3e2gsh4m3a.apps.googleusercontent.com';
     const GOOGLE_API_KEY = 'AIzaSyC3aFfyDSQ181xr-JK9VKEG3OkK5gY0D-8';
-    const DRIVE_API_SCOPE = 'https://www.googleapis.com/auth/drive.appdata https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile';
+    const DRIVE_API_SCOPE = 'https://www.googleapis.com/auth/drive.appdata https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile';
     
     // --- CONSTANTS ---
     const SALT_LENGTH = 16;
@@ -80,13 +81,15 @@
     const deriveKey = async (password, salt) => { const passwordEncoder = new TextEncoder(); const baseKey = await window.crypto.subtle.importKey('raw', passwordEncoder.encode(password), { name: 'PBKDF2' }, false, ['deriveKey']); return window.crypto.subtle.deriveKey({ name: 'PBKDF2', salt, iterations: PBKDF2_ITERATIONS, hash: 'SHA-256' }, baseKey, { name: 'AES-GCM', length: 256 }, true, ['encrypt', 'decrypt']); };
     
     const decryptDBFile = async (encryptedFileContent, password) => {
-        const salt = encryptedFileContent.slice(0, SALT_LENGTH);
-        const ivAndData = encryptedFileContent.slice(SALT_LENGTH);
-        const iv = ivAndData.slice(0, IV_LENGTH);
-        const encryptedData = ivAndData.slice(IV_LENGTH);
-        
-        const key = await deriveKey(password, salt);
         try {
+            const fileStr = new TextDecoder().decode(encryptedFileContent);
+            const fileJson = JSON.parse(fileStr);
+            const salt = base64ToUint8Array(fileJson.salt);
+            const iv = base64ToUint8Array(fileJson.iv);
+            const encryptedData = base64ToUint8Array(fileJson.data);
+
+            const key = await deriveKey(password, salt);
+
             const decryptedBuffer = await window.crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, encryptedData);
             return { dbBuffer: new Uint8Array(decryptedBuffer), masterKey: key };
         } catch (e) {
@@ -99,11 +102,12 @@
         const iv = window.crypto.getRandomValues(new Uint8Array(IV_LENGTH));
         const encryptedData = await window.crypto.subtle.encrypt({ name: 'AES-GCM', iv }, masterKey, dbUint8Array);
         
-        const combined = new Uint8Array(SALT_LENGTH + IV_LENGTH + encryptedData.byteLength);
-        combined.set(salt, 0);
-        combined.set(iv, SALT_LENGTH);
-        combined.set(new Uint8Array(encryptedData), SALT_LENGTH + IV_LENGTH);
-        return combined;
+        const fileJson = {
+            salt: bufferToBase64(salt),
+            iv: bufferToBase64(iv),
+            data: bufferToBase64(encryptedData)
+        };
+        return new TextEncoder().encode(JSON.stringify(fileJson));
     };
 
     const encryptField = async (text, key) => { const iv = window.crypto.getRandomValues(new Uint8Array(IV_LENGTH)); const encodedText = new TextEncoder().encode(text); const encryptedData = await window.crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, encodedText); const combined = new Uint8Array(iv.length + encryptedData.byteLength); combined.set(iv, 0); combined.set(new Uint8Array(encryptedData), iv.length); return bufferToBase64(combined.buffer); };
@@ -113,15 +117,13 @@
     const createTables = (db) => { db.run(`CREATE TABLE IF NOT EXISTS credentials (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, encrypted_username TEXT NOT NULL, encrypted_password TEXT NOT NULL, comment TEXT, tag_id INTEGER, FOREIGN KEY (tag_id) REFERENCES tags(id));`); db.run(`CREATE TABLE IF NOT EXISTS metadata (key TEXT PRIMARY KEY, value TEXT);`); db.run(`CREATE TABLE IF NOT EXISTS tags (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL UNIQUE);`); };
     const getRawMetadata = (db, key) => { const res = db.exec("SELECT value FROM metadata WHERE key = ?", [key]); return (res.length > 0 && res[0].values.length > 0) ? res[0].values[0][0] : null; };
     const setRawMetadata = (db, key, value) => db.run("INSERT OR REPLACE INTO metadata (key, value) VALUES (?, ?)", [key, value]);
-    const getSalt = (db) => { const b64Salt = getRawMetadata(db, 'salt'); return b64Salt ? base64ToUint8Array(b64Salt) : null; };
-    const setSalt = (db, saltUint8Array) => { setRawMetadata(db, 'salt', bufferToBase64(saltUint8Array.buffer)); };
     const getKeychainName = (db) => getRawMetadata(db, 'keychain_name') || 'MiLlavero';
     const setKeychainName = (db, name) => setRawMetadata(db, 'keychain_name', name);
     const initDb = async (SQL) => { 
       const database = new SQL.Database();
       createTables(database);
       const salt = window.crypto.getRandomValues(new Uint8Array(SALT_LENGTH));
-      setSalt(database, salt);
+      // Salt is no longer stored in metadata, but in the encrypted file itself.
       return { database, salt };
     };
     const exportDb = (db) => db.export();
@@ -158,6 +160,7 @@
       // User & Auth State
       const [user, setUser] = useState(null);
       const tokenClient = useRef(null);
+      const currentSalt = useRef(null);
 
       // Keychain State
       const [keychains, setKeychains] = useState([]);
@@ -165,12 +168,12 @@
       const [masterKey, setMasterKey] = useState(null);
       const [currentFileId, setCurrentFileId] = useState(null);
       const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+      const [keychainNameToSetPassword, setKeychainNameToSetPassword] = useState('');
 
       // UI State
       const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
       const [isCredentialModalOpen, setIsCredentialModalOpen] = useState(false);
       const [editingCredential, setEditingCredential] = useState(null);
-      const [viewMode, setViewMode] = useState('list'); // 'list' or 'grid'
       
       const addToast = useNotifier();
       
@@ -204,9 +207,10 @@
                     }
                 },
                 error_callback: (error) => {
-                    if (error && (error.type === 'popup_closed' || error.type === 'popup_failed_to_open' || error.type === 'browser_not_supported')) {
+                    const known_gsi_errors = ['popup_closed', 'popup_failed_to_open', 'browser_not_supported', 'opt_out_or_no_session', 'popup_blocked_by_browser'];
+                    if (error && known_gsi_errors.includes(error.type)) {
                         console.info('GSI silent auth failed as expected, user interaction required.');
-                        setAppStatus('auth'); // Ensure we are in a state where user can click a button
+                        setAppStatus('auth'); 
                     } else {
                         console.error('GSI Error:', error);
                         setError("Ocurrió un error de autenticación.");
@@ -285,14 +289,14 @@
             let detailedError = "Ocurrió un error inesperado.";
             if (err.result?.error?.message) {
                 detailedError = err.result.error.message;
-                if (detailedError.includes("API has not been used") || detailedError.includes("is not enabled")) {
-                    detailedError += ". Por favor, asegúrese de que la 'Google Drive API' está habilitada en su proyecto de Google Cloud Console.";
-                }
             } else if (err.message) {
                 detailedError = err.message;
             }
-            setError(`Error al inicializar: ${detailedError} Verifique la configuración de la API.`);
-            setAppStatus('auth'); // Fallback to auth screen
+            setError(`Error al inicializar: ${detailedError}. Verifique la configuración de la API.`);
+            if (detailedError.includes("API has not been used") || detailedError.includes("is not enabled")) {
+                setError(`Error al inicializar: La API de Drive no está habilitada. Por favor, asegúrese de que la 'Google Drive API' está habilitada en su proyecto de Google Cloud Console.`);
+            }
+            setAppStatus('auth');
         }
       }, []);
 
@@ -303,8 +307,8 @@
       };
       
       const handleSaveToDrive = useCallback(async (dbToSave, existingFileId) => {
-        if (!dbToSave || !masterKey) {
-            addToast("No se puede guardar: faltan datos clave o la contraseña maestra no está disponible.", "error");
+        if (!dbToSave || !masterKey || !currentSalt.current) {
+            addToast("No se puede guardar: faltan datos clave.", "error");
             return;
         }
 
@@ -312,40 +316,48 @@
             setAppStatus('loading');
             
             const dbUint8Array = exportDb(dbToSave);
-            const salt = getSalt(dbToSave);
-            const fileContentToUpload = await encryptDBFile(dbUint8Array, salt, masterKey);
+            const fileContentToUpload = await encryptDBFile(dbUint8Array, currentSalt.current, masterKey);
 
             const keychainName = getKeychainName(dbToSave);
             const fileName = `${keychainName}.rdk`;
 
-            // Strategy: Create a new file, then delete the old one. This is more robust for appDataFolder.
-            const newFileMetadata = {
-                name: fileName,
-                mimeType: 'application/octet-stream',
-                parents: ['appDataFolder']
-            };
-            const form = new FormData();
-            form.append('metadata', new Blob([JSON.stringify(newFileMetadata)], { type: 'application/json' }));
-            form.append('file', new Blob([fileContentToUpload], { type: 'application/octet-stream' }));
-            
-            const createResponse = await gapi.client.request({
-                path: '/upload/drive/v3/files',
-                method: 'POST',
-                params: { uploadType: 'multipart' },
-                body: form
-            });
-            const newFileId = createResponse.result.id;
+            const fileMetadata = { name: fileName, mimeType: 'application/json' };
             
             if (existingFileId) {
-                try {
-                    await gapi.client.drive.files.delete({ fileId: existingFileId });
-                } catch (deleteError) {
-                    console.warn(`Failed to delete old keychain file (${existingFileId}), but new one was saved.`, deleteError);
-                    addToast("No se pudo borrar el llavero antiguo, puede que haya duplicados.", "info");
-                }
+                // UPDATE (PATCH)
+                const boundary = '-------314159265358979323846';
+                const delimiter = "\r\n--" + boundary + "\r\n";
+                const close_delim = "\r\n--" + boundary + "--";
+
+                const metadataPart = 'Content-Type: application/json\r\n\r\n' + JSON.stringify(fileMetadata);
+                const mediaPart = 'Content-Type: application/json\r\n\r\n' + new TextDecoder().decode(fileContentToUpload);
+                
+                const requestBody = delimiter + metadataPart + delimiter + mediaPart + close_delim;
+
+                const response = await gapi.client.request({
+                    path: `/upload/drive/v3/files/${existingFileId}`,
+                    method: 'PATCH',
+                    params: { uploadType: 'multipart' },
+                    headers: { 'Content-Type': `multipart/related; boundary="${boundary}"` },
+                    body: requestBody
+                });
+                setCurrentFileId(response.result.id);
+            } else {
+                // CREATE (POST)
+                fileMetadata.parents = ['appDataFolder'];
+                const form = new FormData();
+                form.append('metadata', new Blob([JSON.stringify(fileMetadata)], { type: 'application/json' }));
+                form.append('file', new Blob([fileContentToUpload], { type: 'application/json' }));
+
+                const response = await gapi.client.request({
+                    path: '/upload/drive/v3/files',
+                    method: 'POST',
+                    params: { uploadType: 'multipart' },
+                    body: form
+                });
+                setCurrentFileId(response.result.id);
             }
             
-            setCurrentFileId(newFileId);
             addToast("Cambios guardados en Drive.", "success");
             setHasUnsavedChanges(false);
 
@@ -362,10 +374,12 @@
             if (!SQL) throw new Error("SQL.js no está cargado");
             setAppStatus('loading');
             
-            const { database: newDb } = await initDb(SQL);
+            const { database: newDb, salt } = await initDb(SQL);
             setKeychainName(newDb, name);
+            currentSalt.current = salt;
             
             setDb(newDb);
+            setKeychainNameToSetPassword(name);
             setAppStatus('set-master-password');
 
         } catch (error) {
@@ -390,7 +404,13 @@
             const encryptedFileContent = new Uint8Array(await fetchResponse.arrayBuffer());
 
             const { dbBuffer, masterKey: derivedKey } = await decryptDBFile(encryptedFileContent, password);
+            
             const finalDb = new SQL.Database(dbBuffer);
+            
+            // Extract salt from the file for future saves
+            const fileStr = new TextDecoder().decode(encryptedFileContent);
+            const fileJson = JSON.parse(fileStr);
+            currentSalt.current = base64ToUint8Array(fileJson.salt);
 
             setDb(finalDb);
             setMasterKey(derivedKey);
@@ -407,9 +427,8 @@
 
       const handleSetMasterPassword = async (password) => {
         try {
-          const salt = getSalt(db);
-          if (!salt) throw new Error("Salt no encontrado en la base de datos.");
-          const key = await deriveKey(password, salt);
+          if (!currentSalt.current) throw new Error("Salt no generado.");
+          const key = await deriveKey(password, currentSalt.current);
           setMasterKey(key);
           setAppStatus('unlocked');
           setHasUnsavedChanges(true); // Mark for first save
@@ -428,6 +447,7 @@
           setMasterKey(null);
           setCurrentFileId(null);
           setHasUnsavedChanges(false);
+          currentSalt.current = null;
           setAppStatus('select-keychain');
       };
 
@@ -450,21 +470,21 @@
       const handleDeleteTag = withSave((id) => { try { deleteTag(db, id); addToast("Etiqueta eliminada.", "success"); } catch (e) { addToast(e.message, "error"); } });
       const handleSaveKeychainName = (newName) => {
           setKeychainName(db, newName);
-          setDb(new SQL.Database(exportDb(db))); // Force re-render of name
-          setHasUnsavedChanges(true); // This will trigger autosave
+          setDb(new SQL.Database(exportDb(db))); 
+          setHasUnsavedChanges(true); 
       };
 
       // --- RENDER LOGIC ---
       const renderContent = () => {
         switch (appStatus) {
           case 'initializing':
-            return <div className="text-center"><Spinner className="border-gray-500 mx-auto"/> <p className="mt-2 text-gray-500">Inicializando API de Google...</p></div>;
+            return <div className="text-center"><Spinner className="border-gray-500 mx-auto"/> <p className="mt-2 text-gray-500">Inicializando...</p></div>;
           case 'auth':
             return (<div className="text-center max-w-sm mx-auto"><h2 className="text-2xl font-bold text-gray-900 dark:text-white">Bienvenido al Llavero Personal</h2><p className="mt-2 text-gray-600 dark:text-gray-400">Una forma segura de guardar tus credenciales, directamente en tu Google Drive.</p>{error && <p className="mt-4 text-red-500 bg-red-100 dark:bg-red-900/50 p-3 rounded-md whitespace-pre-wrap">{error}</p>}<button onClick={handleAuthClick} className="mt-6 w-full inline-flex justify-center items-center py-3 px-4 border border-transparent shadow-sm text-base font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700"><svg className="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" /><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.3v2.84C4.01 20.49 7.72 23 12 23z" /><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.3C1.46 8.85 1 10.39 1 12s.46 3.15 1.3 4.93l3.54-2.84z" /><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.72 1 4.01 3.51 2.3 7.07l3.54 2.84c.87-2.6 3.3-4.53 6.16-4.53z" /></svg>Conectar con Google Drive</button></div>);
           case 'select-keychain':
             return <KeychainSelectionScreen user={user} keychains={keychains} onCreate={handleCreateNewKeychain} onUnlock={handleUnlockKeychain} />;
           case 'set-master-password':
-            return <SetMasterPasswordScreen onSetPassword={handleSetMasterPassword} keychainName={getKeychainName(db)} />;
+            return <SetMasterPasswordScreen onSetPassword={handleSetMasterPassword} keychainName={keychainNameToSetPassword} />;
           case 'unlock':
              return <div>Unlock Screen - Not implemented</div>;
           case 'unlocked':
