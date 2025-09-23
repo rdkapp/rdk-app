@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>RDK APP v9.3.0</title>
+  <title>RDK APP v9.4.0</title>
   
   <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -60,7 +60,7 @@
 
   <script type="text/babel">
     // --- APP CONFIGURATION ---
-    const APP_VERSION = "9.3.0";
+    const APP_VERSION = "9.4.0";
     const SESSION_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutos
 
     // --- GOOGLE API CONFIGURATION ---
@@ -199,19 +199,18 @@
                     }
                 },
                 error_callback: (error) => {
-                    const known_gsi_errors = ['popup_closed', 'popup_failed_to_open', 'browser_not_supported', 'opt_out_or_no_session', 'popup_blocked_by_browser'];
-                    if (error && known_gsi_errors.includes(error.type)) {
-                        console.info('GSI silent auth failed as expected, user interaction required.');
-                        setAppStatus('auth'); 
+                    if (error && error.type === 'popup_closed') {
+                        console.info('Auth popup closed by user.');
                     } else {
                         console.error('GSI Error:', error);
                         setError("Ocurrió un error de autenticación.");
-                        setAppStatus('auth');
                     }
+                    setAppStatus('auth');
                 }
             });
             setAppStatus('auth');
-            tokenClient.current.requestAccessToken({ prompt: 'none' });
+            // No longer attempting silent sign-in to prevent console errors from browser privacy features.
+            // User must always click to initiate authentication.
         };
         
         return () => clearInterval(checkGapiReady);
