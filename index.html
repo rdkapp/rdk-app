@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>RDK APP v9.4.0</title>
+  <title>RDK APP v9.5.0</title>
   
   <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -60,7 +60,7 @@
 
   <script type="text/babel">
     // --- APP CONFIGURATION ---
-    const APP_VERSION = "9.4.0";
+    const APP_VERSION = "9.5.0";
     const SESSION_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutos
 
     // --- GOOGLE API CONFIGURATION ---
@@ -97,9 +97,9 @@
         }
     };
 
-    const encryptDBFile = async (dbUint8Array, salt, masterKey) => {
+    const encryptDBFile = async (dbUint8Array, salt, keyToUse) => {
         const iv = window.crypto.getRandomValues(new Uint8Array(IV_LENGTH));
-        const encryptedData = await window.crypto.subtle.encrypt({ name: 'AES-GCM', iv }, masterKey, dbUint8Array);
+        const encryptedData = await window.crypto.subtle.encrypt({ name: 'AES-GCM', iv }, keyToUse, dbUint8Array);
         
         const fileJson = {
             salt: bufferToBase64(salt),
@@ -151,20 +151,20 @@
       const { useState, useEffect, useRef, useCallback } = React;
       
       // App State
-      const [appStatus, setAppStatus] = useState('initializing'); // initializing, auth, create-keychain, select-keychain, unlock, unlocked, loading
+      const [appStatus, setAppStatus] = useState('initializing'); // initializing, auth, create-keychain, select-keychain, unlocked, loading
       const [error, setError] = useState(null);
       const [SQL, setSQL] = useState(null);
 
       // User & Auth State
       const [user, setUser] = useState(null);
       const tokenClient = useRef(null);
-      const currentSalt = useRef(null);
-
+      
       // Keychain State
       const [keychains, setKeychains] = useState([]);
       const [db, setDb] = useState(null);
       const [masterKey, setMasterKey] = useState(null);
       const [currentFileId, setCurrentFileId] = useState(null);
+      const [currentSalt, setCurrentSalt] = useState(null);
       const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
       
       const addToast = useNotifier();
@@ -201,6 +201,8 @@
                 error_callback: (error) => {
                     if (error && error.type === 'popup_closed') {
                         console.info('Auth popup closed by user.');
+                    } else if (error && (error.type === 'popup_failed_to_open' || error.type === 'popup_blocked_by_browser')) {
+                         console.info("Silent sign-in failed due to browser privacy settings. This is expected.");
                     } else {
                         console.error('GSI Error:', error);
                         setError("Ocurrió un error de autenticación.");
@@ -209,8 +211,6 @@
                 }
             });
             setAppStatus('auth');
-            // No longer attempting silent sign-in to prevent console errors from browser privacy features.
-            // User must always click to initiate authentication.
         };
         
         return () => clearInterval(checkGapiReady);
@@ -245,11 +245,11 @@
         if (appStatus === 'unlocked' && hasUnsavedChanges) {
           const timer = setTimeout(() => {
             addToast("Autoguardando cambios...", "info");
-            handleSaveToDrive(db, currentFileId);
+            handleSaveToDrive(db, currentFileId, masterKey, currentSalt);
           }, AUTOSAVE_DELAY);
           return () => clearTimeout(timer);
         }
-      }, [hasUnsavedChanges, db, currentFileId, appStatus]);
+      }, [hasUnsavedChanges, db, currentFileId, masterKey, currentSalt, appStatus]);
 
       // --- Handlers ---
       const handleAuthSuccess = useCallback(async (tokenResponse) => {
@@ -298,9 +298,11 @@
         }
       };
       
-      const handleSaveToDrive = useCallback(async (dbToSave, existingFileId) => {
-        if (!dbToSave || !masterKey || !currentSalt.current) {
+      const handleSaveToDrive = useCallback(async (dbToSave, existingFileId, keyToUse, saltToUse) => {
+        if (!dbToSave || !keyToUse || !saltToUse) {
             addToast("No se puede guardar: faltan datos clave.", "error");
+            // Set status to unlocked to prevent getting stuck in loading
+            if(appStatus === 'loading') setAppStatus('unlocked');
             return;
         }
 
@@ -308,13 +310,15 @@
             setAppStatus('loading');
             
             const dbUint8Array = exportDb(dbToSave);
-            const fileContentToUpload = await encryptDBFile(dbUint8Array, currentSalt.current, masterKey);
+            const fileContentToUpload = await encryptDBFile(dbUint8Array, saltToUse, keyToUse);
 
             const keychainName = getKeychainName(dbToSave);
             const fileName = `${keychainName}.db`;
 
             const fileMetadata = { name: fileName, mimeType: 'application/json' };
             
+            let newFileId = existingFileId;
+
             if (existingFileId) {
                 // UPDATE (PATCH)
                 const boundary = '-------314159265358979323846';
@@ -326,14 +330,13 @@
                 
                 const requestBody = delimiter + metadataPart + delimiter + mediaPart + close_delim;
 
-                const response = await gapi.client.request({
+                await gapi.client.request({
                     path: `/upload/drive/v3/files/${existingFileId}`,
                     method: 'PATCH',
                     params: { uploadType: 'multipart' },
                     headers: { 'Content-Type': `multipart/related; boundary="${boundary}"` },
                     body: requestBody
                 });
-                setCurrentFileId(response.result.id);
             } else {
                 // CREATE (POST)
                 fileMetadata.parents = ['appDataFolder'];
@@ -347,19 +350,21 @@
                     params: { uploadType: 'multipart' },
                     body: form
                 });
-                setCurrentFileId(response.result.id);
+                newFileId = response.result.id;
             }
             
             addToast("Cambios guardados en Drive.", "success");
             setHasUnsavedChanges(false);
+            return newFileId;
 
         } catch (error) {
             console.error("Error saving to Drive:", error);
             addToast(`Error al guardar: ${error.result?.error?.message || error.message}`, "error");
+            throw error; // Propagate error to the caller
         } finally {
-            setAppStatus('unlocked');
+            if(appStatus === 'loading') setAppStatus('unlocked');
         }
-      }, [addToast, masterKey]);
+      }, [addToast, appStatus]);
       
       const handleUnlockKeychain = async (fileId, password) => {
         setAppStatus('loading');
@@ -382,11 +387,12 @@
             // Extract salt from the file for future saves
             const fileStr = new TextDecoder().decode(encryptedFileContent);
             const fileJson = JSON.parse(fileStr);
-            currentSalt.current = base64ToUint8Array(fileJson.salt);
+            const salt = base64ToUint8Array(fileJson.salt);
 
             setDb(finalDb);
             setMasterKey(derivedKey);
             setCurrentFileId(fileId);
+            setCurrentSalt(salt);
             setHasUnsavedChanges(false);
             setAppStatus('unlocked');
             addToast("Llavero desbloqueado.", "success");
@@ -407,12 +413,17 @@
             
             const key = await deriveKey(password, salt);
             
-            setDb(newDb);
-            setMasterKey(key);
-            currentSalt.current = salt;
-            setCurrentFileId(null);
+            const newFileId = await handleSaveToDrive(newDb, null, key, salt);
             
-            await handleSaveToDrive(newDb, null);
+            if (newFileId) {
+                setDb(newDb);
+                setMasterKey(key);
+                setCurrentSalt(salt);
+                setCurrentFileId(newFileId);
+                setAppStatus('unlocked');
+            } else {
+                 throw new Error("No se pudo obtener el ID del nuevo archivo de Drive.");
+            }
 
         } catch (err) {
             console.error("Error creating keychain:", err);
@@ -423,20 +434,20 @@
       
       const handleLock = () => {
           if(hasUnsavedChanges) {
-              handleSaveToDrive(db, currentFileId).then(() => {
+              handleSaveToDrive(db, currentFileId, masterKey, currentSalt).then(() => {
                 setDb(null);
                 setMasterKey(null);
                 setCurrentFileId(null);
+                setCurrentSalt(null);
                 setHasUnsavedChanges(false);
-                currentSalt.current = null;
                 setAppStatus('select-keychain');
               });
           } else {
               setDb(null);
               setMasterKey(null);
               setCurrentFileId(null);
+              setCurrentSalt(null);
               setHasUnsavedChanges(false);
-              currentSalt.current = null;
               setAppStatus('select-keychain');
           }
       };
@@ -474,10 +485,8 @@
                         onUnlock={handleUnlockKeychain}
                         onTriggerCreate={() => setAppStatus('create-keychain')}
                     />;
-          case 'unlock':
-             return <div>Unlock Screen - Not implemented</div>;
           case 'unlocked':
-            return <UnlockedScreen db={db} masterKey={masterKey} onLock={handleLock} onSaveToDrive={handleSaveToDrive} currentFileId={currentFileId} onAddCredential={handleAddCredential} onUpdateCredential={handleUpdateCredential} onDeleteCredential={handleDeleteCredential} onAddTag={handleAddTag} onDeleteTag={handleDeleteTag} onSaveKeychainName={handleSaveKeychainName} />;
+            return <UnlockedScreen db={db} masterKey={masterKey} onLock={handleLock} onSaveToDrive={() => handleSaveToDrive(db, currentFileId, masterKey, currentSalt)} onAddCredential={handleAddCredential} onUpdateCredential={handleUpdateCredential} onDeleteCredential={handleDeleteCredential} onAddTag={handleAddTag} onDeleteTag={handleDeleteTag} onSaveKeychainName={handleSaveKeychainName} />;
           case 'loading':
             return <div className="text-center"><Spinner className="border-gray-500 mx-auto"/> <p className="mt-2 text-gray-500">Cargando...</p></div>;
           default:
@@ -598,7 +607,7 @@
         );
     };
     
-    const UnlockedScreen = ({ db, masterKey, onLock, onSaveToDrive, currentFileId, onAddCredential, onUpdateCredential, onDeleteCredential, onAddTag, onDeleteTag, onSaveKeychainName }) => {
+    const UnlockedScreen = ({ db, masterKey, onLock, onSaveToDrive, onAddCredential, onUpdateCredential, onDeleteCredential, onAddTag, onDeleteTag, onSaveKeychainName }) => {
         const { useState, useEffect, useMemo } = React;
         const [credentials, setCredentials] = useState([]);
         const [tags, setTags] = useState([]);
@@ -661,7 +670,7 @@
                     <h2 className="text-2xl font-bold text-gray-800 dark:text-gray-200">Llavero: <span className="text-blue-600 dark:text-blue-400">{keychainName}</span></h2>
                     <div className="flex items-center space-x-2">
                         <button onClick={() => setIsSettingsModalOpen(true)} className="p-2 rounded-full hover:bg-gray-200 dark:hover:bg-zinc-700 text-gray-600 dark:text-gray-300" title="Configuración"><Icon name="settings" /></button>
-                        <button onClick={() => onSaveToDrive(db, currentFileId)} className="py-2 px-4 border border-blue-600 text-blue-600 dark:text-blue-400 dark:border-blue-500 rounded-md shadow-sm text-sm font-medium hover:bg-blue-50 dark:hover:bg-blue-900/50">Guardar</button>
+                        <button onClick={onSaveToDrive} className="py-2 px-4 border border-blue-600 text-blue-600 dark:text-blue-400 dark:border-blue-500 rounded-md shadow-sm text-sm font-medium hover:bg-blue-50 dark:hover:bg-blue-900/50">Guardar</button>
                         <button onClick={onLock} className="py-2 px-4 border border-gray-300 dark:border-zinc-600 rounded-md text-sm font-medium text-gray-700 dark:text-gray-200 bg-white dark:bg-zinc-700 hover:bg-gray-50 dark:hover:bg-zinc-600">Bloquear</button>
                     </div>
                 </div>
