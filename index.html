@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>RDK APP v8.9.0</title>
+  <title>RDK APP v9.0.0</title>
   
   <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -60,7 +60,7 @@
 
   <script type="text/babel">
     // --- APP CONFIGURATION ---
-    const APP_VERSION = "8.9.0";
+    const APP_VERSION = "9.0.0";
     const SESSION_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutos
 
     // --- GOOGLE API CONFIGURATION ---
@@ -369,7 +369,7 @@
         }
       }, [addToast, masterKey]);
 
-      const handleCreateNewKeychain = (name) => {
+      const handleConfirmCreateKeychain = (name) => {
         setIsCreateKeychainModalOpen(false);
         setNewKeychainName(name);
         setAppStatus('set-master-password');
@@ -484,10 +484,8 @@
             return <KeychainSelectionScreen 
                         user={user} 
                         keychains={keychains} 
-                        onCreate={handleCreateNewKeychain} 
                         onUnlock={handleUnlockKeychain}
-                        isCreateModalOpen={isCreateKeychainModalOpen}
-                        setIsCreateModalOpen={setIsCreateKeychainModalOpen}
+                        onTriggerCreate={() => setIsCreateKeychainModalOpen(true)}
                     />;
           case 'set-master-password':
             return <SetMasterPasswordScreen onSetPassword={handleSetMasterPassword} keychainName={newKeychainName} />;
@@ -508,6 +506,12 @@
           <main className="container mx-auto px-4 py-8">
             <div className="flex items-center justify-center">
               {renderContent()}
+              {isCreateKeychainModalOpen && (
+                <CreateKeychainModal 
+                  onClose={() => setIsCreateKeychainModalOpen(false)}
+                  onConfirm={handleConfirmCreateKeychain}
+                />
+              )}
             </div>
           </main>
           <GlobalFooter />
@@ -515,21 +519,37 @@
       );
     }
     
-    const KeychainSelectionScreen = ({ user, keychains, onCreate, onUnlock, isCreateModalOpen, setIsCreateModalOpen }) => {
-        const { useState } = React;
-        const [newKeychainName, setNewKeychainName] = useState('');
-        const [unlockingFile, setUnlockingFile] = useState(null);
-        const [password, setPassword] = useState('');
+    const CreateKeychainModal = ({ onClose, onConfirm }) => {
+        const [name, setName] = useState('');
         const addToast = useNotifier();
 
-        const handleCreate = () => {
-            if (newKeychainName.trim()) {
-                onCreate(newKeychainName.trim());
-                setNewKeychainName('');
+        const handleCreateClick = () => {
+            if (name.trim()) {
+                onConfirm(name.trim());
             } else {
                 addToast("El nombre del llavero no puede estar vacío.", "error");
             }
         };
+
+        return (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+                <div className="bg-white dark:bg-zinc-800 rounded-lg shadow-xl w-full max-w-sm m-4 p-6">
+                    <h3 className="text-lg font-bold text-gray-900 dark:text-white">Crear Nuevo Llavero</h3>
+                    <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">Dale un nombre a tu nuevo archivo de llavero.</p>
+                    <input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="Ej: Personal, Trabajo..." className="mt-4 block w-full rounded-md border-gray-300 dark:border-zinc-600 shadow-sm bg-gray-50 dark:bg-zinc-700 text-gray-900 dark:text-white" autoFocus />
+                    <div className="mt-6 flex justify-end space-x-3">
+                        <button onClick={onClose} className="py-2 px-4 border border-gray-300 dark:border-zinc-600 rounded-md text-sm font-medium text-gray-700 dark:text-gray-200 bg-white dark:bg-zinc-700 hover:bg-gray-50 dark:hover:bg-zinc-600">Cancelar</button>
+                        <button onClick={handleCreateClick} className="py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700">Crear</button>
+                    </div>
+                </div>
+            </div>
+        );
+    };
+
+    const KeychainSelectionScreen = ({ user, keychains, onUnlock, onTriggerCreate }) => {
+        const { useState } = React;
+        const [unlockingFile, setUnlockingFile] = useState(null);
+        const [password, setPassword] = useState('');
 
         const handleUnlockSubmit = (e) => {
             e.preventDefault();
@@ -537,20 +557,6 @@
             setUnlockingFile(null);
             setPassword('');
         };
-
-        const CreateModal = () => (
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
-                <div className="bg-white dark:bg-zinc-800 rounded-lg shadow-xl w-full max-w-sm m-4 p-6">
-                    <h3 className="text-lg font-bold text-gray-900 dark:text-white">Crear Nuevo Llavero</h3>
-                    <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">Dale un nombre a tu nuevo archivo de llavero.</p>
-                    <input type="text" value={newKeychainName} onChange={e => setNewKeychainName(e.target.value)} placeholder="Ej: Personal, Trabajo..." className="mt-4 block w-full rounded-md border-gray-300 dark:border-zinc-600 shadow-sm bg-gray-50 dark:bg-zinc-700 text-gray-900 dark:text-white" autoFocus />
-                    <div className="mt-6 flex justify-end space-x-3">
-                        <button onClick={() => setIsCreateModalOpen(false)} className="py-2 px-4 border border-gray-300 dark:border-zinc-600 rounded-md text-sm font-medium text-gray-700 dark:text-gray-200 bg-white dark:bg-zinc-700 hover:bg-gray-50 dark:hover:bg-zinc-600">Cancelar</button>
-                        <button onClick={handleCreate} className="py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700">Crear</button>
-                    </div>
-                </div>
-            </div>
-        );
 
         const UnlockModal = () => (
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
@@ -568,7 +574,6 @@
 
         return (
             <div className="w-full max-w-md">
-                {isCreateModalOpen && <CreateModal />}
                 {unlockingFile && <UnlockModal />}
                 <div className="text-center mb-6">
                     {user && <img src={user.picture} alt="Foto de perfil" className="w-16 h-16 rounded-full mx-auto mb-3" />}
@@ -583,7 +588,7 @@
                         </button>
                     )) : <p className="text-center text-gray-500 p-4">No se encontraron llaveros. ¡Crea el primero!</p>}
                 </div>
-                <button onClick={() => setIsCreateModalOpen(true)} className="mt-4 w-full bg-green-600 text-white py-3 rounded-md shadow hover:bg-green-700 font-medium flex items-center justify-center">
+                <button onClick={onTriggerCreate} className="mt-4 w-full bg-green-600 text-white py-3 rounded-md shadow hover:bg-green-700 font-medium flex items-center justify-center">
                     <Icon name="add" className="mr-2"/>Crear Nuevo Llavero
                 </button>
             </div>
