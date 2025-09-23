@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>RDK APP v8.0.0</title>
+  <title>RDK APP v8.1.0</title>
   
   <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -60,7 +60,7 @@
 
   <script type="text/babel">
     // --- APP CONFIGURATION ---
-    const APP_VERSION = "8.0.0";
+    const APP_VERSION = "8.1.0";
     const SESSION_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutos
 
     // --- GOOGLE API CONFIGURATION ---
@@ -274,10 +274,10 @@
           const response = await gapi.client.drive.files.list({
               spaces: 'appDataFolder',
               fields: 'files(id, name)',
-              q: "mimeType='application/octet-stream' and name ends with '.rdk'"
           });
-
-          setKeychains(response.result.files || []);
+          
+          const keychainFiles = (response.result.files || []).filter(file => file.name && file.name.endsWith('.rdk'));
+          setKeychains(keychainFiles);
           setAppStatus('select-keychain');
 
         } catch (err) {
