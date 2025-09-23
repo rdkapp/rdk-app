@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>RDK APP v5.8.0</title>
+  <title>RDK APP v5.9.0</title>
   
   <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -61,7 +61,7 @@
 
   <script type="text/babel">
     // --- APP CONFIGURATION ---
-    const APP_VERSION = "5.8.0";
+    const APP_VERSION = "5.9.0";
     const SESSION_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutos
 
     // --- GOOGLE API CONFIGURATION ---
@@ -220,32 +220,42 @@
             const encryptedDbBase64 = await encryptDBFile(dbDataUint8, masterKey);
             const salt = getSalt(db);
             const fileContent = bufferToBase64(salt.buffer) + encryptedDbBase64;
-            const file = new Blob([fileContent], {type: 'text/plain'});
-            const metadata = { name: activeKeychain.name, mimeType: 'text/plain' };
-
+            
             if (activeKeychain.id) {
-                // UPDATE: Use a single multipart request for update, which is more robust
-                const form = new FormData();
-                form.append('metadata', new Blob([JSON.stringify({ name: metadata.name })], { type: 'application/json' }));
-                form.append('file', file);
+                // UPDATE: Manually construct the multipart request for robustness with appDataFolder
+                const boundary = '-------314159265358979323846';
+                const delimiter = `\r\n--${boundary}\r\n`;
+                const close_delim = `\r\n--${boundary}--`;
+
+                const requestBody =
+                    delimiter +
+                    `Content-Type: application/json; charset=UTF-8\r\n\r\n` +
+                    JSON.stringify({ name: activeKeychain.name }) +
+                    delimiter +
+                    `Content-Type: text/plain; charset=UTF-8\r\n\r\n` +
+                    fileContent +
+                    close_delim;
 
                 const response = await gapi.client.request({
                     path: `/upload/drive/v3/files/${activeKeychain.id}`,
                     method: 'PATCH',
                     params: { uploadType: 'multipart' },
-                    body: form
+                    headers: {
+                        'Content-Type': `multipart/related; boundary="${boundary}"`
+                    },
+                    body: requestBody
                 });
-                
-                if (!response.result.id) {
-                  throw new Error("File update did not return an ID.");
+
+                if (!response.result || !response.result.id) {
+                  throw new Error("La actualización del archivo no devolvió una respuesta válida.");
                 }
 
             } else {
-                // CREATE: Multipart request is fine for new files
-                metadata.parents = ['appDataFolder'];
+                // CREATE: Use FormData for new files as it's simpler and works
+                const metadata = { name: activeKeychain.name, parents: ['appDataFolder'] };
                 const form = new FormData();
                 form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
-                form.append('file', file);
+                form.append('file', new Blob([fileContent], { type: 'text/plain' }));
                 
                 const response = await gapi.client.request({
                     path: '/upload/drive/v3/files',
@@ -254,8 +264,8 @@
                     body: form
                 });
 
-                if (!response.result.id) {
-                  throw new Error("File creation did not return an ID.");
+                if (!response.result || !response.result.id) {
+                  throw new Error("La creación del archivo no devolvió una respuesta válida.");
                 }
                 setActiveKeychain(prev => ({ ...prev, id: response.result.id }));
             }
@@ -308,6 +318,9 @@
                       }
                     },
                     error_callback: (error) => {
+                      // This callback handles programmatic errors. The GSI_LOGGER message in the console
+                      // is an informational log from the library itself due to browser privacy settings
+                      // (blocking third-party cookies) and is expected behavior when silent sign-in fails.
                       const expectedSilentSignInErrors = ['popup_closed_by_user', 'popup_blocked_by_browser', 'popup_failed_to_open'];
                       if (error && !expectedSilentSignInErrors.includes(error.type)) {
                           console.error("GSI Error:", error);
