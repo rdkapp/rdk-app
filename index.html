@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>RDK APP v11.0.0</title>
+  <title>RDK APP v11.1.0</title>
   
   <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -52,7 +52,7 @@
 
   <script type="text/babel">
     // --- APP CONFIGURATION ---
-    const APP_VERSION = "11.0.0";
+    const APP_VERSION = "11.1.0";
     const SESSION_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutos
 
     // --- GOOGLE API CONFIGURATION ---
@@ -189,18 +189,24 @@
                 callback: (tokenResponse) => {
                     if (tokenResponse && tokenResponse.access_token) {
                         handleAuthSuccess(tokenResponse.access_token);
+                    } else {
+                        // This case handles silent sign-in failure, which is expected
+                        setAppStatus('auth');
                     }
                 },
                 error_callback: (error) => {
                     if (error && error.type === 'popup_closed') {
                         console.info('Auth popup closed by user.');
+                        setAppStatus('auth');
                     } else if (error && (error.type === 'popup_failed_to_open' || error.type === 'popup_blocked_by_browser')) {
                          console.info("Silent sign-in failed due to browser privacy settings. This is expected.");
+                         setAppStatus('auth');
+
                     } else {
                         console.error('GSI Error:', error);
                         setError("Ocurrió un error de autenticación.");
+                        setAppStatus('auth');
                     }
-                    setAppStatus('auth');
                 }
             });
             setAppStatus('auth');
@@ -277,7 +283,7 @@
       };
 
       const listKeychains = async (token) => {
-          const q = "'appDataFolder' in parents and trashed = false and name ends with '.db'";
+          const q = "'appDataFolder' in parents and trashed = false and name contains '.db'";
           const fields = 'files(id, name)';
           const url = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=${encodeURIComponent(fields)}`;
           const response = await driveFetch(url, {}, token);
