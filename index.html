@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>RDK APP v10.1.0</title>
+  <title>RDK APP v10.2.0</title>
   
   <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -60,13 +60,13 @@
 
   <script type="text/babel">
     // --- APP CONFIGURATION ---
-    const APP_VERSION = "10.1.0";
+    const APP_VERSION = "10.2.0";
     const SESSION_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutos
 
     // --- GOOGLE API CONFIGURATION ---
     const GOOGLE_CLIENT_ID = '576080826935-2mtnj52ndc8plnsjodjevt3e2gsh4m3a.apps.googleusercontent.com';
     const GOOGLE_API_KEY = 'AIzaSyC3aFfyDSQ181xr-JK9VKEG3OkK5gY0D-8';
-    const DRIVE_API_SCOPE = 'https://www.googleapis.com/auth/drive.appdata https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile';
+    const DRIVE_API_SCOPE = 'https://www.googleapis.com/auth/drive.appdata https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile';
     
     // --- CONSTANTS ---
     const SALT_LENGTH = 16;
@@ -319,36 +319,34 @@
 
             const keychainName = getKeychainName(dbToSave);
             const fileName = `${keychainName}.db`;
-
+            
             const fileMetadata = { 
                 name: fileName, 
-                mimeType: 'application/json',
                 parents: ['appDataFolder'] 
             };
-            
-            const boundary = '-------314159265358979323846';
-            const metadataPart = 'Content-Type: application/json; charset=UTF-8\r\n\r\n' + JSON.stringify(fileMetadata);
-            const mediaPart = 'Content-Type: application/json\r\n\r\n' + new TextDecoder().decode(fileContentToUpload);
 
-            const requestBody = [
-                '--' + boundary,
-                metadataPart,
-                '--' + boundary,
-                mediaPart,
-                '--' + boundary + '--'
-            ].join('\r\n');
-
-            const createResponse = await gapi.client.request({
-                path: '/upload/drive/v3/files',
-                method: 'POST',
-                params: { uploadType: 'multipart' },
-                headers: { 'Content-Type': `multipart/related; boundary="${boundary}"` },
-                body: requestBody
+            // Step 1: Create the file with metadata
+            const createResponse = await gapi.client.drive.files.create({
+                resource: fileMetadata,
+                fields: 'id'
             });
 
             const newFileId = createResponse.result.id;
             if (!newFileId) {
                 throw new Error("La API de Drive no devolvió un ID de archivo válido después de la creación.");
+            }
+
+            // Step 2: Upload the content to the newly created file
+            const uploadResponse = await gapi.client.request({
+                path: `/upload/drive/v3/files/${newFileId}`,
+                method: 'PATCH',
+                params: { uploadType: 'media' },
+                headers: { 'Content-Type': 'application/json' },
+                body: fileContentToUpload
+            });
+
+            if (uploadResponse.status !== 200) {
+                 throw new Error(`Error al subir el contenido del archivo (status: ${uploadResponse.status})`);
             }
             
             if (existingFileId) {
@@ -665,6 +663,10 @@
         };
         
         const keychainName = useMemo(() => getKeychainName(db), [db]);
+        
+        const listContainerClass = viewMode === 'list' 
+            ? 'space-y-3' 
+            : 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4';
 
         return (
             <div className="w-full">
@@ -713,7 +715,7 @@
                      {activeFilters.length > 0 && <div className="mt-2 flex flex-wrap gap-2">{activeFilters.map(filter => <span key={filter} className="inline-flex items-center px-2 py-1 bg-blue-100 text-blue-800 text-xs font-medium rounded-full dark:bg-blue-900 dark:text-blue-300">{filter}<button onClick={() => handleFilterToggle(filter)} className="ml-1.5"><Icon name="close" className="text-xs"/></button></span>)}</div>}
                 </div>
                 
-                <div className="space-y-3">
+                <div className={listContainerClass}>
                     {filteredCredentials.length > 0 ? filteredCredentials.map(cred => (
                         <CredentialItem key={cred.id} credential={cred} onEdit={() => handleEditCredential(cred)} onDelete={() => handleDeleteCredentialConfirmed(cred.id)} masterKey={masterKey} />
                     )) : <p className="text-center text-gray-500 py-8">No se encontraron credenciales. ¡Crea la primera!</p>}
