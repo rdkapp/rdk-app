@@ -1,10 +1,9 @@
-
 <!DOCTYPE html>
 <html lang="es">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>RDK APP v5.1.0</title>
+  <title>RDK APP v5.3.0</title>
   
   <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -62,15 +61,14 @@
 
   <script type="text/babel">
     // --- APP CONFIGURATION ---
-    const APP_VERSION = "5.1.0";
+    const APP_VERSION = "5.3.0";
     const SESSION_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutos
 
     // --- GOOGLE API CONFIGURATION ---
     const GOOGLE_CLIENT_ID = '576080826935-2mtnj52ndc8plnsjodjevt3e2gsh4m3a.apps.googleusercontent.com';
     const GOOGLE_API_KEY = 'AIzaSyC3aFfyDSQ181xr-JK9VKEG3OkK5gY0D-8';
     const DRIVE_API_SCOPE = 'https://www.googleapis.com/auth/drive.appdata https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile';
-    const DISCOVERY_DOCS = ['https://www.googleapis.com/discovery/v1/apis/drive/v3/rest'];
-
+    
     // --- CONSTANTS ---
     const SALT_LENGTH = 16;
     const IV_LENGTH = 12;
@@ -94,7 +92,7 @@
     const setSalt = (db, saltUint8Array) => { setRawMetadata(db, 'salt', bufferToBase64(saltUint8Array.buffer)); };
     const getKeychainName = (db) => getRawMetadata(db, 'keychain_name') || 'MiLlavero';
     const setKeychainName = (db, name) => setRawMetadata(db, 'keychain_name', name);
-    const initDb = async (dbBuffer) => { const SQL = window.SQL; let database; let isNew = false; if (dbBuffer && dbBuffer.byteLength > 0) { database = new SQL.Database(new Uint8Array(dbBuffer)); } else { database = new SQL.Database(); isNew = true; } if (isNew) { createTables(database); const salt = window.crypto.getRandomValues(new Uint8Array(SALT_LENGTH)); setSalt(database, salt); } const salt = getSalt(database); if (!salt) throw new Error("Archivo de base de datos inválido o corrupto: falta salt."); return { database, salt }; };
+    const initDb = async (SQL, dbBuffer) => { let database; let isNew = false; if (dbBuffer && dbBuffer.byteLength > 0) { database = new SQL.Database(new Uint8Array(dbBuffer)); } else { database = new SQL.Database(); isNew = true; } if (isNew) { createTables(database); const salt = window.crypto.getRandomValues(new Uint8Array(SALT_LENGTH)); setSalt(database, salt); } const salt = getSalt(database); if (!salt) throw new Error("Archivo de base de datos inválido o corrupto: falta salt."); return { database, salt }; };
     const exportDb = (db) => db.export();
     const getCredentials = (db) => { const res = db.exec(`SELECT c.id, c.name, c.encrypted_username, c.encrypted_password, c.comment, t.name FROM credentials c LEFT JOIN tags t ON c.tag_id = t.id`); return res.length === 0 ? [] : res[0].values.map(row => ({ id: row[0], name: row[1], username: row[2], password: row[3], comment: row[4], tag: row[5] || 'Sin Etiqueta' })); };
     const addCredential = (db, cred) => { db.run('INSERT INTO credentials (name, encrypted_username, encrypted_password, comment, tag_id) VALUES (?, ?, ?, ?, (SELECT id FROM tags WHERE name = ?))', [cred.name, cred.username, cred.password, cred.comment, cred.tag]); };
@@ -135,6 +133,8 @@
       const [configError, setConfigError] = useState(null);
       const [authError, setAuthError] = useState('');
       const [loading, setLoading] = useState(false);
+      // Lib State
+      const [SQL, setSQL] = useState(null);
       // Google & User state
       const [tokenClient, setTokenClient] = useState(null);
       const [user, setUser] = useState(null);
@@ -172,6 +172,9 @@
           setAuthError('');
           gapi.client.setToken(tokenResponse);
           try {
+              // Initialize the Drive API client after getting the token.
+              await gapi.client.load('drive', 'v3');
+              
               const userInfoRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
                 headers: { 'Authorization': `Bearer ${tokenResponse.access_token}` }
               });
@@ -188,11 +191,21 @@
               await fetchKeychains();
               setAppStatus('select_keychain');
           } catch (e) {
-              console.error("Error fetching user profile:", e);
-              const errorMessage = "No se pudo obtener la información del usuario.";
+              console.error("Error during post-auth initialization:", e);
+              let errorMessage = "Ocurrió un error al configurar la sesión.\n\n";
+              if (e.result && e.result.error) {
+                  errorMessage += `Detalles: ${e.result.error.message}`;
+                  if (e.result.error.status === 'PERMISSION_DENIED') {
+                      errorMessage += "\n\nVerifique que la 'Google Drive API' está habilitada en su Google Cloud Console.";
+                  }
+              } else {
+                  errorMessage += `Detalles: ${e.message || 'No se pudo obtener la información del usuario.'}`;
+              }
               setAuthError(errorMessage);
               setAppStatus('auth');
-              google.accounts.oauth2.revoke(tokenResponse.access_token, () => {});
+              if (tokenResponse.access_token) {
+                google.accounts.oauth2.revoke(tokenResponse.access_token, () => {});
+              }
               gapi.client.setToken('');
           } finally {
               setLoading(false);
@@ -257,7 +270,8 @@
                     return;
                 }
                 
-                await window.initSqlJs({ locateFile: file => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/${file}` });
+                const sqlModule = await window.initSqlJs({ locateFile: file => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/${file}` });
+                setSQL(sqlModule);
                 
                 const checkApisLoaded = new Promise((resolve, reject) => {
                     const timeout = setTimeout(() => reject(new Error("Los scripts de Google API no cargaron a tiempo.")), 10000);
@@ -272,10 +286,7 @@
                 
                 await checkApisLoaded;
                 
-                await gapi.client.init({
-                    apiKey: GOOGLE_API_KEY,
-                    discoveryDocs: DISCOVERY_DOCS,
-                });
+                gapi.client.setApiKey(GOOGLE_API_KEY);
 
                 const client = google.accounts.oauth2.initTokenClient({
                     client_id: GOOGLE_CLIENT_ID,
@@ -292,14 +303,8 @@
                 setTokenClient(client);
                 setAppStatus('auth'); 
             } catch (error) {
-                console.error("Error initializing Google API client:", error);
-                let detailedError = "No se pudo inicializar la API de Google. " + (error.details || error.message);
-                if (error.message && (error.message.includes('missing required fields') || (error.result && error.result.error))) {
-                    detailedError = "Error al inicializar: La API de Google Drive no está accesible.\n\n" +
-                                    "Por favor, verifique en su Google Cloud Console:\n\n" +
-                                    "1. Que la 'Google Drive API' esté HABILITADA en la sección 'Biblioteca'.\n\n" +
-                                    "2. Que las restricciones de su API Key permitan el acceso (pruebe a quitarlas temporalmente para diagnosticar).";
-                }
+                console.error("Error initializing libraries:", error);
+                let detailedError = "No se pudo inicializar la aplicación. " + (error.details || error.message);
                 setAuthError(detailedError);
                 setAppStatus('auth');
             }
@@ -310,10 +315,10 @@
 
       // Silent login attempt effect
       useEffect(() => {
-        if (tokenClient && appStatus === 'auth') {
+        if (tokenClient && appStatus === 'auth' && SQL) {
           tokenClient.requestAccessToken({ prompt: 'none' });
         }
-      }, [tokenClient, appStatus]);
+      }, [tokenClient, appStatus, SQL]);
 
       const handleSignOut = useCallback(async (options = {}) => {
         if (hasUnsavedChangesRef.current && !window.confirm("Tiene cambios sin guardar que se perderán. ¿Seguro?")) return;
@@ -351,30 +356,29 @@
       const [isCreateModalOpen, setCreateModalOpen] = useState(false);
       const handleCreateNewKeychain = async (name) => {
         setCreateModalOpen(false);
-        setAppStatus('loading'); // Use a generic loading screen to provide feedback
+        setAppStatus('loading');
         
-        // Brief delay to allow UI to update to loading state
         await new Promise(resolve => setTimeout(resolve, 50));
 
         try {
             const filename = name.endsWith('.db') ? name : `${name}.db`;
             if (keychains.some(kc => kc.name === filename)) {
                 addToast("Ya existe un llavero con este nombre.", "error");
-                setAppStatus('select_keychain'); // Return to the selection screen
+                setAppStatus('select_keychain');
                 return;
             }
             
-            const { database } = await initDb(null);
-            setKeychainName(database, name); // Set the user-provided name
+            const { database } = await initDb(SQL, null);
+            setKeychainName(database, name);
             
             setDb(database);
             setActiveKeychain({id: null, name: filename});
-            setAppStatus('unlock_keychain'); // Transition to the unlock/create password screen
+            setAppStatus('unlock_keychain');
         
         } catch (error) {
             console.error("Failed to create new keychain:", error);
             addToast("Ocurrió un error al crear el llavero.", "error");
-            setAppStatus('select_keychain'); // Go back to safety on error
+            setAppStatus('select_keychain');
         }
       };
       
@@ -391,7 +395,7 @@
                   const salt = base64ToUint8Array(saltBase64);
                   const key = await deriveKey(password, salt);
                   const dbUint8Array = await decryptDBFile(encryptedDbFileBase64, key);
-                  const { database } = await initDb(dbUint8Array);
+                  const { database } = await initDb(SQL, dbUint8Array);
                   setDb(database); setMasterKey(key); setAppStatus('unlocked'); setHasUnsavedChanges(false); setSaveStatus('saved');
               } else { // New file, DB is already in memory
                   const salt = getSalt(db);
@@ -400,13 +404,13 @@
               }
           } catch (error) { console.error("Failed to unlock:", error); addToast(error.message, "error"); setAppStatus('select_keychain'); } 
           finally { setLoading(false); }
-      }, [db, activeKeychain, addToast]);
+      }, [SQL, db, activeKeychain, addToast]);
       
       const goBackToSelector = () => { setDb(null); setActiveKeychain(null); setMasterKey(null); setAppStatus('select_keychain'); };
       const handleChangeKeychain = useCallback(() => { if (hasUnsavedChangesRef.current && !window.confirm("Tiene cambios sin guardar que se perderán. ¿Desea continuar?")) return; goBackToSelector(); }, []);
 
       const ActiveComponent = () => {
-          if (appStatus === 'initializing') return <LoadingScreen message="Inicializando API de Google..." />;
+          if (appStatus === 'initializing' || !SQL) return <LoadingScreen message="Inicializando API de Google..." />;
           if (appStatus === 'auth') return <AuthScreen onAuthClick={handleAuthClick} error={authError} loading={loading} configError={configError} />;
           if (appStatus === 'select_keychain') return (<> <KeychainSelector onSelectKeychain={handleSelectKeychain} onCreate={() => setCreateModalOpen(true)} onSignOut={handleSignOut} keychains={keychains} user={user} /> <CreateKeychainModal isOpen={isCreateModalOpen} onClose={() => setCreateModalOpen(false)} onCreate={handleCreateNewKeychain} addToast={addToast} /> </>);
           if (appStatus === 'unlock_keychain') return <UnlockScreen onUnlock={handleUnlockKeychain} keychainName={activeKeychain.name} isCreating={!activeKeychain.id} onBack={goBackToSelector} addToast={addToast} />;
