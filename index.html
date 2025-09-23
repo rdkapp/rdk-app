@@ -4,7 +4,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>RDK APP v4.7.0</title>
+  <title>RDK APP v5.1.0</title>
   
   <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -62,16 +62,14 @@
 
   <script type="text/babel">
     // --- APP CONFIGURATION ---
-    const APP_VERSION = "4.7.0";
+    const APP_VERSION = "5.1.0";
     const SESSION_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutos
 
     // --- GOOGLE API CONFIGURATION ---
-    const GOOGLE_CLIENT_ID = '576080826935-2mtnj52ndc8plnsjodjevt3e2gsh4m3a.apps.googleusercontent.com'; // Reemplazar
-    const GOOGLE_API_KEY = 'AIzaSyC3aFfyDSQ181xr-JK9VKEG3OkK5gY0D-8';       // Reemplazar
+    const GOOGLE_CLIENT_ID = '576080826935-2mtnj52ndc8plnsjodjevt3e2gsh4m3a.apps.googleusercontent.com';
+    const GOOGLE_API_KEY = 'AIzaSyC3aFfyDSQ181xr-JK9VKEG3OkK5gY0D-8';
     const DRIVE_API_SCOPE = 'https://www.googleapis.com/auth/drive.appdata https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile';
-    const DISCOVERY_DOCS = [
-      "https://www.googleapis.com/discovery/v1/apis/drive/v3/rest"
-    ];
+    const DISCOVERY_DOCS = ['https://www.googleapis.com/discovery/v1/apis/drive/v3/rest'];
 
     // --- CONSTANTS ---
     const SALT_LENGTH = 16;
@@ -124,7 +122,7 @@
     const SearchBar = ({ onSearch, onFilterChange, activeFilters, tags, viewMode, onViewModeChange }) => ( <div className="mb-6 space-y-4"> <div className="relative"> <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3"><Icon name="search" className="text-gray-400" /></div> <input type="search" onChange={(e) => onSearch(e.target.value)} placeholder="Buscar por nombre o comentario..." className="block w-full rounded-lg border border-gray-300 dark:border-zinc-600 bg-gray-50 dark:bg-zinc-700 py-3 pl-10 pr-4 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500" /> </div> <div className="flex justify-between items-center gap-4"> <FilterControl tags={tags} onFilterChange={onFilterChange} activeFilters={activeFilters} /> <div className="flex items-center space-x-1 p-1 bg-gray-200 dark:bg-zinc-800 rounded-lg"> <button onClick={() => onViewModeChange('list')} className={`p-1.5 rounded-md transition-colors ${viewMode === 'list' ? 'bg-white dark:bg-zinc-600 text-blue-600 dark:text-blue-400 shadow-sm' : 'text-gray-500 hover:bg-gray-300/50 dark:hover:bg-zinc-700/50'}`} title="Vista de lista"> <Icon name="view_list" /> </button> <button onClick={() => onViewModeChange('grid')} className={`p-1.5 rounded-md transition-colors ${viewMode === 'grid' ? 'bg-white dark:bg-zinc-600 text-blue-600 dark:text-blue-400 shadow-sm' : 'text-gray-500 hover:bg-gray-300/50 dark:hover:bg-zinc-700/50'}`} title="Vista de tarjetas"> <Icon name="grid_view" /> </button> </div> </div> </div> );
     const MainInterface = ({ db, masterKey, onSignOut, onChangeKeychain, onSaveChanges, setHasUnsavedChanges, user, saveStatus, onModalStateChange }) => { const { useState, useEffect, useCallback, useMemo } = React; const [credentials, setCredentials] = useState([]); const [tags, setTags] = useState([]); const [keychainName, setKeychainNameState] = useState('MiLlavero'); const [isLoading, setIsLoading] = useState(true); const [isModalOpen, setIsModalOpen] = useState(false); const [isSettingsOpen, setIsSettingsOpen] = useState(false); const [editingCredential, setEditingCredential] = useState(null); const [searchTerm, setSearchTerm] = useState(''); const [filterTags, setFilterTags] = useState([]); const [viewMode, setViewMode] = useState('list'); const addToast = useNotifier(); useEffect(() => { const isAnyModalOpen = isModalOpen || isSettingsOpen; onModalStateChange(isAnyModalOpen); }, [isModalOpen, isSettingsOpen, onModalStateChange]); const refreshData = useCallback(() => { setIsLoading(true); try { setCredentials(getCredentials(db)); setTags(getTags(db)); setKeychainNameState(getKeychainName(db)); } catch (error) { addToast('Error al leer datos del llavero.', 'error'); onSignOut(); } finally { setIsLoading(false); } }, [db, onSignOut, addToast]); useEffect(() => { refreshData(); }, [refreshData]); const handleAddOrUpdate = (credential) => { if (credential.id && credential.id > 0) { updateCredential(db, credential); } else { addCredential(db, credential); } setHasUnsavedChanges(true); refreshData(); setIsModalOpen(false); setEditingCredential(null); }; const handleDelete = (id) => { if (window.confirm('¿Está seguro?')) { deleteCredential(db, id); setHasUnsavedChanges(true); refreshData(); }}; const handleEdit = (credential) => { setEditingCredential(credential); setIsModalOpen(true); }; const handleAddNew = () => { setEditingCredential(null); setIsModalOpen(true); }; const handleSaveKeychainName = (newName) => { setKeychainName(db, newName); setKeychainNameState(newName); setHasUnsavedChanges(true); }; const handleAddTag = (tagName) => { try { addTag(db, tagName); setHasUnsavedChanges(true); setTags(getTags(db)); } catch(e) { addToast("Error: " + e.message, "error"); } }; const handleDeleteTag = (tagId) => { try { deleteTag(db, tagId); setHasUnsavedChanges(true); refreshData(); } catch(e) { addToast("Error: " + e.message, "error"); } }; const handleCloseSettings = () => { setIsSettingsOpen(false); }; const handleCloseCredentialModal = () => { setIsModalOpen(false); setEditingCredential(null); }; const filteredCredentials = useMemo(() => credentials.filter(c => (filterTags.length === 0 || filterTags.includes(c.tag)) && (searchTerm.length === 0 || c.name.toLowerCase().includes(searchTerm.toLowerCase()) || (c.comment && c.comment.toLowerCase().includes(searchTerm.toLowerCase())))).sort((a, b) => a.name.localeCompare(b.name)), [credentials, searchTerm, filterTags]); const SaveStatusIndicator = () => { let content; let baseClasses = "flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-semibold"; switch (saveStatus) { case 'saving': content = <><Spinner className="border-gray-400 h-4 w-4" /> Guardando...</>; return <div className={`${baseClasses} bg-gray-200 dark:bg-zinc-700 text-gray-600 dark:text-gray-300`}>{content}</div>; case 'error': content = <><Icon name="error" className="text-base mr-1"/> Error. Reintentar</>; return <button onClick={onSaveChanges} className={`${baseClasses} bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-200 hover:bg-red-200 dark:hover:bg-red-900`}>{content}</button>; case 'idle': content = <> <Icon name="cloud_upload" className="text-base mr-1"/> Cambios sin guardar</>; return <div className={`${baseClasses} bg-yellow-100 dark:bg-yellow-900/50 text-yellow-800 dark:text-yellow-200`}>{content}</div>; case 'saved': default: content = <><Icon name="cloud_done" className="text-base mr-1 text-green-500"/> Guardado en Drive</>; return <div className={`${baseClasses} bg-gray-200 dark:bg-zinc-700 text-gray-800 dark:text-gray-200`}>{content}</div>; } }; return ( <div className="max-w-4xl mx-auto min-h-screen bg-white dark:bg-zinc-800 shadow-lg md:rounded-2xl flex flex-col"> <div className="sticky top-16 z-20 flex flex-col md:flex-row md:items-center justify-between gap-4 p-4 border-b border-gray-200 dark:border-zinc-700 bg-gray-50/80 dark:bg-zinc-800/80 backdrop-blur-sm"> <div className="font-semibold text-gray-700 dark:text-gray-200 truncate text-center md:text-left"> <span className="font-normal text-gray-500 dark:text-gray-400">Llavero: </span>{keychainName} </div> <div className="flex items-center justify-center md:justify-end flex-wrap gap-2"> <SaveStatusIndicator/> <button onClick={() => setIsSettingsOpen(true)} className="p-2 rounded-full hover:bg-gray-200 dark:hover:bg-zinc-700 text-gray-600 dark:text-gray-300" title="Configuración"><Icon name="settings" /></button> <button onClick={onChangeKeychain} className="p-2 rounded-full hover:bg-gray-200 dark:hover:bg-zinc-700 text-gray-600 dark:text-gray-300" title="Cambiar llavero"><Icon name="refresh" /></button> <button onClick={onSignOut} className="p-2 rounded-full hover:bg-gray-200 dark:hover:bg-zinc-700 text-gray-600 dark:text-gray-300" title="Cerrar sesión de Google"><Icon name="exit_to_app" /></button> </div> </div> <main className="flex-grow p-4 sm:p-6 pb-24 overflow-y-auto"> <SearchBar onSearch={setSearchTerm} onFilterChange={setFilterTags} activeFilters={filterTags} tags={tags} viewMode={viewMode} onViewModeChange={setViewMode} /> {isLoading ? <p>Cargando...</p> : <CredentialList credentials={filteredCredentials} onEdit={handleEdit} onDelete={handleDelete} masterKey={masterKey} viewMode={viewMode} /> } </main> <div className="fixed bottom-16 right-4 sm:right-6 z-20"><button onClick={handleAddNew} className="bg-blue-600 hover:bg-blue-700 text-white rounded-full p-4 shadow-lg"><Icon name="add" className="text-2xl" /></button></div> <CredentialModal isOpen={isModalOpen} onClose={handleCloseCredentialModal} onSave={handleAddOrUpdate} credential={editingCredential} tags={tags} addToast={addToast} masterKey={masterKey} /> <SettingsModal isOpen={isSettingsOpen} onClose={handleCloseSettings} keychainName={keychainName} onSaveKeychainName={handleSaveKeychainName} tags={tags} onAddTag={handleAddTag} onDeleteTag={handleDeleteTag} addToast={addToast}/> </div> ); };
     const LoadingScreen = ({ message }) => (<div className="flex flex-col items-center justify-center min-h-screen bg-gray-100 dark:bg-zinc-900 text-gray-800 dark:text-gray-200"><Spinner className="border-blue-500" /><p className="mt-4 text-lg">{message}</p></div>);
-    const AuthScreen = ({ onAuthClick, error, loading, configError }) => { if (configError) { return (<div className="flex items-center justify-center min-h-screen bg-gray-100 dark:bg-zinc-900 p-4"><div className="w-full max-w-md bg-white dark:bg-zinc-800 rounded-2xl shadow-lg p-8 space-y-6 text-center"><div className="bg-red-100 dark:bg-red-900/50 border-l-4 border-red-500 text-red-700 dark:text-red-200 p-4 text-left"><p className="font-bold">Error de Configuración</p><p>{configError}</p><p className="mt-2 text-sm">Por favor, edite el archivo HTML y reemplace 'YOUR_GOOGLE_CLIENT_ID' y 'YOUR_GOOGLE_API_KEY' con sus propias credenciales de la Google Cloud Console.</p></div></div></div>); } return (<div className="flex items-center justify-center min-h-screen bg-gray-100 dark:bg-zinc-900 p-4"><div className="w-full max-w-md bg-white dark:bg-zinc-800 rounded-2xl shadow-lg p-8 space-y-6"><div className="text-center"><Icon name="key" className="text-5xl text-blue-500 mx-auto" /><h1 className="mt-4 text-3xl font-bold text-gray-900 dark:text-white">RDK APP</h1><p className="mt-2 text-sm text-gray-600 dark:text-gray-400">Su gestor de contraseñas seguro en su Google Drive.</p></div>{error && <p className="text-red-500 text-sm text-center">{error}</p>}<button onClick={onAuthClick} disabled={loading} className="w-full flex justify-center items-center py-2 px-4 border border-gray-300 dark:border-zinc-600 rounded-md shadow-sm text-sm font-medium text-gray-700 dark:text-gray-200 bg-white dark:bg-zinc-700 hover:bg-gray-50 dark:hover:bg-zinc-600 disabled:opacity-50">{loading ? <Spinner /> : <><img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google logo" className="h-5 w-5 mr-3" /> Conectar con Google Drive</>}</button></div></div>); };
+    const AuthScreen = ({ onAuthClick, error, loading, configError }) => { if (configError) { return (<div className="flex items-center justify-center min-h-screen bg-gray-100 dark:bg-zinc-900 p-4"><div className="w-full max-w-md bg-white dark:bg-zinc-800 rounded-2xl shadow-lg p-8 space-y-6 text-center"><div className="bg-red-100 dark:bg-red-900/50 border-l-4 border-red-500 text-red-700 dark:text-red-200 p-4 text-left"><p className="font-bold">Error de Configuración</p><p>{configError}</p><p className="mt-2 text-sm">Por favor, edite el archivo HTML y reemplace 'YOUR_GOOGLE_CLIENT_ID' y 'YOUR_GOOGLE_API_KEY' con sus propias credenciales de la Google Cloud Console.</p></div></div></div>); } return (<div className="flex items-center justify-center min-h-screen bg-gray-100 dark:bg-zinc-900 p-4"><div className="w-full max-w-md bg-white dark:bg-zinc-800 rounded-2xl shadow-lg p-8 space-y-6"><div className="text-center"><Icon name="key" className="text-5xl text-blue-500 mx-auto" /><h1 className="mt-4 text-3xl font-bold text-gray-900 dark:text-white">RDK APP</h1><p className="mt-2 text-sm text-gray-600 dark:text-gray-400">Su gestor de contraseñas seguro en su Google Drive.</p></div>{error && <p className="text-red-500 text-sm text-center whitespace-pre-line">{error}</p>}<button onClick={onAuthClick} disabled={loading} className="w-full flex justify-center items-center py-2 px-4 border border-gray-300 dark:border-zinc-600 rounded-md shadow-sm text-sm font-medium text-gray-700 dark:text-gray-200 bg-white dark:bg-zinc-700 hover:bg-gray-50 dark:hover:bg-zinc-600 disabled:opacity-50">{loading ? <Spinner /> : <><img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google logo" className="h-5 w-5 mr-3" /> Conectar con Google Drive</>}</button></div></div>); };
     const CreateKeychainModal = ({ isOpen, onClose, onCreate, addToast }) => { const [name, setName] = React.useState(''); if (!isOpen) return null; const handleSubmit = (e) => { e.preventDefault(); if (name.trim()) onCreate(name.trim()); else addToast("El nombre no puede estar vacío.", "error"); }; return ( <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50" onClick={onClose}><div className="bg-white dark:bg-zinc-800 rounded-lg shadow-xl w-full max-w-sm m-4" onClick={(e) => e.stopPropagation()}><form onSubmit={handleSubmit}><div className="p-6"><h2 className="text-xl font-bold text-gray-900 dark:text-white">Crear Nuevo Llavero</h2><p className="mt-2 text-sm text-gray-600 dark:text-gray-400">Asigne un nombre a su nuevo archivo.</p><input type="text" autoFocus value={name} onChange={e => setName(e.target.value)} placeholder="Ej: Llavero Principal" required className="mt-4 block w-full rounded-md border-gray-300 dark:border-zinc-600 shadow-sm bg-gray-50 dark:bg-zinc-700 text-gray-900 dark:text-white" /></div><div className="bg-gray-50 dark:bg-zinc-900/50 px-6 py-4 flex justify-end space-x-3"><button type="button" onClick={onClose} className="py-2 px-4 border border-gray-300 dark:border-zinc-600 rounded-md shadow-sm text-sm font-medium text-gray-700 dark:text-gray-200 bg-white dark:bg-zinc-700 hover:bg-gray-50 dark:hover:bg-zinc-600">Cancelar</button><button type="submit" className="py-2 px-4 border border-transparent rounded-md text-white bg-blue-600 hover:bg-blue-700">Crear</button></div></form></div></div>); };
     const KeychainSelector = ({ onSelectKeychain, onCreate, onSignOut, keychains, user }) => ( <div className="flex items-center justify-center min-h-screen bg-gray-100 dark:bg-zinc-900 p-4"> <div className="w-full max-w-md bg-white dark:bg-zinc-800 rounded-2xl shadow-lg p-8"><div className="flex justify-between items-center mb-6"><div><h2 className="text-2xl font-bold text-gray-900 dark:text-white">Bienvenido,</h2><p className="text-gray-600 dark:text-gray-400 truncate max-w-[200px]">{user.email}</p></div><button onClick={onSignOut} className="text-sm text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 flex items-center gap-1"><Icon name="logout"/> Salir</button></div><button onClick={onCreate} className="w-full flex justify-center items-center py-3 px-4 mb-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700"><Icon name="note_add" className="text-lg mr-2"/> Crear Nuevo Llavero</button><h3 className="text-lg font-semibold text-gray-800 dark:text-gray-200 mt-6 mb-3 border-b border-gray-200 dark:border-zinc-600 pb-2">O abrir uno existente:</h3><div className="max-h-60 overflow-y-auto space-y-2">{keychains.length > 0 ? keychains.map(kc => (<button key={kc.id} onClick={() => onSelectKeychain(kc)} className="w-full text-left p-3 rounded-md hover:bg-gray-100 dark:hover:bg-zinc-700 flex items-center"><Icon name="database" className="text-blue-500 mr-3"/> <span className="text-gray-800 dark:text-gray-100">{kc.name}</span></button>)) : <p className="text-center text-gray-500 dark:text-gray-400 p-4">No hay llaveros existentes.</p>}</div></div></div>);
     const UnlockScreen = ({ onUnlock, keychainName, isCreating, onBack, addToast }) => { const [password, setPassword] = React.useState(''); const handleSubmit = (e) => { e.preventDefault(); if (password) onUnlock(password); else addToast("La contraseña no puede estar vacía.", "error"); }; const title = isCreating ? "Crear Contraseña Maestra" : `Desbloquear "${keychainName}"`; const prompt = isCreating ? "Establezca una contraseña maestra." : "Ingrese su contraseña maestra."; const buttonText = isCreating ? "Establecer y Guardar" : "Desbloquear"; return (<div className="flex items-center justify-center min-h-screen bg-gray-100 dark:bg-zinc-900 p-4"><div className="w-full max-w-md bg-white dark:bg-zinc-800 rounded-2xl shadow-lg p-8 space-y-6 text-center relative"><button onClick={onBack} className="absolute top-4 left-4 text-gray-500 hover:text-gray-800 dark:hover:text-gray-200"><Icon name="arrow_back"/></button><Icon name={isCreating ? "password" : "lock_open"} className="text-5xl text-blue-500 mx-auto" /><h2 className="text-2xl font-bold text-gray-900 dark:text-white">{title}</h2><p className="text-gray-600 dark:text-gray-400">{prompt}</p><form onSubmit={handleSubmit}><input type="password" autoFocus value={password} onChange={e => setPassword(e.target.value)} placeholder="Contraseña Maestra" required className="block w-full px-3 py-2 border border-gray-300 dark:border-zinc-600 rounded-md shadow-sm bg-gray-50 dark:bg-zinc-700 text-gray-900 dark:text-white" /><button type="submit" className="mt-4 w-full flex justify-center items-center py-3 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700">{buttonText}</button></form></div></div>); };
@@ -274,7 +272,10 @@
                 
                 await checkApisLoaded;
                 
-                await gapi.client.init({ apiKey: GOOGLE_API_KEY, discoveryDocs: DISCOVERY_DOCS });
+                await gapi.client.init({
+                    apiKey: GOOGLE_API_KEY,
+                    discoveryDocs: DISCOVERY_DOCS,
+                });
 
                 const client = google.accounts.oauth2.initTokenClient({
                     client_id: GOOGLE_CLIENT_ID,
@@ -286,15 +287,20 @@
                     },
                     error_callback: (error) => {
                       console.log("Silent auth failed:", error);
-                      // On silent auth fail, we simply remain on the auth screen.
-                      // The app status is already 'auth'.
                     }
                 });
                 setTokenClient(client);
-                setAppStatus('auth'); // Explicitly move out of initializing state
+                setAppStatus('auth'); 
             } catch (error) {
                 console.error("Error initializing Google API client:", error);
-                setAuthError("No se pudo inicializar la API de Google. " + error.message);
+                let detailedError = "No se pudo inicializar la API de Google. " + (error.details || error.message);
+                if (error.message && (error.message.includes('missing required fields') || (error.result && error.result.error))) {
+                    detailedError = "Error al inicializar: La API de Google Drive no está accesible.\n\n" +
+                                    "Por favor, verifique en su Google Cloud Console:\n\n" +
+                                    "1. Que la 'Google Drive API' esté HABILITADA en la sección 'Biblioteca'.\n\n" +
+                                    "2. Que las restricciones de su API Key permitan el acceso (pruebe a quitarlas temporalmente para diagnosticar).";
+                }
+                setAuthError(detailedError);
                 setAppStatus('auth');
             }
         };
@@ -305,7 +311,6 @@
       // Silent login attempt effect
       useEffect(() => {
         if (tokenClient && appStatus === 'auth') {
-          // This will trigger either the 'callback' or 'error_callback' set during init
           tokenClient.requestAccessToken({ prompt: 'none' });
         }
       }, [tokenClient, appStatus]);
@@ -346,17 +351,33 @@
       const [isCreateModalOpen, setCreateModalOpen] = useState(false);
       const handleCreateNewKeychain = async (name) => {
         setCreateModalOpen(false);
-        const filename = name.endsWith('.db') ? name : `${name}.db`;
-        if (keychains.some(kc => kc.name === filename)) {
-            addToast("Ya existe un llavero con este nombre.", "error");
-            return;
+        setAppStatus('loading'); // Use a generic loading screen to provide feedback
+        
+        // Brief delay to allow UI to update to loading state
+        await new Promise(resolve => setTimeout(resolve, 50));
+
+        try {
+            const filename = name.endsWith('.db') ? name : `${name}.db`;
+            if (keychains.some(kc => kc.name === filename)) {
+                addToast("Ya existe un llavero con este nombre.", "error");
+                setAppStatus('select_keychain'); // Return to the selection screen
+                return;
+            }
+            
+            const { database } = await initDb(null);
+            setKeychainName(database, name); // Set the user-provided name
+            
+            setDb(database);
+            setActiveKeychain({id: null, name: filename});
+            setAppStatus('unlock_keychain'); // Transition to the unlock/create password screen
+        
+        } catch (error) {
+            console.error("Failed to create new keychain:", error);
+            addToast("Ocurrió un error al crear el llavero.", "error");
+            setAppStatus('select_keychain'); // Go back to safety on error
         }
-        const { database } = await initDb(null);
-        setKeychainName(database, name); // Set the user-provided name
-        setDb(database);
-        setActiveKeychain({id: null, name: filename});
-        setAppStatus('unlock_keychain');
       };
+      
       const handleSelectKeychain = (keychain) => { setActiveKeychain(keychain); setAppStatus('unlock_keychain'); };
       
       const handleUnlockKeychain = useCallback(async (password) => {
@@ -416,5 +437,3 @@
   </script>
 </body>
 </html>
-
-
