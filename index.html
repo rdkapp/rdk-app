@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>RDK APP v9.0.0</title>
+  <title>RDK APP v9.1.0</title>
   
   <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -60,7 +60,7 @@
 
   <script type="text/babel">
     // --- APP CONFIGURATION ---
-    const APP_VERSION = "9.0.0";
+    const APP_VERSION = "9.1.0";
     const SESSION_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutos
 
     // --- GOOGLE API CONFIGURATION ---
@@ -151,7 +151,7 @@
       const { useState, useEffect, useRef, useCallback } = React;
       
       // App State
-      const [appStatus, setAppStatus] = useState('initializing'); // initializing, auth, select-keychain, set-master-password, unlock, unlocked, loading
+      const [appStatus, setAppStatus] = useState('initializing'); // initializing, auth, create-keychain-name, select-keychain, set-master-password, unlock, unlocked, loading
       const [error, setError] = useState(null);
       const [SQL, setSQL] = useState(null);
 
@@ -172,7 +172,6 @@
       const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
       const [isCredentialModalOpen, setIsCredentialModalOpen] = useState(false);
       const [editingCredential, setEditingCredential] = useState(null);
-      const [isCreateKeychainModalOpen, setIsCreateKeychainModalOpen] = useState(false);
       
       const addToast = useNotifier();
       
@@ -368,9 +367,8 @@
             setAppStatus('unlocked');
         }
       }, [addToast, masterKey]);
-
-      const handleConfirmCreateKeychain = (name) => {
-        setIsCreateKeychainModalOpen(false);
+      
+      const handleNameConfirmed = (name) => {
         setNewKeychainName(name);
         setAppStatus('set-master-password');
       };
@@ -480,12 +478,14 @@
             return <div className="text-center"><Spinner className="border-gray-500 mx-auto"/> <p className="mt-2 text-gray-500">Inicializando...</p></div>;
           case 'auth':
             return (<div className="text-center max-w-sm mx-auto"><h2 className="text-2xl font-bold text-gray-900 dark:text-white">Bienvenido al Llavero Personal</h2><p className="mt-2 text-gray-600 dark:text-gray-400">Una forma segura de guardar tus credenciales, directamente en tu Google Drive.</p>{error && <p className="mt-4 text-red-500 bg-red-100 dark:bg-red-900/50 p-3 rounded-md whitespace-pre-wrap">{error}</p>}<button onClick={handleAuthClick} className="mt-6 w-full inline-flex justify-center items-center py-3 px-4 border border-transparent shadow-sm text-base font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700"><svg className="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" /><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.3v2.84C4.01 20.49 7.72 23 12 23z" /><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.3C1.46 8.85 1 10.39 1 12s.46 3.15 1.3 4.93l3.54-2.84z" /><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.72 1 4.01 3.51 2.3 7.07l3.54 2.84c.87-2.6 3.3-4.53 6.16-4.53z" /></svg>Conectar con Google Drive</button></div>);
+          case 'create-keychain-name':
+            return <CreateKeychainNameScreen onConfirm={handleNameConfirmed} onCancel={() => setAppStatus('select-keychain')} />;
           case 'select-keychain':
             return <KeychainSelectionScreen 
                         user={user} 
                         keychains={keychains} 
                         onUnlock={handleUnlockKeychain}
-                        onTriggerCreate={() => setIsCreateKeychainModalOpen(true)}
+                        onTriggerCreate={() => setAppStatus('create-keychain-name')}
                     />;
           case 'set-master-password':
             return <SetMasterPasswordScreen onSetPassword={handleSetMasterPassword} keychainName={newKeychainName} />;
@@ -506,12 +506,6 @@
           <main className="container mx-auto px-4 py-8">
             <div className="flex items-center justify-center">
               {renderContent()}
-              {isCreateKeychainModalOpen && (
-                <CreateKeychainModal 
-                  onClose={() => setIsCreateKeychainModalOpen(false)}
-                  onConfirm={handleConfirmCreateKeychain}
-                />
-              )}
             </div>
           </main>
           <GlobalFooter />
@@ -519,29 +513,37 @@
       );
     }
     
-    const CreateKeychainModal = ({ onClose, onConfirm }) => {
-        const [name, setName] = useState('');
+    const CreateKeychainNameScreen = ({ onConfirm, onCancel }) => {
+        const [name, setName] = React.useState('');
         const addToast = useNotifier();
 
-        const handleCreateClick = () => {
+        const handleConfirmClick = () => {
             if (name.trim()) {
                 onConfirm(name.trim());
             } else {
                 addToast("El nombre del llavero no puede estar vacío.", "error");
             }
         };
+        
+        const handleSubmit = (e) => {
+            e.preventDefault();
+            handleConfirmClick();
+        };
 
         return (
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
-                <div className="bg-white dark:bg-zinc-800 rounded-lg shadow-xl w-full max-w-sm m-4 p-6">
-                    <h3 className="text-lg font-bold text-gray-900 dark:text-white">Crear Nuevo Llavero</h3>
-                    <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">Dale un nombre a tu nuevo archivo de llavero.</p>
-                    <input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="Ej: Personal, Trabajo..." className="mt-4 block w-full rounded-md border-gray-300 dark:border-zinc-600 shadow-sm bg-gray-50 dark:bg-zinc-700 text-gray-900 dark:text-white" autoFocus />
-                    <div className="mt-6 flex justify-end space-x-3">
-                        <button onClick={onClose} className="py-2 px-4 border border-gray-300 dark:border-zinc-600 rounded-md text-sm font-medium text-gray-700 dark:text-gray-200 bg-white dark:bg-zinc-700 hover:bg-gray-50 dark:hover:bg-zinc-600">Cancelar</button>
-                        <button onClick={handleCreateClick} className="py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700">Crear</button>
+            <div className="w-full max-w-sm">
+                <form onSubmit={handleSubmit} className="bg-white dark:bg-zinc-800 rounded-lg shadow p-8">
+                    <h2 className="text-2xl font-bold text-center text-gray-900 dark:text-white">Crear Nuevo Llavero</h2>
+                    <p className="text-center text-sm text-gray-600 dark:text-gray-400 mt-2">Dale un nombre a tu nuevo archivo de llavero.</p>
+                    <div className="mt-6">
+                        <label htmlFor="keychain-name-input" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Nombre del Llavero</label>
+                        <input id="keychain-name-input" type="text" value={name} onChange={e => setName(e.target.value)} placeholder="Ej: Personal, Trabajo..." className="mt-1 block w-full rounded-md border-gray-300 dark:border-zinc-600 shadow-sm bg-gray-50 dark:bg-zinc-700 text-gray-900 dark:text-white" autoFocus />
                     </div>
-                </div>
+                    <div className="mt-6 flex justify-end space-x-3">
+                        <button type="button" onClick={onCancel} className="py-2 px-4 border border-gray-300 dark:border-zinc-600 rounded-md text-sm font-medium text-gray-700 dark:text-gray-200 bg-white dark:bg-zinc-700 hover:bg-gray-50 dark:hover:bg-zinc-600">Cancelar</button>
+                        <button type="submit" className="py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700">Continuar</button>
+                    </div>
+                </form>
             </div>
         );
     };
