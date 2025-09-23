@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>RDK APP v10.6.0</title>
+  <title>RDK APP v11.0.0</title>
   
   <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -52,7 +52,7 @@
 
   <script type="text/babel">
     // --- APP CONFIGURATION ---
-    const APP_VERSION = "10.6.0";
+    const APP_VERSION = "11.0.0";
     const SESSION_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutos
 
     // --- GOOGLE API CONFIGURATION ---
@@ -133,7 +133,7 @@
     const NotifierProvider = ({ children }) => { const [toasts, setToasts] = React.useState([]); const toastId = React.useRef(0); const addToast = React.useCallback((message, type = 'info') => { setToasts(currentToasts => [...currentToasts, { id: toastId.current++, message, type }]); }, []); const removeToast = React.useCallback((id) => { setToasts(currentToasts => currentToasts.filter(toast => toast.id !== id)); }, []); return (<NotificationContext.Provider value={addToast}>{children}<div className="fixed top-20 right-4 z-[100] space-y-2">{toasts.map(toast => <Toast key={toast.id} {...toast} onClose={() => removeToast(toast.id)} />)}</div></NotificationContext.Provider>); };
     const GlobalHeader = () => (<header className="fixed top-0 left-0 right-0 z-30 flex items-center justify-center p-4 h-16 border-b border-gray-200 dark:border-zinc-700 bg-white/80 dark:bg-zinc-900/80 backdrop-blur-sm"><h1 className="text-xl font-bold text-gray-900 dark:text-white truncate">RDK APP v{APP_VERSION}</h1></header>);
     const GlobalFooter = () => (<footer className="fixed bottom-0 left-0 right-0 bg-gray-100 dark:bg-zinc-800 border-t border-gray-200 dark:border-zinc-700 p-2 text-center text-sm text-gray-500 dark:text-gray-400 z-30 h-10 flex items-center justify-center">Solution by Ale Fernández 2025 - PY - v{APP_VERSION}</footer>);
-    const SettingsModal = ({ isOpen, onClose, keychainName, onSaveKeychainName, tags, onAddTag, onDeleteTag, addToast }) => { const { useState, useEffect } = React; const [name, setName] = useState(keychainName); const [newTagName, setNewTagName] = useState(''); useEffect(() => { setName(keychainName); }, [isOpen, keychainName]); if (!isOpen) return null; const handleSaveName = () => { if (name.trim()) { onSaveKeychainName(name.trim()); addToast("Nombre guardado.", "success"); } }; const handleAddTag = (e) => { e.preventDefault(); if (newTagName.trim() && !tags.some(t => t.name.toLowerCase() === newTagName.trim().toLowerCase())) { onAddTag(newTagName.trim()); setNewTagName(''); addToast("Etiqueta agregada.", "success"); } else { addToast("La etiqueta no puede estar vacía o ya existe.", "error"); } }; return (<div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50" onClick={onClose}><div className="bg-white dark:bg-zinc-800 rounded-lg shadow-xl w-full max-w-lg m-4" onClick={(e) => e.stopPropagation()}><div className="p-6"><h2 className="text-xl font-bold text-gray-900 dark:text-white">Configuración</h2><div className="mt-6 space-y-6"><div><label htmlFor="keychainName" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Nombre del Llavero</label><div className="flex mt-1"><input type="text" name="keychainName" id="keychainName" value={name} onChange={(e) => setName(e.target.value)} className="flex-grow block w-full rounded-l-md border-gray-300 dark:border-zinc-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 bg-gray-50 dark:bg-zinc-700 text-gray-900 dark:text-white" /><button type="button" onClick={handleSaveName} className="px-4 py-2 border border-blue-600 bg-blue-600 text-white rounded-r-md hover:bg-blue-700 text-sm font-medium">Guardar Nombre</button></div></div><div><h3 className="text-lg font-medium text-gray-900 dark:text-white">Gestionar Etiquetas</h3><form onSubmit={handleAddTag} className="flex mt-2"><input type="text" value={newTagName} onChange={(e) => setNewTagName(e.target.value)} placeholder="Nueva etiqueta" className="flex-grow block w-full rounded-l-md border-gray-300 dark:border-zinc-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 bg-gray-50 dark:bg-zinc-700 text-gray-900 dark:text-white" /><button type="submit" className="px-4 py-2 border border-blue-600 bg-blue-600 text-white rounded-r-md hover:bg-blue-700 text-sm font-medium">Agregar</button></form><div className="mt-3 max-h-40 overflow-y-auto space-y-2 pr-2">{tags.map(tag => (<div key={tag.id} className="flex justify-between items-center bg-gray-100 dark:bg-zinc-700 p-2 rounded-md"><span className="text-sm text-gray-800 dark:text-gray-200">{tag.name}</span><button onClick={() => onDeleteTag(tag.id)} className="text-red-500 hover:text-red-700 dark:hover:text-red-400"><Icon name="delete" className="text-base" /></button></div>))}</div></div></div></div><div className="bg-gray-50 dark:bg-zinc-900/50 px-6 py-4 flex justify-end"><button type="button" onClick={onClose} className="py-2 px-4 border border-gray-300 dark:border-zinc-600 rounded-md shadow-sm text-sm font-medium text-gray-700 dark:text-gray-200 bg-white dark:bg-zinc-700 hover:bg-gray-50 dark:hover:bg-zinc-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">Cerrar</button></div></div></div>); };
+    const SettingsModal = ({ isOpen, onClose, keychainName, onSaveKeychainName, tags, onAddTag, onDeleteTag, addToast }) => { const { useState, useEffect } = React; const [name, setName] = useState(keychainName); const [newTagName, setNewTagName] = useState(''); useEffect(() => { setName(keychainName); }, [isOpen, keychainName]); if (!isOpen) return null; const handleSaveName = () => { if (name.trim()) { onSaveKeychainName(name.trim()); addToast("Nombre guardado.", "success"); } }; const handleAddTag = (e) => { e.preventDefault(); if (newTagName.trim() && !tags.some(t => t.name.toLowerCase() === newTagName.trim().toLowerCase())) { onAddTag(newTagName.trim()); setNewTagName(''); addToast("Etiqueta agregada.", "success"); } else { addToast("La etiqueta no puede estar vacía o ya existe.", "error"); } }; const handleDeleteTagWithConfirm = (id) => { if (window.confirm("¿Estás seguro de que quieres eliminar esta etiqueta?")) { onDeleteTag(id); } }; return (<div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50" onClick={onClose}><div className="bg-white dark:bg-zinc-800 rounded-lg shadow-xl w-full max-w-lg m-4" onClick={(e) => e.stopPropagation()}><div className="p-6"><h2 className="text-xl font-bold text-gray-900 dark:text-white">Configuración</h2><div className="mt-6 space-y-6"><div><label htmlFor="keychainName" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Nombre del Llavero</label><div className="flex mt-1"><input type="text" name="keychainName" id="keychainName" value={name} onChange={(e) => setName(e.target.value)} className="flex-grow block w-full rounded-l-md border-gray-300 dark:border-zinc-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 bg-gray-50 dark:bg-zinc-700 text-gray-900 dark:text-white" /><button type="button" onClick={handleSaveName} className="px-4 py-2 border border-blue-600 bg-blue-600 text-white rounded-r-md hover:bg-blue-700 text-sm font-medium">Guardar Nombre</button></div></div><div><h3 className="text-lg font-medium text-gray-900 dark:text-white">Gestionar Etiquetas</h3><form onSubmit={handleAddTag} className="flex mt-2"><input type="text" value={newTagName} onChange={(e) => setNewTagName(e.target.value)} placeholder="Nueva etiqueta" className="flex-grow block w-full rounded-l-md border-gray-300 dark:border-zinc-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 bg-gray-50 dark:bg-zinc-700 text-gray-900 dark:text-white" /><button type="submit" className="px-4 py-2 border border-blue-600 bg-blue-600 text-white rounded-r-md hover:bg-blue-700 text-sm font-medium">Agregar</button></form><div className="mt-3 max-h-40 overflow-y-auto space-y-2 pr-2">{tags.map(tag => (<div key={tag.id} className="flex justify-between items-center bg-gray-100 dark:bg-zinc-700 p-2 rounded-md"><span className="text-sm text-gray-800 dark:text-gray-200">{tag.name}</span><button onClick={() => handleDeleteTagWithConfirm(tag.id)} className="text-red-500 hover:text-red-700 dark:hover:text-red-400"><Icon name="delete" className="text-base" /></button></div>))}</div></div></div></div><div className="bg-gray-50 dark:bg-zinc-900/50 px-6 py-4 flex justify-end"><button type="button" onClick={onClose} className="py-2 px-4 border border-gray-300 dark:border-zinc-600 rounded-md shadow-sm text-sm font-medium text-gray-700 dark:text-gray-200 bg-white dark:bg-zinc-700 hover:bg-gray-50 dark:hover:bg-zinc-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">Cerrar</button></div></div></div>); };
     const CredentialModal = ({ isOpen, onClose, onSave, credential, tags, addToast, masterKey }) => { const { useState, useEffect } = React; const [formData, setFormData] = useState({ name: '', username: '', password: '', comment: '', tag: '' }); const [isPasswordVisibleInModal, setIsPasswordVisibleInModal] = useState(false); useEffect(() => { const decryptAndSet = async () => { if (credential && masterKey) { const [decUsername, decPassword] = await Promise.all([ decryptField(credential.username, masterKey), decryptField(credential.password, masterKey) ]); setFormData({ ...credential, username: decUsername, password: decPassword, tag: credential.tag || (tags.length > 0 ? tags[0].name : '') }); } else { setFormData({ name: '', username: '', password: '', comment: '', tag: tags.length > 0 ? tags[0].name : '' }); } }; if(isOpen) { decryptAndSet(); setIsPasswordVisibleInModal(false); } }, [credential, tags, isOpen, masterKey]); const handleChange = (e) => { const { name, value } = e.target; setFormData(prev => ({ ...prev, [name]: value })); }; const handleSubmit = async (e) => { e.preventDefault(); if (!formData.name || !formData.username || !formData.password) { addToast("Nombre, Usuario y Contraseña son requeridos.", "error"); return; } if (tags.length > 0 && !formData.tag) { addToast("Debe seleccionar una etiqueta.", "error"); return; } const [encUsername, encPassword] = await Promise.all([ encryptField(formData.username, masterKey), encryptField(formData.password, masterKey) ]); onSave({ ...formData, username: encUsername, password: encPassword }); }; if (!isOpen) return null; return (<div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50" onClick={onClose}><div className="bg-white dark:bg-zinc-800 rounded-lg shadow-xl w-full max-w-lg m-4" onClick={(e) => e.stopPropagation()}><form onSubmit={handleSubmit}><div className="p-6"><h2 className="text-xl font-bold text-gray-900 dark:text-white">{credential ? 'Editar Credencial' : 'Agregar Nueva Credencial'}</h2><div className="mt-6 space-y-4"><div><label htmlFor="name" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Nombre de llave</label><input type="text" name="name" id="name" value={formData.name} onChange={handleChange} required className="mt-1 block w-full rounded-md border-gray-300 dark:border-zinc-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 bg-gray-50 dark:bg-zinc-700 text-gray-900 dark:text-white" /></div><div><label htmlFor="username" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Usuario / Email</label><input type="text" name="username" id="username" value={formData.username} onChange={handleChange} required className="mt-1 block w-full rounded-md border-gray-300 dark:border-zinc-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 bg-gray-50 dark:bg-zinc-700 text-gray-900 dark:text-white" /></div><div><label htmlFor="password" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Contraseña</label><div className="relative mt-1"><input type={isPasswordVisibleInModal ? 'text' : 'password'} name="password" id="password" value={formData.password} onChange={handleChange} required className="block w-full rounded-md border-gray-300 dark:border-zinc-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 bg-gray-50 dark:bg-zinc-700 text-gray-900 dark:text-white pr-10" /><button type="button" onClick={() => setIsPasswordVisibleInModal(!isPasswordVisibleInModal)} className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300" title={isPasswordVisibleInModal ? 'Ocultar contraseña' : 'Mostrar contraseña'}><Icon name={isPasswordVisibleInModal ? 'visibility_off' : 'visibility'} /></button></div></div><div><label htmlFor="comment" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Comentario</label><textarea name="comment" id="comment" value={formData.comment} onChange={handleChange} rows={3} className="mt-1 block w-full rounded-md border-gray-300 dark:border-zinc-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 bg-gray-50 dark:bg-zinc-700 text-gray-900 dark:text-white"></textarea></div><div><label htmlFor="tag" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Etiqueta</label><select name="tag" id="tag" value={formData.tag} onChange={handleChange} className="mt-1 block w-full rounded-md border-gray-300 dark:border-zinc-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 bg-gray-50 dark:bg-zinc-700 text-gray-900 dark:text-white" disabled={tags.length === 0}>{tags.length === 0 ? <option>Cree una etiqueta primero</option> : tags.map(tag => <option key={tag.id} value={tag.name}>{tag.name}</option>)}</select></div></div></div><div className="bg-gray-50 dark:bg-zinc-900/50 px-6 py-4 flex justify-end space-x-3"><button type="button" onClick={onClose} className="py-2 px-4 border border-gray-300 dark:border-zinc-600 rounded-md shadow-sm text-sm font-medium text-gray-700 dark:text-gray-200 bg-white dark:bg-zinc-700 hover:bg-gray-50 dark:hover:bg-zinc-600">Cancelar</button><button type="submit" className="py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700">Guardar</button></div></form></div></div>); };
     const CredentialItem = ({ credential, onEdit, onDelete, masterKey }) => { const { useState } = React; const [isExpanded, setIsExpanded] = useState(false); const [isPasswordVisible, setIsPasswordVisible] = useState(false); const [decryptedPassword, setDecryptedPassword] = useState(null); const [isUsernameVisible, setIsUsernameVisible] = useState(false); const [decryptedUsername, setDecryptedUsername] = useState(null); const addToast = useNotifier(); const handleToggleUsername = async () => { if (isUsernameVisible) { setIsUsernameVisible(false); setDecryptedUsername(null); } else { const decUsername = await decryptField(credential.username, masterKey); setDecryptedUsername(decUsername); setIsUsernameVisible(true); } }; const handleTogglePassword = async () => { if (isPasswordVisible) { setIsPasswordVisible(false); setDecryptedPassword(null); } else { const decPassword = await decryptField(credential.password, masterKey); setDecryptedPassword(decPassword); setIsPasswordVisible(true); } }; const handleCopy = async (encryptedValue, field) => { const decryptedValue = await decryptField(encryptedValue, masterKey); navigator.clipboard.writeText(decryptedValue); addToast(`${field} copiado al portapapeles.`, 'success'); }; const getTagColor = (tagName) => { if(!tagName) tagName = 'Sin Etiqueta'; let hash = 0; for (let i = 0; i < tagName.length; i++) { hash = tagName.charCodeAt(i) + ((hash << 5) - hash); } const color = (hash & 0x00FFFFFF).toString(16).toUpperCase(); const hexColor = "00000".substring(0, 6 - color.length) + color; const r = parseInt(hexColor.substring(0,2), 16); const g = parseInt(hexColor.substring(2,4), 16); const b = parseInt(hexColor.substring(4,6), 16); const brightness = (r * 299 + g * 587 + b * 114) / 1000; const textColor = brightness > 125 ? 'text-black' : 'text-white'; return { backgroundColor: `#${hexColor}`, colorClass: textColor }; }; const tagStyle = getTagColor(credential.tag); return (<div className="w-full bg-gray-50 dark:bg-zinc-700/50 rounded-lg shadow-sm transition-shadow hover:shadow-md"><button onClick={() => setIsExpanded(!isExpanded)} className="w-full flex items-center justify-between px-4 py-2 text-left"><div className="flex items-center min-w-0 mr-3"><div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center mr-3 text-base font-bold text-white bg-gradient-to-br from-blue-500 to-indigo-600`}>{credential.name.charAt(0).toUpperCase()}</div><div className="truncate"><p className="font-semibold text-gray-900 dark:text-white truncate">{credential.name}</p></div></div><div className='flex items-center flex-shrink-0'><span className={`text-xs font-medium px-2 py-1 rounded-full ${tagStyle.colorClass}`} style={{ backgroundColor: tagStyle.backgroundColor }}>{credential.tag}</span><Icon name={isExpanded ? 'expand_less' : 'expand_more'} className="ml-2 text-gray-500 dark:text-gray-400" /></div></button>{isExpanded && (<div className="border-t border-gray-200 dark:border-zinc-600 px-4 py-3"><div className="space-y-3"><div><p className="text-xs font-medium text-gray-500 dark:text-gray-400">Usuario / Email</p><div className="flex items-center mt-1"><p className="text-sm text-gray-800 dark:text-gray-200 flex-grow">{isUsernameVisible ? decryptedUsername : '••••••••••••'}</p><button onClick={handleToggleUsername} className="ml-2 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"><Icon name={isUsernameVisible ? 'visibility_off' : 'visibility'} /></button><button onClick={() => handleCopy(credential.username, 'Usuario')} className="ml-2 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"><Icon name="content_copy" /></button></div></div><div><p className="text-xs font-medium text-gray-500 dark:text-gray-400">Contraseña</p><div className="flex items-center mt-1"><p className="text-sm text-gray-800 dark:text-gray-200 flex-grow">{isPasswordVisible ? decryptedPassword : '••••••••••••'}</p><button onClick={handleTogglePassword} className="ml-2 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"><Icon name={isPasswordVisible ? 'visibility_off' : 'visibility'} /></button><button onClick={() => handleCopy(credential.password, 'Contraseña')} className="ml-2 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"><Icon name="content_copy" /></button></div></div>{credential.comment && <div><p className="text-xs font-medium text-gray-500 dark:text-gray-400">Comentario</p><p className="text-sm text-gray-800 dark:text-gray-200 mt-1 whitespace-pre-wrap">{credential.comment}</p></div>}</div><div className="mt-4 flex justify-end space-x-2"><button onClick={onEdit} className="text-sm text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 font-medium">Editar</button><button onClick={onDelete} className="text-sm text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300 font-medium">Eliminar</button></div></div>)}</div>); };
     
@@ -188,7 +188,6 @@
                 scope: DRIVE_API_SCOPE,
                 callback: (tokenResponse) => {
                     if (tokenResponse && tokenResponse.access_token) {
-                        setAccessToken(tokenResponse.access_token);
                         handleAuthSuccess(tokenResponse.access_token);
                     }
                 },
@@ -247,11 +246,11 @@
             setHasUnsavedChanges(false);
         } catch (error) {
             console.error("Autosave failed:", error);
-            addToast("El autoguardado falló.", "error");
+            addToast(`El autoguardado falló: ${error.message}`, "error");
         } finally {
             setAppStatus('unlocked');
         }
-      }, [db, currentFileId, masterKey, currentSalt, accessToken]);
+      }, [db, currentFileId, masterKey, currentSalt, accessToken, addToast]);
 
       useEffect(() => {
         if (appStatus === 'unlocked' && hasUnsavedChanges) {
@@ -278,7 +277,7 @@
       };
 
       const listKeychains = async (token) => {
-          const q = "'appDataFolder' in parents and trashed = false and name contains '.db'";
+          const q = "'appDataFolder' in parents and trashed = false and name ends with '.db'";
           const fields = 'files(id, name)';
           const url = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=${encodeURIComponent(fields)}`;
           const response = await driveFetch(url, {}, token);
@@ -295,36 +294,40 @@
         const fileContentToUpload = await encryptDBFile(dbUint8Array, saltToUse, keyToUse);
         const keychainName = getKeychainName(dbToSave);
         const fileName = `${keychainName}.db`;
+        
+        // --- Create-and-Replace Strategy ---
         const metadata = { name: fileName, parents: ['appDataFolder'] };
-
         const form = new FormData();
         form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
         form.append('file', new Blob([fileContentToUpload], { type: 'application/octet-stream' }));
         
-        let fileId;
-        
-        if (existingFileId) {
-            // Update existing file
-            const updateUrl = `https://www.googleapis.com/upload/drive/v3/files/${existingFileId}?uploadType=multipart`;
-            const response = await driveFetch(updateUrl, { method: 'PATCH', body: form }, token);
-            const data = await response.json();
-            fileId = data.id;
-        } else {
-            // Create new file
-            const createUrl = `https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart`;
-            const response = await driveFetch(createUrl, { method: 'POST', body: form }, token);
-            const data = await response.json();
-            fileId = data.id;
+        const createUrl = `https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart`;
+        const createResponse = await driveFetch(createUrl, { method: 'POST', body: form }, token);
+        const newData = await createResponse.json();
+        const newFileId = newData.id;
+
+        if (!newFileId) {
+            throw new Error("No se pudo crear el nuevo archivo en Drive durante el guardado.");
         }
 
-        if (!fileId) throw new Error("No se pudo guardar el archivo en Drive.");
+        if (existingFileId) {
+            try {
+                const deleteUrl = `https://www.googleapis.com/drive/v3/files/${existingFileId}`;
+                await driveFetch(deleteUrl, { method: 'DELETE' }, token);
+            } catch (deleteError) {
+                console.warn(`Could not delete old file (${existingFileId}).`, deleteError);
+                addToast("No se pudo eliminar la versión anterior del llavero.", "info");
+            }
+        }
+        
         setHasUnsavedChanges(false);
-        return fileId;
-      }, []);
+        return newFileId;
+      }, [addToast]);
 
       // --- Handlers ---
       const handleAuthSuccess = useCallback(async (token) => {
         setAppStatus('loading');
+        setAccessToken(token);
         try {
           const userInfoResponse = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
             headers: { 'Authorization': `Bearer ${token}` }
@@ -348,6 +351,24 @@
         if (tokenClient.current) {
             tokenClient.current.requestAccessToken({ prompt: 'consent' });
         }
+      };
+
+      const handleSignOut = () => {
+        if (accessToken) {
+            google.accounts.oauth2.revoke(accessToken, () => {
+                console.log('Access token revoked.');
+            });
+        }
+        setAccessToken(null);
+        setUser(null);
+        setKeychains([]);
+        setDb(null);
+        setMasterKey(null);
+        setCurrentFileId(null);
+        setCurrentSalt(null);
+        setHasUnsavedChanges(false);
+        setAppStatus('auth');
+        addToast("Sesión cerrada correctamente.", "info");
       };
       
       const handleUnlockKeychain = async (fileId, password) => {
@@ -422,22 +443,27 @@
           }
       };
       
-      // --- DB Operations that modify state ---
-      const withSave = (operation) => (...args) => {
-          operation(...args);
-          setDb(new SQL.Database(exportDb(db)));
+      // --- DB Operations that modify state (Immutable Pattern) ---
+      const withDbMutation = (operation) => (...args) => {
+          operation(db, ...args);
+          const exportedData = exportDb(db);
+          setDb(new SQL.Database(exportedData));
           setHasUnsavedChanges(true);
       };
-      const handleAddCredential = withSave((cred) => addCredential(db, cred));
-      const handleUpdateCredential = withSave((cred) => updateCredential(db, cred));
-      const handleDeleteCredential = withSave((id) => deleteCredential(db, id));
-      const handleAddTag = withSave((name) => addTag(db, name));
-      const handleDeleteTag = withSave((id) => { try { deleteTag(db, id); addToast("Etiqueta eliminada.", "success"); } catch (e) { addToast(e.message, "error"); } });
-      const handleSaveKeychainName = (newName) => {
-          setKeychainName(db, newName);
-          setDb(new SQL.Database(exportDb(db))); 
-          setHasUnsavedChanges(true); 
-      };
+
+      const handleAddCredential = withDbMutation(addCredential);
+      const handleUpdateCredential = withDbMutation(updateCredential);
+      const handleDeleteCredential = withDbMutation(deleteCredential);
+      const handleAddTag = withDbMutation(addTag);
+      const handleDeleteTag = withDbMutation((db, id) => {
+          try {
+              deleteTag(db, id);
+              addToast("Etiqueta eliminada.", "success");
+          } catch (e) {
+              addToast(e.message, "error");
+          }
+      });
+      const handleSaveKeychainName = withDbMutation(setKeychainName);
 
       // --- RENDER LOGIC ---
       const renderContent = () => {
@@ -454,6 +480,7 @@
                         keychains={keychains} 
                         onUnlock={handleUnlockKeychain}
                         onTriggerCreate={() => setAppStatus('create-keychain')}
+                        onSignOut={handleSignOut}
                     />;
           case 'unlocked':
             return <UnlockedScreen db={db} masterKey={masterKey} onLock={handleLock} onSaveToDrive={handleSaveChanges} onAddCredential={handleAddCredential} onUpdateCredential={handleUpdateCredential} onDeleteCredential={handleDeleteCredential} onAddTag={handleAddTag} onDeleteTag={handleDeleteTag} onSaveKeychainName={handleSaveKeychainName} />;
@@ -528,7 +555,7 @@
         );
     };
 
-    const KeychainSelectionScreen = ({ user, keychains, onUnlock, onTriggerCreate }) => {
+    const KeychainSelectionScreen = ({ user, keychains, onUnlock, onTriggerCreate, onSignOut }) => {
         const { useState } = React;
         const [unlockingFile, setUnlockingFile] = useState(null);
         const [password, setPassword] = useState('');
@@ -573,6 +600,7 @@
                 <button onClick={onTriggerCreate} className="mt-4 w-full bg-green-600 text-white py-3 rounded-md shadow hover:bg-green-700 font-medium flex items-center justify-center">
                     <Icon name="add" className="mr-2"/>Crear Nuevo Llavero
                 </button>
+                <button onClick={onSignOut} className="mt-2 w-full text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">Cerrar sesión</button>
             </div>
         );
     };
@@ -591,8 +619,10 @@
         const addToast = useNotifier();
 
         useEffect(() => {
-            setCredentials(getCredentials(db));
-            setTags(getTags(db));
+            if (db) {
+                setCredentials(getCredentials(db));
+                setTags(getTags(db));
+            }
         }, [db]);
         
         const filteredCredentials = useMemo(() => {
