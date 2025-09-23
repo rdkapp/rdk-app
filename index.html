@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>RDK APP v10.0.0</title>
+  <title>RDK APP v10.1.0</title>
   
   <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -60,7 +60,7 @@
 
   <script type="text/babel">
     // --- APP CONFIGURATION ---
-    const APP_VERSION = "10.0.0";
+    const APP_VERSION = "10.1.0";
     const SESSION_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutos
 
     // --- GOOGLE API CONFIGURATION ---
@@ -320,7 +320,6 @@
             const keychainName = getKeychainName(dbToSave);
             const fileName = `${keychainName}.db`;
 
-            // ALWAYS CREATE A NEW FILE (OVERWRITE STRATEGY)
             const fileMetadata = { 
                 name: fileName, 
                 mimeType: 'application/json',
@@ -328,12 +327,16 @@
             };
             
             const boundary = '-------314159265358979323846';
-            const delimiter = "\r\n--" + boundary + "\r\n";
-            const close_delim = "\r\n--" + boundary + "--";
-
-            const metadataPart = 'Content-Type: application/json\r\n\r\n' + JSON.stringify(fileMetadata);
+            const metadataPart = 'Content-Type: application/json; charset=UTF-8\r\n\r\n' + JSON.stringify(fileMetadata);
             const mediaPart = 'Content-Type: application/json\r\n\r\n' + new TextDecoder().decode(fileContentToUpload);
-            const requestBody = delimiter + metadataPart + delimiter + mediaPart + close_delim;
+
+            const requestBody = [
+                '--' + boundary,
+                metadataPart,
+                '--' + boundary,
+                mediaPart,
+                '--' + boundary + '--'
+            ].join('\r\n');
 
             const createResponse = await gapi.client.request({
                 path: '/upload/drive/v3/files',
@@ -345,15 +348,14 @@
 
             const newFileId = createResponse.result.id;
             if (!newFileId) {
-                throw new Error("Drive API did not return a new file ID.");
+                throw new Error("La API de Drive no devolvió un ID de archivo válido después de la creación.");
             }
-
-            // If we were updating, delete the old file
+            
             if (existingFileId) {
                 try {
                     await gapi.client.drive.files.delete({ fileId: existingFileId });
                 } catch (deleteError) {
-                    console.warn("Could not delete old keychain file, it may have been deleted already.", deleteError);
+                    console.warn("Could not delete old keychain file.", deleteError);
                 }
             }
             
@@ -363,7 +365,8 @@
 
         } catch (error) {
             console.error("Error saving to Drive:", error);
-            addToast(`Error al guardar: ${error.result?.error?.message || error.message}`, "error");
+            const errorMessage = error.result?.error?.message || error.message || "Error desconocido.";
+            addToast(`Error al guardar: ${errorMessage}`, "error");
             throw error;
         }
       }, [addToast]);
