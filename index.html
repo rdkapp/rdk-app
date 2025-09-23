@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>RDK APP v9.6.0</title>
+  <title>RDK APP v9.7.0</title>
   
   <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -60,7 +60,7 @@
 
   <script type="text/babel">
     // --- APP CONFIGURATION ---
-    const APP_VERSION = "9.6.0";
+    const APP_VERSION = "9.7.0";
     const SESSION_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutos
 
     // --- GOOGLE API CONFIGURATION ---
@@ -301,7 +301,6 @@
       const handleSaveToDrive = useCallback(async (dbToSave, existingFileId, keyToUse, saltToUse) => {
         if (!dbToSave || !keyToUse || !saltToUse) {
             addToast("No se puede guardar: faltan datos clave.", "error");
-            // Set status to unlocked to prevent getting stuck in loading
             if(appStatus === 'loading') setAppStatus('unlocked');
             return null;
         }
@@ -318,16 +317,16 @@
             const fileMetadata = { name: fileName, mimeType: 'application/json' };
             
             let newFileId = existingFileId;
+            
+            const boundary = '-------314159265358979323846';
+            const delimiter = "\r\n--" + boundary + "\r\n";
+            const close_delim = "\r\n--" + boundary + "--";
+
+            const metadataPart = 'Content-Type: application/json\r\n\r\n' + JSON.stringify(fileMetadata);
+            const mediaPart = 'Content-Type: application/json\r\n\r\n' + new TextDecoder().decode(fileContentToUpload);
 
             if (existingFileId) {
                 // UPDATE (PATCH)
-                const boundary = '-------314159265358979323846';
-                const delimiter = "\r\n--" + boundary + "\r\n";
-                const close_delim = "\r\n--" + boundary + "--";
-
-                const metadataPart = 'Content-Type: application/json\r\n\r\n' + JSON.stringify(fileMetadata);
-                const mediaPart = 'Content-Type: application/json\r\n\r\n' + new TextDecoder().decode(fileContentToUpload);
-                
                 const requestBody = delimiter + metadataPart + delimiter + mediaPart + close_delim;
 
                 await gapi.client.request({
@@ -340,15 +339,15 @@
             } else {
                 // CREATE (POST)
                 fileMetadata.parents = ['appDataFolder'];
-                const form = new FormData();
-                form.append('metadata', new Blob([JSON.stringify(fileMetadata)], { type: 'application/json' }));
-                form.append('file', new Blob([fileContentToUpload], { type: 'application/json' }));
+                const createMetadataPart = 'Content-Type: application/json\r\n\r\n' + JSON.stringify(fileMetadata);
+                const requestBody = delimiter + createMetadataPart + delimiter + mediaPart + close_delim;
 
                 const response = await gapi.client.request({
                     path: '/upload/drive/v3/files',
                     method: 'POST',
                     params: { uploadType: 'multipart' },
-                    body: form
+                    headers: { 'Content-Type': `multipart/related; boundary="${boundary}"` },
+                    body: requestBody
                 });
                 newFileId = response.result.id;
             }
