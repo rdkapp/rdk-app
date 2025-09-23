@@ -1,10 +1,9 @@
-
 <!DOCTYPE html>
 <html lang="es">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>RDK APP v8.5.0</title>
+  <title>RDK APP v8.7.0</title>
   
   <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -51,7 +50,7 @@
     .material-symbols-sharp { vertical-align: middle; font-size: 20px; }
     /* Animación para Toasts */
     @keyframes slide-in { from { transform: translateX(100%); } to { transform: translateX(0); } }
-    @keyframes slide-out { from { transform: translateX(0); } to { transform: translateX(100%); opacity: 0; } }
+    @keyframes slide-out { from { transform: translateX(0); } to { translateX(100%); opacity: 0; } }
     .toast-in { animation: slide-in 0.3s ease-out forwards; }
     .toast-out { animation: slide-out 0.3s ease-in forwards; }
   </style>
@@ -61,7 +60,7 @@
 
   <script type="text/babel">
     // --- APP CONFIGURATION ---
-    const APP_VERSION = "8.5.0";
+    const APP_VERSION = "8.7.0";
     const SESSION_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutos
 
     // --- GOOGLE API CONFIGURATION ---
@@ -115,7 +114,7 @@
     
     // --- DATABASE SERVICE ---
     const createTables = (db) => { db.run(`CREATE TABLE IF NOT EXISTS credentials (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, encrypted_username TEXT NOT NULL, encrypted_password TEXT NOT NULL, comment TEXT, tag_id INTEGER, FOREIGN KEY (tag_id) REFERENCES tags(id));`); db.run(`CREATE TABLE IF NOT EXISTS metadata (key TEXT PRIMARY KEY, value TEXT);`); db.run(`CREATE TABLE IF NOT EXISTS tags (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL UNIQUE);`); };
-    const getRawMetadata = (db, key) => { const res = db.exec("SELECT value FROM metadata WHERE key = ?", [key]); return (res.length > 0 && res[0].values.length > 0) ? res[0].values[0][0] : null; };
+    const getRawMetadata = (db, key) => { if (!db) return null; const res = db.exec("SELECT value FROM metadata WHERE key = ?", [key]); return (res.length > 0 && res[0].values.length > 0) ? res[0].values[0][0] : null; };
     const setRawMetadata = (db, key, value) => db.run("INSERT OR REPLACE INTO metadata (key, value) VALUES (?, ?)", [key, value]);
     const getKeychainName = (db) => getRawMetadata(db, 'keychain_name') || 'MiLlavero';
     const setKeychainName = (db, name) => setRawMetadata(db, 'keychain_name', name);
@@ -167,7 +166,6 @@
       const [masterKey, setMasterKey] = useState(null);
       const [currentFileId, setCurrentFileId] = useState(null);
       const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
-      const [keychainNameToSetPassword, setKeychainNameToSetPassword] = useState('');
 
       // UI State
       const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
@@ -370,21 +368,23 @@
       }, [addToast, masterKey]);
 
       const handleCreateNewKeychain = async (name) => {
+        if (!SQL) {
+            addToast("El servicio de base de datos no está listo.", "error");
+            return;
+        }
         try {
-            if (!SQL) throw new Error("SQL.js no está cargado");
             setAppStatus('loading');
-            
             const { database: newDb, salt } = await initDb(SQL);
             setKeychainName(newDb, name);
-            currentSalt.current = salt;
             
             setDb(newDb);
-            setKeychainNameToSetPassword(name);
+            currentSalt.current = salt;
+            setCurrentFileId(null);
+            
             setAppStatus('set-master-password');
-
-        } catch (error) {
-            console.error("Error creating new keychain:", error);
-            addToast("Ocurrió un error al crear el llavero.", "error");
+        } catch (err) {
+            console.error("Error initiating keychain creation:", err);
+            addToast("No se pudo iniciar la creación del llavero.", "error");
             setAppStatus('select-keychain');
         }
       };
@@ -427,15 +427,20 @@
 
       const handleSetMasterPassword = async (password) => {
         try {
-          if (!currentSalt.current) throw new Error("Salt no generado.");
-          const key = await deriveKey(password, currentSalt.current);
-          setMasterKey(key);
-          setAppStatus('unlocked');
-          setHasUnsavedChanges(true); // Mark for first save
-          addToast("Contraseña maestra establecida. ¡No la olvides!", "success");
+            setAppStatus('loading');
+            if (!db || !currentSalt.current) {
+              throw new Error("La base de datos no fue inicializada correctamente.");
+            }
+            
+            const key = await deriveKey(password, currentSalt.current);
+            setMasterKey(key);
+            setHasUnsavedChanges(true); // Mark for first save
+            setAppStatus('unlocked');
+            addToast("Contraseña maestra establecida. ¡No la olvides!", "success");
         } catch (err) {
-          console.error("Error setting master password:", err);
-          addToast("No se pudo establecer la contraseña maestra.", "error");
+            console.error("Error setting master password:", err);
+            addToast("No se pudo establecer la contraseña maestra.", "error");
+            setAppStatus('select-keychain');
         }
       };
       
@@ -484,7 +489,7 @@
           case 'select-keychain':
             return <KeychainSelectionScreen user={user} keychains={keychains} onCreate={handleCreateNewKeychain} onUnlock={handleUnlockKeychain} />;
           case 'set-master-password':
-            return <SetMasterPasswordScreen onSetPassword={handleSetMasterPassword} keychainName={keychainNameToSetPassword} />;
+            return <SetMasterPasswordScreen onSetPassword={handleSetMasterPassword} keychainName={getKeychainName(db)} />;
           case 'unlock':
              return <div>Unlock Screen - Not implemented</div>;
           case 'unlocked':
