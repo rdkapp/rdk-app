@@ -1,10 +1,9 @@
-
 <!DOCTYPE html>
 <html lang="es">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>RDK APP v5.7.0</title>
+  <title>RDK APP v5.8.0</title>
   
   <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -62,7 +61,7 @@
 
   <script type="text/babel">
     // --- APP CONFIGURATION ---
-    const APP_VERSION = "5.7.0";
+    const APP_VERSION = "5.8.0";
     const SESSION_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutos
 
     // --- GOOGLE API CONFIGURATION ---
@@ -225,24 +224,20 @@
             const metadata = { name: activeKeychain.name, mimeType: 'text/plain' };
 
             if (activeKeychain.id) {
-                // UPDATE: Two-step process for robustness with appDataFolder
-                // Step 1: Update metadata (name)
-                await gapi.client.drive.files.update({
-                    fileId: activeKeychain.id,
-                    resource: { name: metadata.name }
-                });
+                // UPDATE: Use a single multipart request for update, which is more robust
+                const form = new FormData();
+                form.append('metadata', new Blob([JSON.stringify({ name: metadata.name })], { type: 'application/json' }));
+                form.append('file', file);
 
-                // Step 2: Update content
-                const contentResponse = await fetch(`https://www.googleapis.com/upload/drive/v3/files/${activeKeychain.id}?uploadType=media`, {
+                const response = await gapi.client.request({
+                    path: `/upload/drive/v3/files/${activeKeychain.id}`,
                     method: 'PATCH',
-                    headers: {
-                        'Authorization': `Bearer ${gapi.client.getToken().access_token}`,
-                    },
-                    body: file
+                    params: { uploadType: 'multipart' },
+                    body: form
                 });
-
-                if (!contentResponse.ok) {
-                    throw new Error(`Failed to update file content. Status: ${contentResponse.status}`);
+                
+                if (!response.result.id) {
+                  throw new Error("File update did not return an ID.");
                 }
 
             } else {
