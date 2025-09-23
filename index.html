@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>RDK APP v5.3.0</title>
+  <title>RDK APP v5.6.0</title>
   
   <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -61,13 +61,13 @@
 
   <script type="text/babel">
     // --- APP CONFIGURATION ---
-    const APP_VERSION = "5.3.0";
+    const APP_VERSION = "5.6.0";
     const SESSION_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutos
 
     // --- GOOGLE API CONFIGURATION ---
     const GOOGLE_CLIENT_ID = '576080826935-2mtnj52ndc8plnsjodjevt3e2gsh4m3a.apps.googleusercontent.com';
     const GOOGLE_API_KEY = 'AIzaSyC3aFfyDSQ181xr-JK9VKEG3OkK5gY0D-8';
-    const DRIVE_API_SCOPE = 'https://www.googleapis.com/auth/drive.appdata https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile';
+    const DRIVE_API_SCOPE = 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile';
     
     // --- CONSTANTS ---
     const SALT_LENGTH = 16;
@@ -231,6 +231,8 @@
             if (activeKeychain.id) {
                 path = `/upload/drive/v3/files/${activeKeychain.id}`;
                 method = 'PATCH';
+                // For drive.file scope, we don't need to re-specify parents on update.
+                // The permission is attached to the file itself.
             } else {
                 metadata.parents = ['appDataFolder'];
             }
@@ -297,7 +299,13 @@
                       }
                     },
                     error_callback: (error) => {
-                      console.log("Silent auth failed:", error);
+                      const expectedSilentSignInErrors = ['popup_closed_by_user', 'popup_blocked_by_browser', 'popup_failed_to_open'];
+                      if (error && !expectedSilentSignInErrors.includes(error.type)) {
+                          console.error("GSI Error:", error);
+                          setAuthError(`Error de autenticación: ${error.type || 'desconocido'}.`);
+                      } else {
+                          console.log(`Silent sign-in failed as expected (${error?.type}), user interaction required.`);
+                      }
                     }
                 });
                 setTokenClient(client);
