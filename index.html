@@ -2,23 +2,24 @@
 <html lang="es">
 <head>
   <meta charset="utf-8" />
-  <title>Drive Notes — Alejandro</title>
+  <title>Drive Notes — Alejandro (Demo corregido)</title>
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <style>
-    body{font-family:system-ui,Segoe UI,Roboto,Arial;max-width:900px;margin:20px auto;padding:12px}
+    body{font-family:system-ui,Segoe UI,Roboto,Arial;max-width:980px;margin:18px auto;padding:12px}
     header{display:flex;align-items:center;gap:12px}
     button{padding:8px 10px;margin:4px}
     #files{margin-top:12px}
     textarea{width:100%;height:240px;margin-top:8px;font-family:monospace}
     .file-row{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px dashed #ddd}
     .small{font-size:0.9rem;color:#555}
+    #logs{white-space:pre-wrap;background:#f6f6f6;border:1px solid #eee;padding:8px;margin-top:12px;font-size:0.85rem}
   </style>
   <!-- Google Identity Services -->
   <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 <body>
   <header>
-    <h2>Drive Notes (demo)</h2>
+    <h2>Drive Notes (demo) — Alejandro</h2>
     <div style="margin-left:auto">
       <button id="btnSignIn">Iniciar sesión</button>
       <button id="btnSignOut" style="display:none">Cerrar sesión</button>
@@ -30,7 +31,7 @@
   <section>
     <button id="btnEnsure">Asegurar NOTE.db (crear si no existe)</button>
     <button id="btnList">Listar .db</button>
-    <button id="btnNewNote">Agregar nota (append)</button>
+    <button id="btnNewNote">Agregar nota rápida</button>
   </section>
 
   <div id="status" class="small" style="margin-top:8px;color:green"></div>
@@ -45,32 +46,61 @@
     <button id="btnAppendSave" disabled>Guardar + conservar (append)</button>
   </div>
 
+  <h4>Logs / Debug</h4>
+  <div id="logs"></div>
+
 <script>
-/* CONFIG: reemplazar por tu Client ID */
+/* ===================== CONFIG =====================
+   Reemplaza por tu Client ID (OAuth 2.0 - Web application)
+   ================================================== */
 const CLIENT_ID = '576080826935-2mtnj52ndc8plnsjodjevt3e2gsh4m3a.apps.googleusercontent.com';
 const SCOPES = 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive.metadata.readonly';
 
 let tokenClient = null;
 let accessToken = null;
 
-/* UI */
-function showStatus(msg, isError=false){ const s=document.getElementById('status'); s.style.color = isError ? 'crimson' : 'green'; s.textContent = msg; }
+/* ============= UI helpers ============= */
+function showStatus(msg, isError=false){
+  const s = document.getElementById('status');
+  s.style.color = isError ? 'crimson' : 'green';
+  s.textContent = msg;
+  log(msg);
+}
+function log(txt){
+  const l = document.getElementById('logs');
+  const time = new Date().toLocaleTimeString();
+  l.textContent = `[${time}] ${txt}\n` + l.textContent;
+}
 
-/* Inicializa Google token client */
+/* ============ Inicialización ============ */
 window.onload = () => {
+  if (!CLIENT_ID || CLIENT_ID === 'YOUR_GOOGLE_CLIENT_ID') {
+    showStatus('⚠️ Reemplaza YOUR_GOOGLE_CLIENT_ID con tu Client ID en el código.', true);
+  }
+
+  // Inicializa token client
   tokenClient = google.accounts.oauth2.initTokenClient({
     client_id: CLIENT_ID,
     scope: SCOPES,
     callback: (resp) => {
-      if (resp.error) { showStatus('Error token: '+resp.error, true); return; }
+      if (resp.error) {
+        showStatus('Error al obtener token: ' + resp.error, true);
+        log('token callback error: ' + JSON.stringify(resp));
+        return;
+      }
       accessToken = resp.access_token;
+      showStatus('Conectado a Google Drive. Token OK.');
       document.getElementById('btnSignIn').style.display = 'none';
       document.getElementById('btnSignOut').style.display = 'inline-block';
-      showStatus('Conectado a Google Drive.');
     }
   });
 
-  document.getElementById('btnSignIn').onclick = () => tokenClient.requestAccessToken({prompt:'consent'});
+  // Botones
+  document.getElementById('btnSignIn').onclick = () => {
+    try {
+      tokenClient.requestAccessToken({ prompt: 'consent' });
+    } catch (e) { showStatus('Error requestAccessToken: ' + e.message, true); log(e.stack || e); }
+  };
   document.getElementById('btnSignOut').onclick = signOut;
 
   document.getElementById('btnEnsure').onclick = ensureNoteDb;
@@ -81,7 +111,7 @@ window.onload = () => {
   document.getElementById('btnAppendSave').onclick = saveCurrentFileAppend;
 };
 
-/* Sign out simple (limpia token local) */
+/* ============ Auth / logout ============ */
 function signOut(){
   accessToken = null;
   document.getElementById('btnSignIn').style.display = 'inline-block';
@@ -91,171 +121,228 @@ function signOut(){
   document.getElementById('curName').textContent = '-';
   document.getElementById('btnSave').disabled = true;
   document.getElementById('btnAppendSave').disabled = true;
-  showStatus('Sesión cerrada.');
+  showStatus('Sesión cerrada (token eliminado localmente).');
+  log('Usuario hizo sign out en la app (token local removido).');
 }
 
-/* wrapper fetch con token */
-async function driveFetch(url, opts={}){
-  if(!accessToken) throw new Error('No logueado');
+/* ============ util fetch con token ============ */
+async function driveFetch(url, opts = {}){
+  if (!accessToken) throw new Error('No hay access token. Inicia sesión.');
   opts.headers = opts.headers || {};
   opts.headers['Authorization'] = 'Bearer ' + accessToken;
+  // Evitamos poner Content-Type cuando body es FormData (browser lo asigna)
   return fetch(url, opts);
 }
 
-/* Asegura NOTE.db (crea si no existe) */
+/* ============ Crear NOTE.db si no existe (usando FormData) ============ */
 async function ensureNoteDb(){
   try{
     showStatus('Buscando NOTE.db...');
     const q = `name = 'NOTE.db' and trashed = false`;
     const r = await driveFetch(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id,name)&pageSize=1`);
+    if (!r.ok) {
+      const txt = await r.text();
+      throw new Error('List files failed: ' + r.status + ' => ' + txt);
+    }
     const j = await r.json();
-    if(j.files && j.files.length>0){
-      showStatus('NOTE.db encontrado. id: '+j.files[0].id);
+    if (j.files && j.files.length > 0) {
+      showStatus('NOTE.db ya existe. id: ' + j.files[0].id);
       listDbFiles();
       return;
     }
-    showStatus('Creando NOTE.db...');
+
+    showStatus('NOTE.db no existe. Creando...');
+    // metadata + content
     const metadata = { name: 'NOTE.db' };
-    const content = 'NOTES\n\nCreado: ' + new Date().toISOString() + '\n\n';
-    const boundary = '-------314159265358979323846';
-    const delimiter = '\\r\\n--' + boundary + '\\r\\n';
-    const close_delim = '\\r\\n--' + boundary + '--';
-    const body =
-      delimiter +
-      'Content-Type: application/json; charset=UTF-8\\r\\n\\r\\n' +
-      JSON.stringify(metadata) +
-      delimiter +
-      'Content-Type: text/plain\\r\\n\\r\\n' +
-      content +
-      close_delim;
-    const create = await driveFetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
-      method:'POST',
-      headers:{ 'Content-Type':'multipart/related; boundary=' + boundary },
-      body: body
+    const content = 'NOTES (texto plano)\\nCreado: ' + new Date().toISOString() + '\\n\\n';
+    const fileBlob = new Blob([content], { type: 'text/plain' });
+    const metaBlob = new Blob([JSON.stringify(metadata)], { type: 'application/json' });
+
+    const form = new FormData();
+    // Google espera campos: metadata (application/json) y file (binary)
+    form.append('metadata', metaBlob);
+    form.append('file', fileBlob);
+
+    const createResp = await driveFetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
+      method: 'POST',
+      body: form
     });
-    const created = await create.json();
-    if(created.id) showStatus('NOTE.db creado id: '+created.id);
-    else showStatus('NOTE.db creado (respuesta inesperada)', false);
+
+    if (!createResp.ok) {
+      const txt = await createResp.text();
+      throw new Error('Crear archivo falló: ' + createResp.status + ' => ' + txt);
+    }
+    const created = await createResp.json();
+    showStatus('NOTE.db creado. id: ' + created.id);
     listDbFiles();
-  }catch(err){ console.error(err); showStatus('Error: '+err.message, true); }
+  } catch (err) {
+    console.error(err);
+    // Mensaje más claro para el usuario
+    if (err.message && err.message.includes('Failed to fetch')) {
+      showStatus('Error: Failed to fetch. Posibles causas: estás en file://, CORS, token inválido o no estás sirviendo via http. Revisa consola.', true);
+      log('Error detail: ' + (err.stack || err.message));
+    } else {
+      showStatus('Error: ' + (err.message || err), true);
+      log('Error detail: ' + (err.stack || err.message));
+    }
+  }
 }
 
-/* Lista archivos .db */
+/* ============ Listar archivos .db ============ */
 async function listDbFiles(){
   try{
-    showStatus('Listando .db...');
+    showStatus('Listando archivos .db...');
     const q = `name contains '.db' and trashed = false`;
     const fields = 'files(id,name,modifiedTime,size)';
     const r = await driveFetch(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=${encodeURIComponent('files(' + fields + ')')}&pageSize=50`);
+    if (!r.ok) {
+      const txt = await r.text();
+      throw new Error('List files failed: ' + r.status + ' => ' + txt);
+    }
     const j = await r.json();
     const cont = document.getElementById('files');
     cont.innerHTML = '';
-    if(!j.files || j.files.length===0){ cont.innerHTML = '<div class="small">No se encontraron .db</div>'; showStatus('0 archivos .db'); return; }
-    j.files.forEach(f=>{
+    if (!j.files || j.files.length === 0) {
+      cont.innerHTML = '<div class="small">No se encontraron .db</div>';
+      showStatus('0 archivos .db');
+      return;
+    }
+    j.files.forEach(f => {
       const div = document.createElement('div');
       div.className = 'file-row';
       div.innerHTML = `<div><strong>${escapeHtml(f.name)}</strong><div class="small">id: ${f.id} — ${f.size||'—'} bytes</div></div>`;
-      const btnOpen = document.createElement('button'); btnOpen.textContent='Abrir'; btnOpen.onclick = ()=> openFile(f);
-      const btnDL = document.createElement('button'); btnDL.textContent='Descargar'; btnDL.onclick = ()=> downloadFile(f);
+      const btnOpen = document.createElement('button'); btnOpen.textContent = 'Abrir'; btnOpen.onclick = () => openFile(f);
+      const btnDL = document.createElement('button'); btnDL.textContent = 'Descargar'; btnDL.onclick = () => downloadFile(f);
       div.appendChild(btnOpen); div.appendChild(btnDL);
       cont.appendChild(div);
     });
     showStatus('Encontrados ' + j.files.length + ' archivos .db');
-  }catch(err){ console.error(err); showStatus('Error listar: '+err.message, true); }
+  } catch (err) {
+    console.error(err);
+    showStatus('Error al listar: ' + (err.message || err), true);
+    log('listDbFiles err: ' + (err.stack || err.message));
+  }
 }
 
-/* Abrir archivo (muestra en textarea) */
+/* ============ Abrir archivo (texto plano) ============ */
 async function openFile(file){
   try{
-    showStatus('Abriendo '+file.name+' ...');
+    showStatus('Abriendo ' + file.name + ' ...');
     const r = await driveFetch(`https://www.googleapis.com/drive/v3/files/${file.id}?alt=media`);
-    if(!r.ok) throw new Error('Error download: ' + r.status);
-    const text = await r.text();
-    document.getElementById('editor').value = text;
+    if (!r.ok) throw new Error('Download failed: ' + r.status);
+    const txt = await r.text();
+    document.getElementById('editor').value = txt;
     document.getElementById('curName').textContent = file.name;
     document.getElementById('curName').dataset.id = file.id;
     document.getElementById('btnSave').disabled = false;
     document.getElementById('btnAppendSave').disabled = false;
-    showStatus('Archivo cargado.');
-  }catch(err){ console.error(err); showStatus('Error abrir: '+err.message, true); }
+    showStatus('Archivo cargado en editor.');
+  } catch (err) {
+    console.error(err);
+    showStatus('Error abriendo: ' + (err.message || err), true);
+    log('openFile err: ' + (err.stack || err.message));
+  }
 }
 
-/* Descargar archivo localmente */
+/* ============ Descargar localmente ============ */
 async function downloadFile(file){
   try{
-    showStatus('Descargando '+file.name+' ...');
+    showStatus('Descargando ' + file.name + ' ...');
     const r = await driveFetch(`https://www.googleapis.com/drive/v3/files/${file.id}?alt=media`);
-    if(!r.ok) throw new Error('Error download: '+r.status);
+    if (!r.ok) throw new Error('Download failed: ' + r.status);
     const blob = await r.blob();
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a'); a.href = url; a.download = file.name; document.body.appendChild(a); a.click(); a.remove();
     URL.revokeObjectURL(url);
     showStatus('Descarga iniciada.');
-  }catch(err){ console.error(err); showStatus('Error descarga: '+err.message, true); }
+  } catch (err) {
+    console.error(err);
+    showStatus('Error descarga: ' + (err.message || err), true);
+    log('downloadFile err: ' + (err.stack || err.message));
+  }
 }
 
-/* Guardar (sobrescribir) archivo abierto */
+/* ============ Guardar (sobrescribir) ============ */
 async function saveCurrentFile(){
   try{
     const id = document.getElementById('curName').dataset.id;
-    if(!id) { showStatus('No hay archivo abierto', true); return; }
-    showStatus('Guardando...');
+    if (!id) { showStatus('No hay archivo abierto', true); return; }
+    showStatus('Guardando (sobrescribiendo) ...');
     const content = document.getElementById('editor').value;
+    const blob = new Blob([content], { type: 'text/plain' });
     const r = await driveFetch(`https://www.googleapis.com/upload/drive/v3/files/${id}?uploadType=media`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'text/plain' },
-      body: content
+      body: blob
     });
-    if(!r.ok) throw new Error('Fallo guardar: ' + r.status);
+    if (!r.ok) {
+      const txt = await r.text();
+      throw new Error('Save failed: ' + r.status + ' => ' + txt);
+    }
     const updated = await r.json();
     showStatus('Guardado OK. id: ' + updated.id);
-  }catch(err){ console.error(err); showStatus('Error guardar: '+err.message, true); }
+  } catch (err) {
+    console.error(err);
+    showStatus('Error guardando: ' + (err.message || err), true);
+    log('saveCurrentFile err: ' + (err.stack || err.message));
+  }
 }
 
-/* Guardar + conservar (append): descarga, concatena y vuelve a subir */
+/* ============ Guardar append: descarga + concat + upload ============ */
 async function saveCurrentFileAppend(){
   try{
     const id = document.getElementById('curName').dataset.id;
-    if(!id) { showStatus('No hay archivo abierto', true); return; }
-    showStatus('Appending (descargando primero)...');
+    if (!id) { showStatus('No hay archivo abierto', true); return; }
+    showStatus('Appending (descargando + subiendo) ...');
     const r1 = await driveFetch(`https://www.googleapis.com/drive/v3/files/${id}?alt=media`);
-    if(!r1.ok) throw new Error('Error download: ' + r1.status);
+    if (!r1.ok) throw new Error('Download failed: ' + r1.status);
     const existing = await r1.text();
     const toSave = existing + '\n' + document.getElementById('editor').value;
+    const blob = new Blob([toSave], { type: 'text/plain' });
     const r2 = await driveFetch(`https://www.googleapis.com/upload/drive/v3/files/${id}?uploadType=media`, {
-      method:'PATCH',
-      headers:{ 'Content-Type':'text/plain' },
-      body: toSave
+      method: 'PATCH',
+      headers: { 'Content-Type': 'text/plain' },
+      body: blob
     });
-    if(!r2.ok) throw new Error('Error upload: ' + r2.status);
+    if (!r2.ok) {
+      const txt = await r2.text();
+      throw new Error('Upload failed: ' + r2.status + ' => ' + txt);
+    }
     const updated = await r2.json();
-    showStatus('Append guardado. id: '+updated.id);
-  }catch(err){ console.error(err); showStatus('Error append: '+err.message, true); }
+    showStatus('Append guardado. id: ' + updated.id);
+  } catch (err) {
+    console.error(err);
+    showStatus('Error append: ' + (err.message || err), true);
+    log('saveCurrentFileAppend err: ' + (err.stack || err.message));
+  }
 }
 
-/* Agregar nota rápida: si no hay NOTE.db, lo crea; luego lo abre y agrega texto */
+/* ============ Agregar nota rápida ============ */
 async function addNoteAppend(){
   try{
-    // asegurar NOTE.db
     await ensureNoteDb();
-    // buscar NOTE.db y abrirlo
+    // buscar NOTE.db
     const q = `name = 'NOTE.db' and trashed = false`;
     const r = await driveFetch(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id,name)&pageSize=1`);
+    if (!r.ok) throw new Error('List NOTE.db failed: ' + r.status);
     const j = await r.json();
-    if(j.files && j.files.length>0){
-      const f = j.files[0];
-      await openFile(f);
-      // agregar una línea de ejemplo
+    if (j.files && j.files.length > 0) {
+      await openFile(j.files[0]);
       const ed = document.getElementById('editor');
-      ed.value = ed.value + '\\n[Nota ' + new Date().toLocaleString() + '] ';
-      // auto-guardamos (append flow)
+      ed.value = ed.value + '\n[Nota ' + new Date().toLocaleString() + '] Nota rápida agregada.';
       await saveCurrentFile();
-    } else showStatus('No se encontró NOTE.db tras crear (raro).', true);
-  }catch(err){ console.error(err); showStatus('Error addNote: '+err.message, true); }
+    } else {
+      showStatus('No se encontró NOTE.db después de crear (raro).', true);
+    }
+  } catch (err) {
+    console.error(err);
+    showStatus('Error addNote: ' + (err.message || err), true);
+    log('addNoteAppend err: ' + (err.stack || err.message));
+  }
 }
 
-/* Helpers */
-function escapeHtml(s){ return s? s.replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])) : ''; }
+/* ============ Helpers ============ */
+function escapeHtml(s){ return s ? s.replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])) : ''; }
 </script>
 </body>
 </html>
