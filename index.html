@@ -4,7 +4,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>RDK APP v8.3.0</title>
+  <title>RDK APP v8.4.0</title>
   
   <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -61,7 +61,7 @@
 
   <script type="text/babel">
     // --- APP CONFIGURATION ---
-    const APP_VERSION = "8.3.0";
+    const APP_VERSION = "8.4.0";
     const SESSION_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutos
 
     // --- GOOGLE API CONFIGURATION ---
@@ -123,7 +123,6 @@
       const database = new SQL.Database();
       createTables(database);
       const salt = window.crypto.getRandomValues(new Uint8Array(SALT_LENGTH));
-      // Salt is no longer stored in metadata, but in the encrypted file itself.
       return { database, salt };
     };
     const exportDb = (db) => db.export();
@@ -374,11 +373,16 @@
             if (!SQL) throw new Error("SQL.js no está cargado");
             setAppStatus('loading');
             
-            const { database: newDb, salt } = await initDb(SQL);
+            let { database: newDb, salt } = await initDb(SQL);
             setKeychainName(newDb, name);
             currentSalt.current = salt;
             
-            setDb(newDb);
+            // Ensure state immutability by re-creating the DB object
+            const dbData = newDb.export();
+            newDb.close();
+            const dbForState = new SQL.Database(dbData);
+            
+            setDb(dbForState);
             setKeychainNameToSetPassword(name);
             setAppStatus('set-master-password');
 
