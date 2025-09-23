@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
   <meta charset="utf-8" />
-  <title>Drive Notes — Alejandro (Demo corregido) 1</title>
+  <title>Drive Notes — Alejandro (Fix fields)2</title>
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <style>
     body{font-family:system-ui,Segoe UI,Roboto,Arial;max-width:980px;margin:18px auto;padding:12px}
@@ -12,7 +12,8 @@
     textarea{width:100%;height:240px;margin-top:8px;font-family:monospace}
     .file-row{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px dashed #ddd}
     .small{font-size:0.9rem;color:#555}
-    #logs{white-space:pre-wrap;background:#f6f6f6;border:1px solid #eee;padding:8px;margin-top:12px;font-size:0.85rem}
+    #logs{white-space:pre-wrap;background:#f6f6f6;border:1px solid #eee;padding:8px;margin-top:12px;font-size:0.85rem;max-height:200px;overflow:auto}
+    .danger{color:crimson}
   </style>
   <!-- Google Identity Services -->
   <script src="https://accounts.google.com/gsi/client" async defer></script>
@@ -64,12 +65,13 @@ function showStatus(msg, isError=false){
   const s = document.getElementById('status');
   s.style.color = isError ? 'crimson' : 'green';
   s.textContent = msg;
-  log(msg);
+  log(msg, isError);
 }
-function log(txt){
+function log(txt, isError=false){
   const l = document.getElementById('logs');
   const time = new Date().toLocaleTimeString();
-  l.textContent = `[${time}] ${txt}\n` + l.textContent;
+  const prefix = isError ? '[ERR]' : '[OK]';
+  l.textContent = `[${time}] ${prefix} ${txt}\n` + l.textContent;
 }
 
 /* ============ Inicialización ============ */
@@ -85,7 +87,7 @@ window.onload = () => {
     callback: (resp) => {
       if (resp.error) {
         showStatus('Error al obtener token: ' + resp.error, true);
-        log('token callback error: ' + JSON.stringify(resp));
+        log('token callback error: ' + JSON.stringify(resp), true);
         return;
       }
       accessToken = resp.access_token;
@@ -99,7 +101,7 @@ window.onload = () => {
   document.getElementById('btnSignIn').onclick = () => {
     try {
       tokenClient.requestAccessToken({ prompt: 'consent' });
-    } catch (e) { showStatus('Error requestAccessToken: ' + e.message, true); log(e.stack || e); }
+    } catch (e) { showStatus('Error requestAccessToken: ' + e.message, true); log(e.stack || e, true); }
   };
   document.getElementById('btnSignOut').onclick = signOut;
 
@@ -130,16 +132,20 @@ async function driveFetch(url, opts = {}){
   if (!accessToken) throw new Error('No hay access token. Inicia sesión.');
   opts.headers = opts.headers || {};
   opts.headers['Authorization'] = 'Bearer ' + accessToken;
-  // Evitamos poner Content-Type cuando body es FormData (browser lo asigna)
   return fetch(url, opts);
 }
+
+/* ============ Constantes para queries (corregido) ============ */
+const FIELDS_FILES_LIST = 'files(id,name,modifiedTime,size)';
+const FILES_FIELDS_PARAM = encodeURIComponent(FIELDS_FILES_LIST); // -> "files(id,name,...)" URL-encodeado
 
 /* ============ Crear NOTE.db si no existe (usando FormData) ============ */
 async function ensureNoteDb(){
   try{
     showStatus('Buscando NOTE.db...');
     const q = `name = 'NOTE.db' and trashed = false`;
-    const r = await driveFetch(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id,name)&pageSize=1`);
+    const listUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=${FILES_FIELDS_PARAM}&pageSize=1`;
+    const r = await driveFetch(listUrl);
     if (!r.ok) {
       const txt = await r.text();
       throw new Error('List files failed: ' + r.status + ' => ' + txt);
@@ -154,7 +160,7 @@ async function ensureNoteDb(){
     showStatus('NOTE.db no existe. Creando...');
     // metadata + content
     const metadata = { name: 'NOTE.db' };
-    const content = 'NOTES (texto plano)\\nCreado: ' + new Date().toISOString() + '\\n\\n';
+    const content = 'NOTES (texto plano)\nCreado: ' + new Date().toISOString() + '\n\n';
     const fileBlob = new Blob([content], { type: 'text/plain' });
     const metaBlob = new Blob([JSON.stringify(metadata)], { type: 'application/json' });
 
@@ -177,13 +183,12 @@ async function ensureNoteDb(){
     listDbFiles();
   } catch (err) {
     console.error(err);
-    // Mensaje más claro para el usuario
     if (err.message && err.message.includes('Failed to fetch')) {
       showStatus('Error: Failed to fetch. Posibles causas: estás en file://, CORS, token inválido o no estás sirviendo via http. Revisa consola.', true);
-      log('Error detail: ' + (err.stack || err.message));
+      log('Error detail: ' + (err.stack || err.message), true);
     } else {
       showStatus('Error: ' + (err.message || err), true);
-      log('Error detail: ' + (err.stack || err.message));
+      log('Error detail: ' + (err.stack || err.message), true);
     }
   }
 }
@@ -193,8 +198,8 @@ async function listDbFiles(){
   try{
     showStatus('Listando archivos .db...');
     const q = `name contains '.db' and trashed = false`;
-    const fields = 'files(id,name,modifiedTime,size)';
-    const r = await driveFetch(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=${encodeURIComponent('files(' + fields + ')')}&pageSize=50`);
+    const listUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=${FILES_FIELDS_PARAM}&pageSize=50`;
+    const r = await driveFetch(listUrl);
     if (!r.ok) {
       const txt = await r.text();
       throw new Error('List files failed: ' + r.status + ' => ' + txt);
@@ -220,7 +225,7 @@ async function listDbFiles(){
   } catch (err) {
     console.error(err);
     showStatus('Error al listar: ' + (err.message || err), true);
-    log('listDbFiles err: ' + (err.stack || err.message));
+    log('listDbFiles err: ' + (err.stack || err.message), true);
   }
 }
 
@@ -240,7 +245,7 @@ async function openFile(file){
   } catch (err) {
     console.error(err);
     showStatus('Error abriendo: ' + (err.message || err), true);
-    log('openFile err: ' + (err.stack || err.message));
+    log('openFile err: ' + (err.stack || err.message), true);
   }
 }
 
@@ -258,7 +263,7 @@ async function downloadFile(file){
   } catch (err) {
     console.error(err);
     showStatus('Error descarga: ' + (err.message || err), true);
-    log('downloadFile err: ' + (err.stack || err.message));
+    log('downloadFile err: ' + (err.stack || err.message), true);
   }
 }
 
@@ -284,7 +289,7 @@ async function saveCurrentFile(){
   } catch (err) {
     console.error(err);
     showStatus('Error guardando: ' + (err.message || err), true);
-    log('saveCurrentFile err: ' + (err.stack || err.message));
+    log('saveCurrentFile err: ' + (err.stack || err.message), true);
   }
 }
 
@@ -313,7 +318,7 @@ async function saveCurrentFileAppend(){
   } catch (err) {
     console.error(err);
     showStatus('Error append: ' + (err.message || err), true);
-    log('saveCurrentFileAppend err: ' + (err.stack || err.message));
+    log('saveCurrentFileAppend err: ' + (err.stack || err.message), true);
   }
 }
 
@@ -323,7 +328,8 @@ async function addNoteAppend(){
     await ensureNoteDb();
     // buscar NOTE.db
     const q = `name = 'NOTE.db' and trashed = false`;
-    const r = await driveFetch(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id,name)&pageSize=1`);
+    const listUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=${FILES_FIELDS_PARAM}&pageSize=1`;
+    const r = await driveFetch(listUrl);
     if (!r.ok) throw new Error('List NOTE.db failed: ' + r.status);
     const j = await r.json();
     if (j.files && j.files.length > 0) {
@@ -337,7 +343,7 @@ async function addNoteAppend(){
   } catch (err) {
     console.error(err);
     showStatus('Error addNote: ' + (err.message || err), true);
-    log('addNoteAppend err: ' + (err.stack || err.message));
+    log('addNoteAppend err: ' + (err.stack || err.message), true);
   }
 }
 
@@ -346,4 +352,3 @@ function escapeHtml(s){ return s ? s.replace(/[&<>"]/g, c => ({'&':'&amp;','<':'
 </script>
 </body>
 </html>
-
