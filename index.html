@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>RDK APP v9.5.0</title>
+  <title>RDK APP v9.6.0</title>
   
   <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -60,7 +60,7 @@
 
   <script type="text/babel">
     // --- APP CONFIGURATION ---
-    const APP_VERSION = "9.5.0";
+    const APP_VERSION = "9.6.0";
     const SESSION_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutos
 
     // --- GOOGLE API CONFIGURATION ---
@@ -267,7 +267,7 @@
           await gapi.client.load('drive', 'v3');
           
           const response = await gapi.client.drive.files.list({
-              spaces: 'appDataFolder',
+              q: "'appDataFolder' in parents and trashed = false",
               fields: 'files(id, name)',
           });
           
@@ -303,7 +303,7 @@
             addToast("No se puede guardar: faltan datos clave.", "error");
             // Set status to unlocked to prevent getting stuck in loading
             if(appStatus === 'loading') setAppStatus('unlocked');
-            return;
+            return null;
         }
 
         try {
@@ -413,6 +413,7 @@
             
             const key = await deriveKey(password, salt);
             
+            // Directly pass key and salt to the save function to avoid race condition
             const newFileId = await handleSaveToDrive(newDb, null, key, salt);
             
             if (newFileId) {
@@ -420,7 +421,7 @@
                 setMasterKey(key);
                 setCurrentSalt(salt);
                 setCurrentFileId(newFileId);
-                setAppStatus('unlocked');
+                // The finally block in handleSaveToDrive will set status to unlocked
             } else {
                  throw new Error("No se pudo obtener el ID del nuevo archivo de Drive.");
             }
