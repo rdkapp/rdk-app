@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>RDK APP v10.5.0</title>
+  <title>RDK APP v10.6.0</title>
   
   <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -52,7 +52,7 @@
 
   <script type="text/babel">
     // --- APP CONFIGURATION ---
-    const APP_VERSION = "10.5.0";
+    const APP_VERSION = "10.6.0";
     const SESSION_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutos
 
     // --- GOOGLE API CONFIGURATION ---
@@ -263,9 +263,10 @@
       }, [hasUnsavedChanges, appStatus, handleSaveChanges]);
 
       // --- Drive API Helpers (using fetch) ---
-      const driveFetch = async (url, options = {}) => {
-          if (!accessToken) throw new Error("No hay token de acceso.");
-          const defaultHeaders = { 'Authorization': `Bearer ${accessToken}` };
+      const driveFetch = async (url, options = {}, tokenOverride = null) => {
+          const tokenToUse = tokenOverride || accessToken;
+          if (!tokenToUse) throw new Error("No hay token de acceso.");
+          const defaultHeaders = { 'Authorization': `Bearer ${tokenToUse}` };
           options.headers = { ...defaultHeaders, ...options.headers };
           const response = await fetch(url, options);
           if (!response.ok) {
@@ -280,7 +281,7 @@
           const q = "'appDataFolder' in parents and trashed = false and name contains '.db'";
           const fields = 'files(id, name)';
           const url = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=${encodeURIComponent(fields)}`;
-          const response = await driveFetch(url);
+          const response = await driveFetch(url, {}, token);
           const data = await response.json();
           return data.files || [];
       };
@@ -305,13 +306,13 @@
         if (existingFileId) {
             // Update existing file
             const updateUrl = `https://www.googleapis.com/upload/drive/v3/files/${existingFileId}?uploadType=multipart`;
-            const response = await driveFetch(updateUrl, { method: 'PATCH', body: form });
+            const response = await driveFetch(updateUrl, { method: 'PATCH', body: form }, token);
             const data = await response.json();
             fileId = data.id;
         } else {
             // Create new file
             const createUrl = `https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart`;
-            const response = await driveFetch(createUrl, { method: 'POST', body: form });
+            const response = await driveFetch(createUrl, { method: 'POST', body: form }, token);
             const data = await response.json();
             fileId = data.id;
         }
