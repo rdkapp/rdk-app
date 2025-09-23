@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>RDK APP v9.7.0</title>
+  <title>RDK APP v9.8.0</title>
   
   <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -60,13 +60,13 @@
 
   <script type="text/babel">
     // --- APP CONFIGURATION ---
-    const APP_VERSION = "9.7.0";
+    const APP_VERSION = "9.8.0";
     const SESSION_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutos
 
     // --- GOOGLE API CONFIGURATION ---
     const GOOGLE_CLIENT_ID = '576080826935-2mtnj52ndc8plnsjodjevt3e2gsh4m3a.apps.googleusercontent.com';
     const GOOGLE_API_KEY = 'AIzaSyC3aFfyDSQ181xr-JK9VKEG3OkK5gY0D-8';
-    const DRIVE_API_SCOPE = 'https://www.googleapis.com/auth/drive.appdata https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile';
+    const DRIVE_API_SCOPE = 'https://www.googleapis.com/auth/drive.appdata https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile';
     
     // --- CONSTANTS ---
     const SALT_LENGTH = 16;
@@ -301,13 +301,10 @@
       const handleSaveToDrive = useCallback(async (dbToSave, existingFileId, keyToUse, saltToUse) => {
         if (!dbToSave || !keyToUse || !saltToUse) {
             addToast("No se puede guardar: faltan datos clave.", "error");
-            if(appStatus === 'loading') setAppStatus('unlocked');
             return null;
         }
 
         try {
-            setAppStatus('loading');
-            
             const dbUint8Array = exportDb(dbToSave);
             const fileContentToUpload = await encryptDBFile(dbUint8Array, saltToUse, keyToUse);
 
@@ -322,11 +319,11 @@
             const delimiter = "\r\n--" + boundary + "\r\n";
             const close_delim = "\r\n--" + boundary + "--";
 
-            const metadataPart = 'Content-Type: application/json\r\n\r\n' + JSON.stringify(fileMetadata);
             const mediaPart = 'Content-Type: application/json\r\n\r\n' + new TextDecoder().decode(fileContentToUpload);
 
             if (existingFileId) {
                 // UPDATE (PATCH)
+                const metadataPart = 'Content-Type: application/json\r\n\r\n' + JSON.stringify(fileMetadata);
                 const requestBody = delimiter + metadataPart + delimiter + mediaPart + close_delim;
 
                 await gapi.client.request({
@@ -360,10 +357,8 @@
             console.error("Error saving to Drive:", error);
             addToast(`Error al guardar: ${error.result?.error?.message || error.message}`, "error");
             throw error; // Propagate error to the caller
-        } finally {
-            if(appStatus === 'loading') setAppStatus('unlocked');
         }
-      }, [addToast, appStatus]);
+      }, [addToast]);
       
       const handleUnlockKeychain = async (fileId, password) => {
         setAppStatus('loading');
@@ -403,8 +398,8 @@
       };
 
       const handleCreateKeychain = async (name, password) => {
+        setAppStatus('loading');
         try {
-            setAppStatus('loading');
             if (!SQL) throw new Error("El servicio de base de datos no está listo.");
 
             const { database: newDb, salt } = await initDb(SQL);
@@ -420,7 +415,8 @@
                 setMasterKey(key);
                 setCurrentSalt(salt);
                 setCurrentFileId(newFileId);
-                // The finally block in handleSaveToDrive will set status to unlocked
+                setHasUnsavedChanges(false);
+                setAppStatus('unlocked');
             } else {
                  throw new Error("No se pudo obtener el ID del nuevo archivo de Drive.");
             }
