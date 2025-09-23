@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>RDK APP v8.7.0</title>
+  <title>RDK APP v8.8.0</title>
   
   <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -60,7 +60,7 @@
 
   <script type="text/babel">
     // --- APP CONFIGURATION ---
-    const APP_VERSION = "8.7.0";
+    const APP_VERSION = "8.8.0";
     const SESSION_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutos
 
     // --- GOOGLE API CONFIGURATION ---
@@ -166,6 +166,7 @@
       const [masterKey, setMasterKey] = useState(null);
       const [currentFileId, setCurrentFileId] = useState(null);
       const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+      const [newKeychainName, setNewKeychainName] = useState(''); // Temporary name for new keychains
 
       // UI State
       const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
@@ -367,26 +368,9 @@
         }
       }, [addToast, masterKey]);
 
-      const handleCreateNewKeychain = async (name) => {
-        if (!SQL) {
-            addToast("El servicio de base de datos no está listo.", "error");
-            return;
-        }
-        try {
-            setAppStatus('loading');
-            const { database: newDb, salt } = await initDb(SQL);
-            setKeychainName(newDb, name);
-            
-            setDb(newDb);
-            currentSalt.current = salt;
-            setCurrentFileId(null);
-            
-            setAppStatus('set-master-password');
-        } catch (err) {
-            console.error("Error initiating keychain creation:", err);
-            addToast("No se pudo iniciar la creación del llavero.", "error");
-            setAppStatus('select-keychain');
-        }
+      const handleCreateNewKeychain = (name) => {
+        setNewKeychainName(name);
+        setAppStatus('set-master-password');
       };
 
       const handleUnlockKeychain = async (fileId, password) => {
@@ -425,16 +409,23 @@
         }
       };
 
-      const handleSetMasterPassword = async (password) => {
+      const handleSetMasterPassword = async (password, keychainNameToCreate) => {
         try {
             setAppStatus('loading');
-            if (!db || !currentSalt.current) {
-              throw new Error("La base de datos no fue inicializada correctamente.");
-            }
+            if (!SQL) throw new Error("El servicio de base de datos no está listo.");
+
+            // Create DB here, not before
+            const { database: newDb, salt } = await initDb(SQL);
+            setKeychainName(newDb, keychainNameToCreate);
             
-            const key = await deriveKey(password, currentSalt.current);
+            const key = await deriveKey(password, salt);
+            
+            setDb(newDb);
             setMasterKey(key);
+            currentSalt.current = salt;
+            setCurrentFileId(null);
             setHasUnsavedChanges(true); // Mark for first save
+            
             setAppStatus('unlocked');
             addToast("Contraseña maestra establecida. ¡No la olvides!", "success");
         } catch (err) {
@@ -453,6 +444,7 @@
           setCurrentFileId(null);
           setHasUnsavedChanges(false);
           currentSalt.current = null;
+          setNewKeychainName(''); // Reset temporary name
           setAppStatus('select-keychain');
       };
 
@@ -489,7 +481,7 @@
           case 'select-keychain':
             return <KeychainSelectionScreen user={user} keychains={keychains} onCreate={handleCreateNewKeychain} onUnlock={handleUnlockKeychain} />;
           case 'set-master-password':
-            return <SetMasterPasswordScreen onSetPassword={handleSetMasterPassword} keychainName={getKeychainName(db)} />;
+            return <SetMasterPasswordScreen onSetPassword={handleSetMasterPassword} keychainName={newKeychainName} />;
           case 'unlock':
              return <div>Unlock Screen - Not implemented</div>;
           case 'unlocked':
@@ -606,7 +598,7 @@
                 addToast("Las contraseñas no coinciden.", "error");
                 return;
             }
-            onSetPassword(password);
+            onSetPassword(password, keychainName);
         };
 
         return (
