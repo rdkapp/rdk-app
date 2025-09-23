@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>RDK APP v9.8.0</title>
+  <title>RDK APP v9.9.0</title>
   
   <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -60,7 +60,7 @@
 
   <script type="text/babel">
     // --- APP CONFIGURATION ---
-    const APP_VERSION = "9.8.0";
+    const APP_VERSION = "9.9.0";
     const SESSION_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutos
 
     // --- GOOGLE API CONFIGURATION ---
@@ -77,7 +77,7 @@
     // --- CRYPTO SERVICE ---
     const bufferToBase64 = (buffer) => { let binary = ''; const bytes = new Uint8Array(buffer); const len = bytes.byteLength; for (let i = 0; i < len; i++) { binary += String.fromCharCode(bytes[i]); } return window.btoa(binary); };
     const base64ToUint8Array = (base64) => { const binary_string = window.atob(base64); const len = binary_string.length; const bytes = new Uint8Array(len); for (let i = 0; i < len; i++) { bytes[i] = binary_string.charCodeAt(i); } return bytes; };
-    const deriveKey = async (password, salt) => { const passwordEncoder = new TextEncoder(); const baseKey = await window.crypto.subtle.importKey('raw', passwordEncoder.encode(password), { name: 'PBKDF2' }, false, ['deriveKey']); return window.crypto.subtle.deriveKey({ name: 'PBKDF2', salt, iterations: PBKDF2_ITERATIONS, hash: 'SHA-256' }, baseKey, { name: 'AES-GCM', length: 256 }, true, ['encrypt', 'decrypt']); };
+    const deriveKey = async (password, salt) => { const passwordEncoder = new TextEncoder(); const baseKey = await window.crypto.subtle.importKey('raw', passwordEncoder.encode(password), { name: 'PBKDF2' }, false, ['deriveKey']); return window.crypto.subtle.deriveKey({ name: 'PBKDF2', salt, iterations: PBKDF2_ITERATIONS, hash: 'SHA-26' }, baseKey, { name: 'AES-GCM', length: 256 }, true, ['encrypt', 'decrypt']); };
     
     const decryptDBFile = async (encryptedFileContent, password) => {
         try {
@@ -178,12 +178,13 @@
             } catch (err) {
                 console.error("Failed to load sql.js:", err);
                 setError("No se pudo cargar un componente crítico. Por favor, recargue la página.");
+                setAppStatus('auth');
             }
         };
         loadSqlJs();
         
         const checkGapiReady = setInterval(() => {
-            if (window.gapiClientIsLoaded && window.gsiClientIsLoaded) {
+            if (window.gapiClientIsLoaded && window.gsiClientIsLoaded && SQL) {
                 clearInterval(checkGapiReady);
                 initializeGisClient();
             }
@@ -214,7 +215,7 @@
         };
         
         return () => clearInterval(checkGapiReady);
-      }, []);
+      }, [SQL]);
 
       // --- Session Timeout Effect ---
       useEffect(() => {
@@ -241,15 +242,23 @@
       }, [appStatus]);
 
       // --- Autosave Effect ---
+      const handleSaveChanges = useCallback(async () => {
+        if (!db || !masterKey || !currentSalt || !currentFileId) return;
+        const newId = await handleSaveToDrive(db, currentFileId, masterKey, currentSalt);
+        if (newId && newId !== currentFileId) {
+            setCurrentFileId(newId);
+        }
+      }, [db, currentFileId, masterKey, currentSalt, handleSaveToDrive]);
+
       useEffect(() => {
         if (appStatus === 'unlocked' && hasUnsavedChanges) {
           const timer = setTimeout(() => {
             addToast("Autoguardando cambios...", "info");
-            handleSaveToDrive(db, currentFileId, masterKey, currentSalt);
+            handleSaveChanges();
           }, AUTOSAVE_DELAY);
           return () => clearTimeout(timer);
         }
-      }, [hasUnsavedChanges, db, currentFileId, masterKey, currentSalt, appStatus]);
+      }, [hasUnsavedChanges, appStatus, handleSaveChanges]);
 
       // --- Handlers ---
       const handleAuthSuccess = useCallback(async (tokenResponse) => {
@@ -311,42 +320,46 @@
             const keychainName = getKeychainName(dbToSave);
             const fileName = `${keychainName}.db`;
 
-            const fileMetadata = { name: fileName, mimeType: 'application/json' };
+            // ALWAYS CREATE A NEW FILE (OVERWRITE STRATEGY)
+            const fileMetadata = { 
+                name: fileName, 
+                mimeType: 'application/json',
+                parents: ['appDataFolder'] 
+            };
+            const file = new Blob([fileContentToUpload], { type: 'application/json' });
             
-            let newFileId = existingFileId;
-            
+            const formData = new FormData();
+            formData.append('metadata', new Blob([JSON.stringify(fileMetadata)], { type: 'application/json' }));
+            formData.append('file', file);
+
             const boundary = '-------314159265358979323846';
             const delimiter = "\r\n--" + boundary + "\r\n";
             const close_delim = "\r\n--" + boundary + "--";
 
+            const metadataPart = 'Content-Type: application/json\r\n\r\n' + JSON.stringify(fileMetadata);
             const mediaPart = 'Content-Type: application/json\r\n\r\n' + new TextDecoder().decode(fileContentToUpload);
+            const requestBody = delimiter + metadataPart + delimiter + mediaPart + close_delim;
 
+            const createResponse = await gapi.client.request({
+                path: '/upload/drive/v3/files',
+                method: 'POST',
+                params: { uploadType: 'multipart' },
+                headers: { 'Content-Type': `multipart/related; boundary="${boundary}"` },
+                body: requestBody
+            });
+
+            const newFileId = createResponse.result.id;
+            if (!newFileId) {
+                throw new Error("Drive API did not return a new file ID.");
+            }
+
+            // If we were updating, delete the old file
             if (existingFileId) {
-                // UPDATE (PATCH)
-                const metadataPart = 'Content-Type: application/json\r\n\r\n' + JSON.stringify(fileMetadata);
-                const requestBody = delimiter + metadataPart + delimiter + mediaPart + close_delim;
-
-                await gapi.client.request({
-                    path: `/upload/drive/v3/files/${existingFileId}`,
-                    method: 'PATCH',
-                    params: { uploadType: 'multipart' },
-                    headers: { 'Content-Type': `multipart/related; boundary="${boundary}"` },
-                    body: requestBody
-                });
-            } else {
-                // CREATE (POST)
-                fileMetadata.parents = ['appDataFolder'];
-                const createMetadataPart = 'Content-Type: application/json\r\n\r\n' + JSON.stringify(fileMetadata);
-                const requestBody = delimiter + createMetadataPart + delimiter + mediaPart + close_delim;
-
-                const response = await gapi.client.request({
-                    path: '/upload/drive/v3/files',
-                    method: 'POST',
-                    params: { uploadType: 'multipart' },
-                    headers: { 'Content-Type': `multipart/related; boundary="${boundary}"` },
-                    body: requestBody
-                });
-                newFileId = response.result.id;
+                try {
+                    await gapi.client.drive.files.delete({ fileId: existingFileId });
+                } catch (deleteError) {
+                    console.warn("Could not delete old keychain file, it may have been deleted already.", deleteError);
+                }
             }
             
             addToast("Cambios guardados en Drive.", "success");
@@ -356,7 +369,7 @@
         } catch (error) {
             console.error("Error saving to Drive:", error);
             addToast(`Error al guardar: ${error.result?.error?.message || error.message}`, "error");
-            throw error; // Propagate error to the caller
+            throw error;
         }
       }, [addToast]);
       
@@ -378,7 +391,6 @@
             
             const finalDb = new SQL.Database(dbBuffer);
             
-            // Extract salt from the file for future saves
             const fileStr = new TextDecoder().decode(encryptedFileContent);
             const fileJson = JSON.parse(fileStr);
             const salt = base64ToUint8Array(fileJson.salt);
@@ -407,7 +419,6 @@
             
             const key = await deriveKey(password, salt);
             
-            // Directly pass key and salt to the save function to avoid race condition
             const newFileId = await handleSaveToDrive(newDb, null, key, salt);
             
             if (newFileId) {
@@ -416,6 +427,7 @@
                 setCurrentSalt(salt);
                 setCurrentFileId(newFileId);
                 setHasUnsavedChanges(false);
+                // Important: Only change status after all state is set
                 setAppStatus('unlocked');
             } else {
                  throw new Error("No se pudo obtener el ID del nuevo archivo de Drive.");
@@ -430,7 +442,7 @@
       
       const handleLock = () => {
           if(hasUnsavedChanges) {
-              handleSaveToDrive(db, currentFileId, masterKey, currentSalt).then(() => {
+              handleSaveChanges().then(() => {
                 setDb(null);
                 setMasterKey(null);
                 setCurrentFileId(null);
@@ -482,7 +494,7 @@
                         onTriggerCreate={() => setAppStatus('create-keychain')}
                     />;
           case 'unlocked':
-            return <UnlockedScreen db={db} masterKey={masterKey} onLock={handleLock} onSaveToDrive={() => handleSaveToDrive(db, currentFileId, masterKey, currentSalt)} onAddCredential={handleAddCredential} onUpdateCredential={handleUpdateCredential} onDeleteCredential={handleDeleteCredential} onAddTag={handleAddTag} onDeleteTag={handleDeleteTag} onSaveKeychainName={handleSaveKeychainName} />;
+            return <UnlockedScreen db={db} masterKey={masterKey} onLock={handleLock} onSaveToDrive={handleSaveChanges} onAddCredential={handleAddCredential} onUpdateCredential={handleUpdateCredential} onDeleteCredential={handleDeleteCredential} onAddTag={handleAddTag} onDeleteTag={handleDeleteTag} onSaveKeychainName={handleSaveKeychainName} />;
           case 'loading':
             return <div className="text-center"><Spinner className="border-gray-500 mx-auto"/> <p className="mt-2 text-gray-500">Cargando...</p></div>;
           default:
