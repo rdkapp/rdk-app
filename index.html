@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>RDK APP v5.9.0</title>
+  <title>RDK APP v6.1.0</title>
   
   <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -61,12 +61,13 @@
 
   <script type="text/babel">
     // --- APP CONFIGURATION ---
-    const APP_VERSION = "5.9.0";
+    const APP_VERSION = "6.1.0";
     const SESSION_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutos
 
     // --- GOOGLE API CONFIGURATION ---
     const GOOGLE_CLIENT_ID = '576080826935-2mtnj52ndc8plnsjodjevt3e2gsh4m3a.apps.googleusercontent.com';
     const GOOGLE_API_KEY = 'AIzaSyC3aFfyDSQ181xr-JK9VKEG3OkK5gY0D-8';
+    // Simplified scope: drive.appdata is sufficient with the new "overwrite" save strategy.
     const DRIVE_API_SCOPE = 'https://www.googleapis.com/auth/drive.appdata https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile';
     
     // --- CONSTANTS ---
@@ -172,40 +173,23 @@
           setAuthError('');
           gapi.client.setToken(tokenResponse);
           try {
-              // Initialize the Drive API client after getting the token.
               await gapi.client.load('drive', 'v3');
               
               const userInfoRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
                 headers: { 'Authorization': `Bearer ${tokenResponse.access_token}` }
               });
-              if (!userInfoRes.ok) {
-                throw new Error(`Google API responded with status ${userInfoRes.status}`);
-              }
+              if (!userInfoRes.ok) throw new Error(`Google API responded with status ${userInfoRes.status}`);
               const profile = await userInfoRes.json();
 
-              setUser({
-                  name: profile.name || 'Usuario',
-                  email: profile.email || '',
-                  picture: profile.picture || ''
-              });
+              setUser({ name: profile.name || 'Usuario', email: profile.email || '', picture: profile.picture || '' });
               await fetchKeychains();
               setAppStatus('select_keychain');
           } catch (e) {
               console.error("Error during post-auth initialization:", e);
-              let errorMessage = "Ocurrió un error al configurar la sesión.\n\n";
-              if (e.result && e.result.error) {
-                  errorMessage += `Detalles: ${e.result.error.message}`;
-                  if (e.result.error.status === 'PERMISSION_DENIED') {
-                      errorMessage += "\n\nVerifique que la 'Google Drive API' está habilitada en su Google Cloud Console.";
-                  }
-              } else {
-                  errorMessage += `Detalles: ${e.message || 'No se pudo obtener la información del usuario.'}`;
-              }
+              let errorMessage = `Ocurrió un error al configurar la sesión. Detalles: ${e.message || 'No se pudo obtener la información del usuario.'}`;
               setAuthError(errorMessage);
               setAppStatus('auth');
-              if (tokenResponse.access_token) {
-                google.accounts.oauth2.revoke(tokenResponse.access_token, () => {});
-              }
+              if (tokenResponse.access_token) google.accounts.oauth2.revoke(tokenResponse.access_token, () => {});
               gapi.client.setToken('');
           } finally {
               setLoading(false);
@@ -221,58 +205,42 @@
             const salt = getSalt(db);
             const fileContent = bufferToBase64(salt.buffer) + encryptedDbBase64;
             
-            if (activeKeychain.id) {
-                // UPDATE: Manually construct the multipart request for robustness with appDataFolder
-                const boundary = '-------314159265358979323846';
-                const delimiter = `\r\n--${boundary}\r\n`;
-                const close_delim = `\r\n--${boundary}--`;
+            const isCreatingNewFile = !activeKeychain.id;
 
-                const requestBody =
-                    delimiter +
-                    `Content-Type: application/json; charset=UTF-8\r\n\r\n` +
-                    JSON.stringify({ name: activeKeychain.name }) +
-                    delimiter +
-                    `Content-Type: text/plain; charset=UTF-8\r\n\r\n` +
-                    fileContent +
-                    close_delim;
+            // Step 1: Create a new file with the new content and name.
+            const createResponse = await gapi.client.drive.files.create({
+                resource: {
+                    name: activeKeychain.name,
+                    parents: ['appDataFolder']
+                },
+                media: {
+                    mimeType: 'text/plain',
+                    body: fileContent
+                },
+                fields: 'id'
+            });
 
-                const response = await gapi.client.request({
-                    path: `/upload/drive/v3/files/${activeKeychain.id}`,
-                    method: 'PATCH',
-                    params: { uploadType: 'multipart' },
-                    headers: {
-                        'Content-Type': `multipart/related; boundary="${boundary}"`
-                    },
-                    body: requestBody
-                });
-
-                if (!response.result || !response.result.id) {
-                  throw new Error("La actualización del archivo no devolvió una respuesta válida.");
-                }
-
-            } else {
-                // CREATE: Use FormData for new files as it's simpler and works
-                const metadata = { name: activeKeychain.name, parents: ['appDataFolder'] };
-                const form = new FormData();
-                form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
-                form.append('file', new Blob([fileContent], { type: 'text/plain' }));
-                
-                const response = await gapi.client.request({
-                    path: '/upload/drive/v3/files',
-                    method: 'POST',
-                    params: { uploadType: 'multipart' },
-                    body: form
-                });
-
-                if (!response.result || !response.result.id) {
-                  throw new Error("La creación del archivo no devolvió una respuesta válida.");
-                }
-                setActiveKeychain(prev => ({ ...prev, id: response.result.id }));
+            if (!createResponse.result || !createResponse.result.id) {
+                throw new Error("La operación de creación no devolvió una respuesta válida de Drive.");
             }
+            
+            const newFileId = createResponse.result.id;
+
+            // Step 2: If this was an update of an existing file, delete the old one.
+            if (!isCreatingNewFile) {
+                try {
+                    await gapi.client.drive.files.delete({ fileId: activeKeychain.id });
+                } catch (delError) {
+                    console.warn(`Could not delete old file (${activeKeychain.id}), but new file was created successfully.`, delError);
+                }
+            }
+            
+            // Step 3: Update the app's state to point to the new file.
+            setActiveKeychain(prev => ({ ...prev, id: newFileId }));
             
             setHasUnsavedChanges(false);
             setSaveStatus('saved');
-            await fetchKeychains();
+            await fetchKeychains(); // Refresh the list
         } catch (error) {
             console.error("Error saving to Drive:", error);
             const errorDetails = error.result?.error?.message || error.message || 'Unknown error';
@@ -318,9 +286,6 @@
                       }
                     },
                     error_callback: (error) => {
-                      // This callback handles programmatic errors. The GSI_LOGGER message in the console
-                      // is an informational log from the library itself due to browser privacy settings
-                      // (blocking third-party cookies) and is expected behavior when silent sign-in fails.
                       const expectedSilentSignInErrors = ['popup_closed_by_user', 'popup_blocked_by_browser', 'popup_failed_to_open'];
                       if (error && !expectedSilentSignInErrors.includes(error.type)) {
                           console.error("GSI Error:", error);
