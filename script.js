@@ -14,6 +14,8 @@ const ICONS = {
     check: `<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-green-500" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd" /></svg>`,
     keychainIcon: `<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-slate-500 dark:text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>`,
     keyIcon: `<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-slate-500 dark:text-slate-400" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 5.25a3 3 0 013 3m3 0a6 6 0 01-7.029 5.912c-.563-.097-1.159.026-1.563.43L10.5 17.25H8.25v2.25H6v2.25H2.25v-2.818c0-.597.237-1.17.659-1.591l6.499-6.499c.404-.404.527-1 .43-1.563A6 6 0 1121.75 8.25z" /></svg>`,
+    toastSuccess: `<svg class="w-6 h-6 mr-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>`,
+    toastInfo: `<svg class="w-6 h-6 mr-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>`,
 };
 
 // --- GLOBAL STATE ---
@@ -48,6 +50,24 @@ function showStatus(message, type = 'info') {
     }
 }
 
+function showToast(message, type = 'success', duration = 3000) {
+    const container = DOMElements.toastContainer;
+    const toast = document.createElement('div');
+    const icon = type === 'success' ? ICONS.toastSuccess : ICONS.toastInfo;
+    const typeClass = type === 'success' ? 'toast-success' : 'toast-info';
+
+    toast.className = `toast ${typeClass}`;
+    toast.innerHTML = `${icon}<span>${escapeHtml(message)}</span>`;
+    
+    container.appendChild(toast);
+
+    setTimeout(() => {
+        toast.classList.add('removing');
+        toast.addEventListener('animationend', () => toast.remove());
+    }, duration);
+}
+
+
 function setLoading(loading, element) {
     isLoading = loading;
     if (element) {
@@ -69,7 +89,15 @@ function escapeHtml(str) {
 // --- SERVICES (Crypto, GDrive) ---
 const CryptoService = {
     encrypt: (text, key) => CryptoJS.AES.encrypt(text, key).toString(),
-    decrypt: (ciphertext, key) => CryptoJS.AES.decrypt(ciphertext, key).toString(CryptoJS.enc.Utf8),
+    decrypt: (ciphertext, key) => {
+        if(!ciphertext || !key) return '';
+        try {
+            return CryptoJS.AES.decrypt(ciphertext, key).toString(CryptoJS.enc.Utf8);
+        } catch (e) {
+            console.error("Decryption failed:", e);
+            return ''; // Return empty string on failure
+        }
+    }
 };
 
 const GDriveService = {
@@ -176,21 +204,20 @@ function renderDbList() {
     });
 }
 
-function getDecryptedAndFilteredKeys() {
+function getFilteredKeys() {
     if (!dbData?.keys) return [];
     const filter = DOMElements.searchInput.value.toLowerCase();
-    const tagMap = new Map(dbData.tags.map(t => [t.id, t.name]));
+    if (!filter) return [...dbData.keys].sort((a, b) => a.name.localeCompare(b.name));
 
-    return dbData.keys.map(k => {
-        try {
-            return { ...k, d_user: CryptoService.decrypt(k.user, masterKey), d_pass: CryptoService.decrypt(k.pass, masterKey) };
-        } catch (e) { console.error(`Failed to decrypt key ID ${k.id}`, e); return null; }
-    }).filter(Boolean).filter(k => {
-        if (!filter) return true;
+    const tagMap = new Map(dbData.tags.map(t => [t.id, t.name.toLowerCase()]));
+
+    return dbData.keys.filter(k => {
         const tag_name = k.tagId ? tagMap.get(k.tagId) || '' : '';
-        return [k.name, k.d_user, k.note, tag_name].join(' ').toLowerCase().includes(filter);
+        // Search is now limited to non-encrypted fields for security
+        return [k.name.toLowerCase(), k.note?.toLowerCase(), tag_name].join(' ').includes(filter);
     }).sort((a, b) => a.name.localeCompare(b.name));
 }
+
 
 function renderKeys() {
     DOMElements.keyList.innerHTML = '';
@@ -207,59 +234,60 @@ function renderKeys() {
     DOMElements.addNewKeyHeaderBtn.disabled = false;
     DOMElements.manageTagsBtn.disabled = false;
     
-    const decryptedAndFilteredKeys = getDecryptedAndFilteredKeys();
+    const filteredKeys = getFilteredKeys();
     const nameWithoutExt = currentDbName.replace(/\.db$/, '');
     
     DOMElements.keychainTitleName.innerHTML = `${ICONS.keychainIcon} Llavero: <span class="text-blue-600 dark:text-blue-400 font-semibold">"${escapeHtml(nameWithoutExt)}"</span>`;
-    DOMElements.keychainTitleCount.innerHTML = `${ICONS.keyIcon} Cantidad de llaves: <span class="font-semibold">${decryptedAndFilteredKeys.length}</span>`;
+    DOMElements.keychainTitleCount.innerHTML = `${ICONS.keyIcon} Cantidad de llaves: <span class="font-semibold">${filteredKeys.length}</span>`;
 
     DOMElements.emptyDbMessage.classList.toggle('hidden', dbData.keys.length > 0);
-    DOMElements.noResultsMessage.classList.toggle('hidden', decryptedAndFilteredKeys.length > 0 || dbData.keys.length === 0 || !DOMElements.searchInput.value);
+    DOMElements.noResultsMessage.classList.toggle('hidden', filteredKeys.length > 0 || dbData.keys.length === 0 || !DOMElements.searchInput.value);
 
-    decryptedAndFilteredKeys.forEach(dKey => {
-        const item = createKeyListItem(dKey);
+    filteredKeys.forEach(key => {
+        const item = createKeyListItem(key);
         DOMElements.keyList.appendChild(item);
     });
 }
 
-function createKeyListItem(dKey) {
+function createKeyListItem(key) {
     const item = document.createElement('div');
     item.className = 'key-item bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden';
     
-    const tag = dbData.tags.find(t => t.id === dKey.tagId);
+    const tag = dbData.tags.find(t => t.id === key.tagId);
     const tagHtml = tag ? `<span class="text-xs bg-sky-100 text-sky-800 px-2 py-1 rounded-full dark:bg-sky-900/70 dark:text-sky-300 ml-2 flex-shrink-0">${escapeHtml(tag.name)}</span>` : '';
 
     item.innerHTML = `
         <button class="key-item-header w-full flex justify-between items-center text-left p-3 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors">
             <div class="flex items-center min-w-0">
-                <span class="font-bold text-slate-800 dark:text-slate-100 truncate">${escapeHtml(dKey.name)}</span>
+                <span class="font-bold text-slate-800 dark:text-slate-100 truncate">${escapeHtml(key.name)}</span>
                 ${tagHtml}
             </div>
             ${ICONS.chevronDown}
         </button>
         <div class="key-item-body"><div class="p-3 border-t border-slate-100 dark:border-slate-700 space-y-2 text-sm">
-            ${createRevealingFieldHTML('Usuario', dKey.d_user)}
-            ${createRevealingFieldHTML('Contraseña', dKey.d_pass, true)}
-            ${dKey.note ? `<div class="pt-2 text-slate-600 dark:text-slate-300"><strong class="font-medium text-slate-800 dark:text-slate-200">Nota:</strong><p class="whitespace-pre-wrap break-words p-2 bg-slate-50 dark:bg-slate-700/50 rounded mt-1">${escapeHtml(dKey.note)}</p></div>` : ''}
+            ${createRevealingFieldHTML('Usuario', key.user)}
+            ${createRevealingFieldHTML('Contraseña', key.pass, true)}
+            ${key.note ? `<div class="pt-2 text-slate-600 dark:text-slate-300"><strong class="font-medium text-slate-800 dark:text-slate-200">Nota:</strong><p class="whitespace-pre-wrap break-words p-2 bg-slate-50 dark:bg-slate-700/50 rounded mt-1">${escapeHtml(key.note)}</p></div>` : ''}
             <div class="flex gap-2 pt-2 border-t border-slate-100 dark:border-slate-700">
                 <button class="edit-btn text-sm flex items-center gap-1.5 text-blue-600 dark:text-blue-400 hover:underline">${ICONS.edit} Editar</button>
                 <button class="delete-btn text-sm flex items-center gap-1.5 text-red-600 dark:text-red-400 hover:underline">${ICONS.delete} Eliminar</button>
             </div>
         </div></div>`;
     item.querySelector('.key-item-header').onclick = () => item.classList.toggle('expanded');
-    item.querySelector('.edit-btn').onclick = () => populateEditForm(dKey.id);
-    item.querySelector('.delete-btn').onclick = () => handleDeleteKey(dKey.id);
+    item.querySelector('.edit-btn').onclick = () => populateEditForm(key.id);
+    item.querySelector('.delete-btn').onclick = () => handleDeleteKey(key.id);
     attachRevealingFieldListeners(item);
     return item;
 }
 
-function createRevealingFieldHTML(label, value, isMono = false) {
-    if (!value) return '';
+function createRevealingFieldHTML(label, encryptedValue, isMono = false) {
+    if (!encryptedValue) return '';
     const maskedValue = '••••••••';
+    // Store the ENCRYPTED value in data-value for just-in-time decryption
     return `<div class="flex items-center justify-between gap-2 p-2 bg-slate-50 dark:bg-slate-700/50 rounded">
         <div class="flex-grow min-w-0">
             <span class="font-medium text-slate-800 dark:text-slate-200">${label}:</span>
-            <span class="value-span ${isMono ? 'font-mono' : ''} text-slate-700 dark:text-slate-300 break-all ml-1" data-value="${escapeHtml(value)}">${maskedValue}</span>
+            <span class="value-span ${isMono ? 'font-mono' : ''} text-slate-700 dark:text-slate-300 break-all ml-1" data-encrypted-value="${escapeHtml(encryptedValue)}">${maskedValue}</span>
         </div>
         <div class="flex-shrink-0 flex items-center gap-2">
             <button class="reveal-btn p-1 text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 transition-colors" title="Mostrar/Ocultar">${ICONS.eye}</button>
@@ -272,17 +300,26 @@ function attachRevealingFieldListeners(parentElement) {
     parentElement.querySelectorAll('.reveal-btn').forEach(btn => btn.onclick = (e) => {
         const valueSpan = e.currentTarget.closest('div').parentElement.querySelector('.value-span');
         const isMasked = valueSpan.textContent === '••••••••';
-        valueSpan.textContent = isMasked ? valueSpan.dataset.value : '••••••••';
+        if (isMasked) {
+            const encryptedValue = valueSpan.dataset.encryptedValue;
+            const decryptedValue = CryptoService.decrypt(encryptedValue, masterKey);
+            valueSpan.textContent = decryptedValue || '[Error al descifrar]';
+        } else {
+            valueSpan.textContent = '••••••••';
+        }
         e.currentTarget.innerHTML = isMasked ? ICONS.eyeOff : ICONS.eye;
     });
     parentElement.querySelectorAll('.copy-btn').forEach(btn => btn.onclick = (e) => {
         const valueSpan = e.currentTarget.closest('div').parentElement.querySelector('.value-span');
-        navigator.clipboard.writeText(valueSpan.dataset.value);
+        const encryptedValue = valueSpan.dataset.encryptedValue;
+        const decryptedValue = CryptoService.decrypt(encryptedValue, masterKey);
+        navigator.clipboard.writeText(decryptedValue);
         const originalIcon = e.currentTarget.innerHTML;
         e.currentTarget.innerHTML = ICONS.check;
         setTimeout(() => e.currentTarget.innerHTML = originalIcon, 1500);
     });
 }
+
 
 // --- CORE LOGIC ---
 
@@ -361,7 +398,7 @@ async function saveDb() {
     try {
         const encryptedContent = CryptoService.encrypt(JSON.stringify(dbData), masterKey);
         await GDriveService.updateFileContent(dbFileId, encryptedContent);
-        showStatus('Guardado en Drive correctamente.', 'ok');
+        showToast('Guardado en Drive correctamente.');
     } catch (e) { showStatus(`Error al guardar: ${e.message}`, 'error'); }
 }
 
@@ -440,6 +477,7 @@ function populateEditForm(keyId) {
     try {
         DOMElements.keyIdInput.value = key.id;
         DOMElements.keyNameInput.value = key.name;
+        // Decrypt only when populating the edit form
         DOMElements.keyUserInput.value = CryptoService.decrypt(key.user, masterKey);
         DOMElements.keyPassInput.value = CryptoService.decrypt(key.pass, masterKey);
         DOMElements.keyNoteInput.value = key.note || '';
@@ -564,14 +602,17 @@ async function onSignedIn() {
 }
 
 function handleSignOut() {
-    if (accessToken) {
-        google.accounts.oauth2.revoke(accessToken, () => {
-            console.log('Token revoked.');
+    showToast('Cerrando sesión...', 'info');
+    setTimeout(() => {
+        if (accessToken) {
+            google.accounts.oauth2.revoke(accessToken, () => {
+                console.log('Token revoked.');
+                window.location.reload();
+            });
+        } else {
             window.location.reload();
-        });
-    } else {
-        window.location.reload();
-    }
+        }
+    }, 1500);
 }
 
 // --- INITIALIZATION ---
@@ -641,6 +682,7 @@ document.addEventListener('DOMContentLoaded', () => {
         editTagForm: document.getElementById('edit-tag-form'),
         editTagIdInput: document.getElementById('edit-tag-id'),
         editTagNameInput: document.getElementById('edit-tag-name-input'),
+        toastContainer: document.getElementById('toast-container'),
     };
     
     // --- EVENT LISTENERS ---
