@@ -2,6 +2,8 @@
 const CLIENT_ID = '576080826935-2mtnj52ndc8plnsjodjevt3e2gsh4m3a.apps.googleusercontent.com';
 const SCOPES = 'https://www.googleapis.com/auth/drive.file';
 const SESSION_TIMEOUT = 5 * 60 * 1000; // 5 minutes
+const BIO_STORAGE_KEY = 'rdk_biometric_data';
+const BIO_ENCRYPTION_KEY = 'a-not-so-secret-key-for-local-encryption'; // Used only to obfuscate master key in localStorage
 
 // --- SVG ICONS ---
 const ICONS = {
@@ -31,6 +33,8 @@ let isLoading = false;
 let currentDbName = '';
 let activeDbFiles = [];
 let currentView = 'list';
+let isBiometricSupported = false;
+
 
 // --- DOM ELEMENTS ---
 let DOMElements;
@@ -53,21 +57,42 @@ function showStatus(message, type = 'info') {
     }
 }
 
-function showToast(message, type = 'success', duration = 3000) {
+function showToast(message, type = 'success', duration = 3000, actions = []) {
     const container = DOMElements.toastContainer;
     const toast = document.createElement('div');
     const icon = type === 'success' ? ICONS.toastSuccess : ICONS.toastInfo;
     const typeClass = type === 'success' ? 'toast-success' : 'toast-info';
 
     toast.className = `toast ${typeClass}`;
-    toast.innerHTML = `${icon}<span>${escapeHtml(message)}</span>`;
+    let actionsHTML = '';
+    if (actions.length > 0) {
+        actionsHTML = '<div class="flex gap-2 mt-2 pt-2 border-t border-black/20">';
+        actions.forEach(action => {
+            const btnId = `toast-action-${Date.now()}-${Math.random()}`;
+            actionsHTML += `<button id="${btnId}" class="text-sm font-bold hover:underline">${escapeHtml(action.label)}</button>`;
+            document.addEventListener('click', function handler(e) {
+                if (e.target.id === btnId) {
+                    action.callback();
+                    toast.classList.add('removing');
+                    toast.addEventListener('animationend', () => toast.remove());
+                    e.stopImmediatePropagation();
+                    document.removeEventListener('click', handler);
+                }
+            }, { once: true });
+        });
+        actionsHTML += '</div>';
+    }
+
+    toast.innerHTML = `<div class="flex items-start">${icon}<div class="flex-grow"><span>${escapeHtml(message)}</span>${actionsHTML}</div></div>`;
     
     container.appendChild(toast);
 
-    setTimeout(() => {
-        toast.classList.add('removing');
-        toast.addEventListener('animationend', () => toast.remove());
-    }, duration);
+    if (duration > 0) {
+      setTimeout(() => {
+          toast.classList.add('removing');
+          toast.addEventListener('animationend', () => toast.remove());
+      }, duration);
+    }
 }
 
 
@@ -95,7 +120,12 @@ const CryptoService = {
     decrypt: (ciphertext, key) => {
         if(!ciphertext || !key) return '';
         try {
-            return CryptoJS.AES.decrypt(ciphertext, key).toString(CryptoJS.enc.Utf8);
+            const bytes = CryptoJS.AES.decrypt(ciphertext, key);
+            const decryptedText = bytes.toString(CryptoJS.enc.Utf8);
+            if (!decryptedText) { // This can happen if the key is wrong
+                throw new Error("Decrypted to empty string. Likely wrong key.");
+            }
+            return decryptedText;
         } catch (e) {
             console.error("Decryption failed:", e);
             return ''; // Return empty string on failure
@@ -401,19 +431,25 @@ async function handleCreateDb(event) {
         populateTagFilterSelect();
         showKeyListView();
         toggleMenu(true);
+        promptToSetupBiometrics();
     } catch (e) { showStatus(`Error al crear archivo: ${e.message}`, 'error'); } finally { setLoading(false, DOMElements.createDbBtn); }
 }
 
 async function handleOpenDb(event) {
-    event.preventDefault();
+    if (event) event.preventDefault();
     if (!openingFile) return;
-    const { id, name } = openingFile;
+    
     const mKey = DOMElements.modalMasterKeyInput.value;
     if (!mKey) return alert('La clave maestra es requerida.');
+    
+    await unlockDbWithMasterKey(openingFile.id, openingFile.name, mKey);
+}
+
+async function unlockDbWithMasterKey(fileId, fileName, mKey) {
     setLoading(true, DOMElements.modalUnlockBtn);
-    showStatus(`Abriendo '${name}'...`);
+    showStatus(`Abriendo '${fileName}'...`);
     try {
-        const encryptedContent = await GDriveService.getFileContent(id);
+        const encryptedContent = await GDriveService.getFileContent(fileId);
         const decryptedJson = CryptoService.decrypt(encryptedContent, mKey);
         if (!decryptedJson) throw new Error("Descifrado falló. Clave maestra incorrecta o archivo corrupto.");
         
@@ -430,19 +466,21 @@ async function handleOpenDb(event) {
         dbData = (parsedData && Array.isArray(parsedData.keys)) ? parsedData : { keys: [], tags: [] };
         // --- End Compatibility ---
 
-        masterKey = mKey; dbFileId = id; currentDbName = name;
+        masterKey = mKey; dbFileId = fileId; currentDbName = fileName;
         saveSessionState();
         DOMElements.openDbModal.classList.add('hidden');
         DOMElements.modalMasterKeyInput.value = '';
         openingFile = null;
-        showStatus(`'${name}' abierto correctamente.`, 'ok');
+        showStatus(`'${fileName}' abierto correctamente.`, 'ok');
         renderKeys();
         populateTagFilterSelect();
         showKeyListView();
         toggleMenu(true);
+        
+        promptToSetupBiometrics();
+
     } catch (e) { showStatus(e.message, 'error'); } finally { setLoading(false, DOMElements.modalUnlockBtn); }
 }
-
 
 async function saveDb() {
     if (!dbFileId || !masterKey) return;
@@ -497,6 +535,14 @@ async function handleRenameDb(event) {
     try {
         await GDriveService.renameFile(dbFileId, newName);
         currentDbName = newName;
+        
+        // Update biometric data if it exists
+        const bioData = getBiometricData();
+        if (bioData[dbFileId]) {
+            bioData[dbFileId].name = newName;
+            saveBiometricData(bioData);
+        }
+
         DOMElements.renameDbModal.classList.add('hidden');
         showStatus(`Llavero renombrado a '${newName}'.`, 'ok');
         renderKeys(); // Re-render to show new name immediately
@@ -510,6 +556,14 @@ async function handleDeleteDb() {
     setLoading(true, DOMElements.deleteConfirmBtn);
     try {
         await GDriveService.deleteFile(dbFileId);
+        
+        // Remove biometric data
+        const bioData = getBiometricData();
+        if (bioData[dbFileId]) {
+            delete bioData[dbFileId];
+            saveBiometricData(bioData);
+        }
+
         DOMElements.deleteDbModal.classList.add('hidden');
         showStatus(`Llavero '${currentDbName}' eliminado.`, 'ok');
         dbData = null; dbFileId = null; masterKey = ''; currentDbName = '';
@@ -677,6 +731,180 @@ function populateTagFilterSelect() {
     });
 }
 
+// --- BIOMETRIC AUTHENTICATION (WEBAUTHN) ---
+
+function checkBiometricSupport() {
+    isBiometricSupported = (navigator.credentials && window.PublicKeyCredential && /Mobi/i.test(navigator.userAgent));
+    DOMElements.manageBiometricsBtn.disabled = !isBiometricSupported;
+    console.log(`Biometric support: ${isBiometricSupported}`);
+}
+
+function getBiometricData() {
+    try {
+        const data = localStorage.getItem(BIO_STORAGE_KEY);
+        return data ? JSON.parse(data) : {};
+    } catch (e) {
+        return {};
+    }
+}
+
+function saveBiometricData(data) {
+    localStorage.setItem(BIO_STORAGE_KEY, JSON.stringify(data));
+}
+
+function arrayBufferToBase64(buffer) {
+    let binary = '';
+    const bytes = new Uint8Array(buffer);
+    for (let i = 0; i < bytes.byteLength; i++) {
+        binary += String.fromCharCode(bytes[i]);
+    }
+    return window.btoa(binary);
+}
+
+function base64ToArrayBuffer(base64) {
+    const binary_string = window.atob(base64);
+    const len = binary_string.length;
+    const bytes = new Uint8Array(len);
+    for (let i = 0; i < len; i++) {
+        bytes[i] = binary_string.charCodeAt(i);
+    }
+    return bytes.buffer;
+}
+
+async function setupBiometrics() {
+    if (!isBiometricSupported || !dbFileId || !masterKey) return;
+    
+    try {
+        const challenge = new Uint8Array(32);
+        crypto.getRandomValues(challenge);
+
+        const credential = await navigator.credentials.create({
+            publicKey: {
+                challenge,
+                rp: { name: "Llavero RDK" },
+                user: {
+                    id: new TextEncoder().encode(dbFileId),
+                    name: currentDbName,
+                    displayName: currentDbName,
+                },
+                pubKeyCredParams: [{ type: "public-key", alg: -7 }], // ES256
+                authenticatorSelection: {
+                    authenticatorAttachment: "platform",
+                    userVerification: "required",
+                },
+                timeout: 60000,
+            }
+        });
+
+        if (credential) {
+            const data = getBiometricData();
+            data[dbFileId] = {
+                credentialId: arrayBufferToBase64(credential.rawId),
+                name: currentDbName,
+                encryptedMasterKey: CryptoService.encrypt(masterKey, BIO_ENCRYPTION_KEY),
+            };
+            saveBiometricData(data);
+            showToast('¡Desbloqueo biométrico activado para este llavero!', 'success');
+        }
+    } catch (err) {
+        console.error("Error al configurar biometría:", err);
+        showStatus(`Error al configurar biometría: ${err.message}`, 'error');
+    }
+}
+
+function promptToSetupBiometrics() {
+    const bioData = getBiometricData();
+    if (isBiometricSupported && !bioData[dbFileId]) {
+        showToast('¿Quieres desbloquear este llavero con tu huella la próxima vez?', 'info', 10000, [
+            { label: 'Sí, configurar', callback: setupBiometrics },
+        ]);
+    }
+}
+
+async function handleBiometricUnlock() {
+    if (!openingFile || !isBiometricSupported) return;
+
+    const bioData = getBiometricData();
+    const fileBioInfo = bioData[openingFile.id];
+    if (!fileBioInfo) return;
+    
+    setLoading(true, DOMElements.modalBiometricBtn);
+
+    try {
+        const challenge = new Uint8Array(32);
+        crypto.getRandomValues(challenge);
+
+        const assertion = await navigator.credentials.get({
+            publicKey: {
+                challenge,
+                allowCredentials: [{
+                    type: 'public-key',
+                    id: base64ToArrayBuffer(fileBioInfo.credentialId),
+                }],
+                userVerification: 'required',
+                timeout: 60000,
+            }
+        });
+
+        if (assertion) {
+            const decryptedMasterKey = CryptoService.decrypt(fileBioInfo.encryptedMasterKey, BIO_ENCRYPTION_KEY);
+            if (decryptedMasterKey) {
+                await unlockDbWithMasterKey(openingFile.id, openingFile.name, decryptedMasterKey);
+            } else {
+                throw new Error("No se pudo descifrar la clave maestra guardada.");
+            }
+        }
+    } catch (err) {
+        console.error("Error de desbloqueo biométrico:", err);
+        showStatus(`Fallo biométrico: ${err.message}`, 'error');
+    } finally {
+        setLoading(false, DOMElements.modalBiometricBtn);
+    }
+}
+
+
+function openBiometricsManager() {
+    DOMElements.biometricsModal.classList.remove('hidden');
+    renderBiometricsInModal();
+    toggleMenu(true);
+}
+
+function renderBiometricsInModal() {
+    const list = DOMElements.biometricsList;
+    list.innerHTML = '';
+    const bioData = getBiometricData();
+    const fileIds = Object.keys(bioData);
+
+    if (fileIds.length === 0) {
+        list.innerHTML = '<p class="text-slate-500 text-sm">No hay llaveros con desbloqueo biométrico activado.</p>';
+        return;
+    }
+
+    fileIds.forEach(fileId => {
+        const fileInfo = bioData[fileId];
+        const div = document.createElement('div');
+        div.className = 'flex justify-between items-center p-2 bg-slate-50 dark:bg-slate-800 rounded';
+        div.innerHTML = `
+            <span class="text-slate-800 dark:text-slate-200 truncate pr-4">${escapeHtml(fileInfo.name)}</span>
+            <button class="remove-bio-btn text-red-600 dark:text-red-400 hover:underline text-sm" data-file-id="${escapeHtml(fileId)}">Eliminar</button>
+        `;
+        list.appendChild(div);
+    });
+
+    list.querySelectorAll('.remove-bio-btn').forEach(btn => {
+        btn.onclick = (e) => {
+            const idToRemove = e.target.dataset.fileId;
+            if (confirm('¿Seguro que quieres quitar el desbloqueo biométrico para este llavero?')) {
+                const currentData = getBiometricData();
+                delete currentData[idToRemove];
+                saveBiometricData(currentData);
+                renderBiometricsInModal();
+                showToast('Desbloqueo biométrico eliminado.', 'info');
+            }
+        };
+    });
+}
+
 // --- AUTH & SESSION ---
 
 function saveSessionState() {
@@ -755,6 +983,7 @@ async function onSignedIn(sessionTimeoutOverride) {
 function handleSignOut() {
     showToast('Cerrando sesión...', 'info');
     sessionStorage.removeItem('keychainSession');
+    // We don't clear localStorage (biometric data) on sign out
     setTimeout(() => {
         if (accessToken) {
             google.accounts.oauth2.revoke(accessToken, () => {
@@ -810,6 +1039,8 @@ document.addEventListener('DOMContentLoaded', () => {
         modalDbName: document.getElementById('modal-db-name'),
         modalMasterKeyInput: document.getElementById('modal-master-key-input'),
         modalUnlockBtn: document.getElementById('modal-unlock-btn'),
+        modalBiometricBtn: document.getElementById('modal-biometric-btn'),
+        biometricDivider: document.getElementById('biometric-divider'),
         backToListBtn: document.getElementById('back-to-list-btn'),
         keyListView: document.getElementById('key-list-view'),
         keyFormView: document.getElementById('key-form-view'),
@@ -838,6 +1069,9 @@ document.addEventListener('DOMContentLoaded', () => {
         editTagForm: document.getElementById('edit-tag-form'),
         editTagIdInput: document.getElementById('edit-tag-id'),
         editTagNameInput: document.getElementById('edit-tag-name-input'),
+        manageBiometricsBtn: document.getElementById('manage-biometrics-btn'),
+        biometricsModal: document.getElementById('biometrics-modal'),
+        biometricsList: document.getElementById('biometrics-list'),
         toastContainer: document.getElementById('toast-container'),
     };
     
@@ -860,10 +1094,19 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!selected || selected.disabled) return;
         openingFile = { id: selected.value, name: selected.dataset.name };
         DOMElements.modalDbName.textContent = openingFile.name;
+        
+        // Check for biometric data
+        const bioData = getBiometricData();
+        const hasBio = isBiometricSupported && bioData[openingFile.id];
+        DOMElements.modalBiometricBtn.classList.toggle('hidden', !hasBio);
+        DOMElements.biometricDivider.classList.toggle('hidden', !hasBio);
+        
         DOMElements.openDbModal.classList.remove('hidden');
         DOMElements.modalMasterKeyInput.focus();
     };
     DOMElements.openDbForm.onsubmit = handleOpenDb;
+    DOMElements.modalBiometricBtn.onclick = handleBiometricUnlock;
+
     
     document.querySelectorAll('.modal-cancel-btn').forEach(btn => {
         btn.onclick = () => btn.closest('.modal-container').classList.add('hidden');
@@ -887,6 +1130,8 @@ document.addEventListener('DOMContentLoaded', () => {
     DOMElements.manageTagsBtn.onclick = openTagsModal;
     DOMElements.addTagForm.onsubmit = handleAddTag;
     DOMElements.editTagForm.onsubmit = handleUpdateTag;
+
+    DOMElements.manageBiometricsBtn.onclick = openBiometricsManager;
 
     // View toggle logic
     const toggleView = () => {
@@ -944,6 +1189,9 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
     });
+
+    // --- CHECK BIOMETRIC SUPPORT ---
+    checkBiometricSupport();
 
     // --- SESSION & LOGIN FLOW ---
     if (tryRestoreSession()) {
