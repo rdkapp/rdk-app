@@ -546,7 +546,6 @@ function resetSessionTimer() {
     clearTimeout(sessionTimer);
     const expiresAt = new Date(Date.now() + SESSION_TIMEOUT);
     const timeString = expiresAt.toLocaleTimeString();
-    if (DOMElements.sessionTimerTimeDesktop) DOMElements.sessionTimerTimeDesktop.textContent = timeString;
     if (DOMElements.sessionTimerTimeMobile) DOMElements.sessionTimerTimeMobile.textContent = timeString;
 
     sessionTimer = setTimeout(() => { alert('La sesión expiró por inactividad.'); window.location.reload(); }, SESSION_TIMEOUT);
@@ -556,10 +555,6 @@ async function onSignedIn() {
     DOMElements.loginView.classList.add('hidden');
     DOMElements.appView.classList.remove('hidden');
     DOMElements.menuBtn.classList.remove('hidden');
-    
-    // Show session controls based on context
-    DOMElements.desktopSessionControls.classList.remove('hidden');
-    DOMElements.mobileSessionControls.classList.remove('hidden');
 
     document.body.addEventListener('click', resetSessionTimer, { passive: true });
     document.body.addEventListener('input', resetSessionTimer, { passive: true });
@@ -575,17 +570,38 @@ function handleSignOut() {
 
 // --- INITIALIZATION ---
 
+window.onGsiClientLoad = () => {
+    try {
+        if (!google || !google.accounts || !google.accounts.oauth2) {
+            throw new Error("La biblioteca de Google no se cargó correctamente.");
+        }
+        tokenClient = google.accounts.oauth2.initTokenClient({
+            client_id: CLIENT_ID,
+            scope: SCOPES,
+            callback: (resp) => {
+                if (resp.error) return showStatus(`Error de token: ${resp.error}`, 'error');
+                accessToken = resp.access_token;
+                showStatus('Autenticado.', 'ok');
+                onSignedIn();
+            }
+        });
+        DOMElements.signInBtn.disabled = false;
+        DOMElements.signInBtn.onclick = () => tokenClient.requestAccessToken({ prompt: 'consent' });
+        showStatus('Listo para iniciar sesión.', 'ok');
+    } catch (error) {
+        console.error("Error al inicializar GSI:", error);
+        showStatus(error.message || 'No se pudo inicializar el inicio de sesión de Google.', 'error');
+    }
+};
+
 document.addEventListener('DOMContentLoaded', () => {
     DOMElements = {
         loginView: document.getElementById('login-view'),
         appView: document.getElementById('app-view'),
         statusMessage: document.getElementById('status-message'),
         signInBtn: document.getElementById('signin-btn'),
-        desktopSessionControls: document.getElementById('desktop-session-controls'),
         mobileSessionControls: document.getElementById('mobile-session-controls'),
-        sessionTimerTimeDesktop: document.getElementById('session-timer-time-desktop'),
         sessionTimerTimeMobile: document.getElementById('session-timer-time-mobile'),
-        signOutBtnDesktop: document.getElementById('signout-btn-desktop'),
         signOutBtnMobile: document.getElementById('signout-btn-mobile'),
         dbSelect: document.getElementById('db-select'),
         openDbBtn: document.getElementById('open-db-btn'),
@@ -646,7 +662,6 @@ document.addEventListener('DOMContentLoaded', () => {
     };
     
     // --- EVENT LISTENERS ---
-    DOMElements.signOutBtnDesktop.onclick = handleSignOut;
     DOMElements.signOutBtnMobile.onclick = handleSignOut;
     DOMElements.createDbForm.onsubmit = handleCreateDb;
     DOMElements.keyForm.onsubmit = handleSaveKey;
@@ -707,32 +722,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Dynamically load the GSI script and initialize on load.
     const gsiScript = document.createElement('script');
-    gsiScript.src = 'https://accounts.google.com/gsi/client';
+    gsiScript.src = 'https://accounts.google.com/gsi/client?onload=onGsiClientLoad';
     gsiScript.async = true;
     gsiScript.defer = true;
-    gsiScript.onload = () => {
-        try {
-            if (!google || !google.accounts || !google.accounts.oauth2) {
-                throw new Error("La biblioteca de Google no se cargó correctamente.");
-            }
-            tokenClient = google.accounts.oauth2.initTokenClient({
-                client_id: CLIENT_ID,
-                scope: SCOPES,
-                callback: (resp) => {
-                    if (resp.error) return showStatus(`Error de token: ${resp.error}`, 'error');
-                    accessToken = resp.access_token;
-                    showStatus('Autenticado.', 'ok');
-                    onSignedIn();
-                }
-            });
-            DOMElements.signInBtn.disabled = false;
-            DOMElements.signInBtn.onclick = () => tokenClient.requestAccessToken({ prompt: 'consent' });
-            showStatus('Listo para iniciar sesión.', 'ok');
-        } catch (error) {
-            console.error("Error al inicializar GSI:", error);
-            showStatus(error.message || 'No se pudo inicializar el inicio de sesión de Google.', 'error');
-        }
-    };
     gsiScript.onerror = () => showStatus('Error al cargar el script de Google.', 'error');
     document.body.appendChild(gsiScript);
 });
