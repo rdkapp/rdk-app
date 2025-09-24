@@ -1,212 +1,366 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Llavero Minimalista</title>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Llavero Minimal - Debuggable</title>
 <style>
-body { font-family: Arial,sans-serif; margin:0; padding:0; background:#f5f5f5; }
-header { background:#4A90E2; color:#fff; padding:15px; text-align:center; font-size:1.2em; }
-.container { padding:10px; max-width:500px; margin:auto; }
-input, select, textarea, button { width:100%; padding:8px; margin:5px 0; box-sizing:border-box; }
-button { background:#4A90E2; color:#fff; border:none; cursor:pointer; }
-button:hover { background:#357ABD; }
-.key-item { background:#fff; padding:10px; margin:5px 0; border-radius:5px; }
-.flex { display:flex; gap:5px; }
-.flex button { flex:1; }
-.tag { display:inline-block; background:#ddd; padding:2px 6px; margin:2px; border-radius:4px; }
-.hidden { display:none; }
+  body{font-family:Arial,Helvetica,sans-serif;margin:0;background:#f6f8fb;color:#222}
+  header{background:#2b7bf6;color:#fff;padding:14px;text-align:center;font-weight:700}
+  .wrap{max-width:520px;margin:14px auto;padding:12px}
+  button,input,textarea{width:100%;padding:10px;margin:8px 0;box-sizing:border-box;border:1px solid #d0d7e6;border-radius:6px}
+  button{background:#2b7bf6;color:#fff;border:0}
+  .small{font-size:0.9rem}
+  .row{display:flex;gap:8px}
+  .row button{flex:1}
+  .hint{font-size:0.85rem;color:#555;margin-top:6px}
+  .db-btn{display:block;margin:6px 0;padding:10px;text-align:left;border-radius:6px;background:#fff;border:1px solid #e3e6ee}
+  .key-item{background:#fff;padding:10px;margin:8px 0;border-radius:8px;border:1px solid #e6e9f2}
+  .error{color:#9b1b1b;background:#ffdfe0;padding:8px;border-radius:6px}
+  .ok{color:#0a6a0a;background:#e2f7e2;padding:8px;border-radius:6px}
+  .tags{margin-top:6px}
+  .tag{display:inline-block;background:#eee;padding:4px 8px;border-radius:12px;margin-right:6px;font-size:0.8rem}
 </style>
 </head>
 <body>
-<header>Llavero Personal Minimalista</header>
-<div class="container">
+<header>Llavero - Versión Minimal (debuggable)</header>
+<div class="wrap">
 
-<!-- Login -->
-<div id="loginDiv">
-  <button id="googleSignInBtn">Iniciar sesión con Google</button>
+  <!-- Mensajes de estado -->
+  <div id="statusMsg" class="hint">Estado: esperando acción...</div>
+
+  <!-- Login -->
+  <div id="loginBlock">
+    <button id="googleSignInBtn">Iniciar sesión con Google</button>
+    <div class="hint">Necesitas autorizar a la app para usar tu Google Drive (solo guarda archivos creados por esta app).</div>
+  </div>
+
+  <!-- Panel principal (visible tras login) -->
+  <div id="mainPanel" class="hidden">
+    <div style="display:flex;gap:8px;align-items:center">
+      <input id="newDbName" placeholder="Nombre nuevo archivo (sin extensión)" />
+      <button id="createDbBtn" style="width:120px">Crear</button>
+    </div>
+    <input id="masterKey" type="password" placeholder="Clave maestra (para cifrar / desbloquear)" />
+    <div id="dbList" style="margin-top:10px"></div>
+
+    <hr/>
+
+    <input id="searchKey" placeholder="Buscar por nombre o texto en nota" />
+    <div id="keyList"></div>
+
+    <h4 style="margin-bottom:4px">Agregar / Editar</h4>
+    <input id="keyName" placeholder="Nombre de llave" />
+    <input id="keyUser" placeholder="Usuario / Mail" />
+    <input id="keyPass" placeholder="Clave" />
+    <textarea id="keyNote" rows="3" placeholder="Nota"></textarea>
+    <input id="keyTags" placeholder="Etiquetas (separadas por coma)" />
+    <div class="row">
+      <button id="saveKeyBtn">Guardar</button>
+      <button id="logoutBtn" style="background:#999">Cerrar sesión</button>
+    </div>
+
+    <div id="sessionInfo" class="hint"></div>
+  </div>
+
+  <hr/>
+
+  <div class="small hint">Consejos de debugging: abre la consola (F12) y recarga si algo falla. Verifica Client ID, origenes y Drive API.</div>
 </div>
 
-<!-- Main Panel -->
-<div id="mainDiv" class="hidden">
-
-<h3>Archivos Llavero</h3>
-<div id="dbList"></div>
-<input type="text" id="newDbName" placeholder="Nombre nuevo archivo .db">
-<input type="password" id="masterKey" placeholder="Clave maestra">
-<button id="createDbBtn">Crear / Abrir</button>
-<button id="logoutBtn">Cerrar sesión</button>
-
-<hr>
-
-<input type="text" id="searchKey" placeholder="Buscar por nombre o nota">
-<div id="keyList"></div>
-
-<h4>Agregar / Editar llave</h4>
-<input type="text" id="keyName" placeholder="Nombre de llave">
-<input type="text" id="keyUser" placeholder="Usuario / Mail">
-<input type="text" id="keyPass" placeholder="Clave">
-<textarea id="keyNote" placeholder="Nota"></textarea>
-<input type="text" id="keyTags" placeholder="Etiquetas (separadas por coma)">
-<div class="flex">
-  <button id="saveKeyBtn">Guardar</button>
-  <button id="cancelEditBtn">Cancelar</button>
-</div>
-
-</div>
-</div>
-
+<!-- libs -->
 <script src="https://apis.google.com/js/api.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
+
 <script>
-let CLIENT_ID = '576080826935-2mtnj52ndc8plnsjodjevt3e2gsh4m3a.apps.googleusercontent.com';
-let SCOPES = 'https://www.googleapis.com/auth/drive.file';
+/* ---------- CONFIG ---------- */
+const CLIENT_ID = '576080826935-2mtnj52ndc8plnsjodjevt3e2gsh4m3a.apps.googleusercontent.com'; // <-- reemplazar aquí
+const SCOPES = 'https://www.googleapis.com/auth/drive.file';
+const DISCOVERY_DOCS = ["https://www.googleapis.com/discovery/v1/apis/drive/v3/rest"];
+/* ---------------------------- */
+
 let dbData = null;
 let dbFileId = null;
-let masterKeyGlobal = '';
+let masterKey = '';
 let sessionTimer = null;
 
-// --- GOOGLE LOGIN ---
-function start() {
-  gapi.load('client:auth2', initClient);
+// UI refs
+const statusMsg = id('statusMsg');
+const loginBlock = id('loginBlock');
+const mainPanel = id('mainPanel');
+const dbListDiv = id('dbList');
+const createDbBtn = id('createDbBtn');
+const googleSignInBtn = id('googleSignInBtn');
+const logoutBtn = id('logoutBtn');
+
+function id(i){ return document.getElementById(i); }
+
+/* --- UTIL --- */
+function showStatus(msg, kind='info'){
+  statusMsg.className = kind==='error' ? 'error' : (kind==='ok' ? 'ok' : 'hint');
+  statusMsg.textContent = 'Estado: ' + msg;
+  console.log('[STATUS]', msg);
 }
 
-function initClient() {
-  gapi.auth2.init({client_id: CLIENT_ID}).then(() => {
-    document.getElementById('googleSignInBtn').onclick = signIn;
+/* --- GAPI init with robust error handling --- */
+function start(){
+  if(!CLIENT_ID || CLIENT_ID.includes('YOUR_')) {
+    showStatus('Poner tu Client ID en la constante CLIENT_ID del archivo HTML.', 'error');
+    console.error('Falta CLIENT_ID. Reemplaza YOUR_GOOGLE_CLIENT_ID por tu client id.');
+    googleSignInBtn.disabled = true;
+    return;
+  }
+
+  gapi.load('client:auth2', async () => {
+    try {
+      // use gapi.client.init to initialize client & load discovery docs
+      await gapi.client.init({
+        discoveryDocs: DISCOVERY_DOCS,
+        clientId: CLIENT_ID,
+        scope: SCOPES
+      });
+      showStatus('gapi inicializado. Listo para iniciar sesión.');
+      googleSignInBtn.onclick = handleSignIn;
+    } catch(err){
+      showStatus('Error inicializando gapi: ' + (err.message || err), 'error');
+      console.error('gapi.client.init error', err);
+      googleSignInBtn.onclick = ()=> alert('Error en inicialización. Ver consola.');
+    }
   });
 }
 
-function signIn() {
-  gapi.auth2.getAuthInstance().signIn().then(() => {
-    gapi.client.load('drive', 'v3', loadDbList);
-    document.getElementById('loginDiv').classList.add('hidden');
-    document.getElementById('mainDiv').classList.remove('hidden');
-  });
+// Sign-in
+async function handleSignIn(){
+  showStatus('Solicitando permiso de Google...');
+  try {
+    const authInstance = gapi.auth2.getAuthInstance();
+    const user = await authInstance.signIn();
+    showStatus('Usuario autenticado. Cargando Drive...');
+    // cargar drive client (discovery ya cargado en init, pero aseguramos)
+    await gapi.client.load('drive', 'v3');
+    // mostrar UI principal
+    loginBlock.classList.add('hidden');
+    mainPanel.classList.remove('hidden');
+    showStatus('Listo. Cargando lista de archivos .db');
+    loadDbList();
+    resetSessionTimer();
+  } catch(err) {
+    showStatus('Login cancelado o error: ' + (err.error || err.message || err), 'error');
+    console.error('signIn error', err);
+  }
 }
 
-function logout() {
-  gapi.auth2.getAuthInstance().signOut().then(() => location.reload());
+logoutBtn.onclick = ()=>{
+  const auth = gapi.auth2.getAuthInstance();
+  if(auth) auth.signOut().then(()=> location.reload());
+};
+
+// Load list of .db files (we use application/octet-stream mime)
+async function loadDbList(){
+  try {
+    const res = await gapi.client.drive.files.list({
+      q: "mimeType='application/octet-stream' and trashed=false",
+      fields: "files(id,name,modifiedTime)",
+      orderBy: "modifiedTime desc",
+      pageSize: 50
+    });
+    const files = res.result.files || [];
+    dbListDiv.innerHTML = files.length ? '' : '<div class="hint">No se encontraron archivos .db en tu Drive (crealos abajo)</div>';
+    files.forEach(f=>{
+      const btn = document.createElement('button');
+      btn.className = 'db-btn';
+      btn.textContent = f.name + ' • ' + new Date(f.modifiedTime).toLocaleString();
+      btn.onclick = ()=> openDbPrompt(f.id,f.name);
+      dbListDiv.appendChild(btn);
+    });
+    showStatus('Lista de archivos cargada. ' + files.length + ' encontrado(s).');
+  } catch(err){
+    showStatus('Error al listar archivos: ' + (err.message || err), 'error');
+    console.error('list files error', err);
+  }
 }
 
-document.getElementById('logoutBtn').onclick = logout;
-
-// --- DB HANDLING ---
-async function loadDbList() {
-  const res = await gapi.client.drive.files.list({
-    q: "mimeType='application/octet-stream' and trashed=false",
-    fields: "files(id,name)"
-  });
-  const list = res.result.files;
-  const dbListDiv = document.getElementById('dbList');
-  dbListDiv.innerHTML = '';
-  list.forEach(f => {
-    const btn = document.createElement('button');
-    btn.textContent = f.name;
-    btn.onclick = () => openDb(f.id, f.name);
-    dbListDiv.appendChild(btn);
-  });
-}
-
-async function createDb() {
-  const name = document.getElementById('newDbName').value.trim();
-  const key = document.getElementById('masterKey').value;
-  if(!name || !key) return alert('Ingrese nombre y clave maestra');
-  masterKeyGlobal = key;
+/* --- Create DB --- */
+createDbBtn.onclick = async ()=>{
+  const name = id('newDbName').value.trim();
+  const key = id('masterKey').value;
+  if(!name || !key) return alert('Nombre y clave maestra obligatorios.');
+  masterKey = key;
   dbData = { keys: [] };
-  const content = CryptoJS.AES.encrypt(JSON.stringify(dbData), key).toString();
-  const fileMetadata = { name: name + '.db', mimeType: 'application/octet-stream' };
-  const file = new Blob([content], {type:'application/octet-stream'});
-  const res = await gapi.client.drive.files.create({ resource:fileMetadata, media: { body: file }, fields:'id' });
-  dbFileId = res.result.id;
-  renderKeys();
-  resetSessionTimer();
-}
+  try {
+    const encrypted = CryptoJS.AES.encrypt(JSON.stringify(dbData), masterKey).toString();
+    const blob = new Blob([encrypted], { type: 'application/octet-stream' });
+    const metadata = { name: name + '.db', mimeType: 'application/octet-stream' };
 
-async function openDb(fileId, fileName) {
+    // Use multipart upload via gapi.client.request
+    const form = new FormData();
+    form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
+    form.append('file', blob);
+
+    const res = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer ' + gapi.auth2.getAuthInstance().currentUser.get().getAuthResponse().access_token },
+      body: form
+    });
+    const json = await res.json();
+    if(json.id){
+      dbFileId = json.id;
+      showStatus('Archivo creado correctamente: ' + metadata.name, 'ok');
+      loadDbList();
+      renderKeys();
+      resetSessionTimer();
+    } else throw json;
+  } catch(err){
+    showStatus('Error creando archivo: ' + (err.message || JSON.stringify(err)), 'error');
+    console.error('create file error', err);
+  }
+};
+
+/* --- Open DB (prompt for clave maestra) --- */
+async function openDbPrompt(fileId, fileName){
   const key = prompt('Ingrese clave maestra para ' + fileName);
   if(!key) return;
-  masterKeyGlobal = key;
-  const res = await gapi.client.drive.files.get({ fileId:fileId, alt:'media' });
+  masterKey = key;
   try {
-    const bytes = CryptoJS.AES.decrypt(res.body, key);
-    dbData = JSON.parse(bytes.toString(CryptoJS.enc.Utf8));
+    const res = await gapi.client.drive.files.get({ fileId: fileId, alt: 'media' });
+    const body = res.body || res.result || res; // robust fallback
+    // res.body contiene el texto cifrado si la petición usa alt=media
+    const decrypted = CryptoJS.AES.decrypt(body, masterKey).toString(CryptoJS.enc.Utf8);
+    dbData = JSON.parse(decrypted);
     dbFileId = fileId;
+    showStatus('Archivo abierto correctamente: ' + fileName, 'ok');
     renderKeys();
     resetSessionTimer();
-  } catch(e) { alert('Clave incorrecta'); }
+  } catch(err){
+    showStatus('No se pudo abrir el archivo (clave incorrecta o error): ' + (err.message || err), 'error');
+    console.error('openDb error', err);
+  }
 }
 
-// --- ABM KEYS ---
-function renderKeys(filter='') {
-  const listDiv = document.getElementById('keyList');
-  listDiv.innerHTML = '';
-  dbData.keys.filter(k => k.name.includes(filter) || (k.note && k.note.includes(filter))).forEach((k,i)=>{
+/* --- Render keys list --- */
+function renderKeys(filter=''){
+  if(!dbData) { id('keyList').innerHTML = '<div class="hint">Abre o crea un .db primero.</div>'; return; }
+  const list = dbData.keys.filter(k => !filter || (k.name && k.name.toLowerCase().includes(filter.toLowerCase())) || (k.note && k.note.toLowerCase().includes(filter.toLowerCase())));
+  const container = id('keyList');
+  container.innerHTML = '';
+  list.forEach((k, idx) => {
+    let user='', pass='';
+    try {
+      user = CryptoJS.AES.decrypt(k.user, masterKey).toString(CryptoJS.enc.Utf8);
+      pass = CryptoJS.AES.decrypt(k.pass, masterKey).toString(CryptoJS.enc.Utf8);
+    } catch(e){ user='(error desencriptando)'; pass='(error)'; }
     const div = document.createElement('div'); div.className='key-item';
-    const user = CryptoJS.AES.decrypt(k.user, masterKeyGlobal).toString(CryptoJS.enc.Utf8);
-    const pass = CryptoJS.AES.decrypt(k.pass, masterKeyGlobal).toString(CryptoJS.enc.Utf8);
-    div.innerHTML = `<b>${k.name}</b><br>Usuario: ${user}<br>Clave: ${pass}<br>Nota: ${k.note}<br>Etiquetas: ${k.tags.map(t=>'<span class="tag">'+t+'</span>').join(' ')}`;
-    const btnEdit = document.createElement('button'); btnEdit.textContent='Editar'; btnEdit.onclick=()=>editKey(i);
-    const btnDel = document.createElement('button'); btnDel.textContent='Borrar'; btnDel.onclick=()=>{ dbData.keys.splice(i,1); saveDb(); renderKeys(); };
-    const btnDiv = document.createElement('div'); btnDiv.className='flex'; btnDiv.appendChild(btnEdit); btnDiv.appendChild(btnDel);
-    div.appendChild(btnDiv);
-    listDiv.appendChild(div);
+    div.innerHTML = `<b>${escapeHtml(k.name||'')}</b>
+      <div class="small">Usuario: ${escapeHtml(user)}</div>
+      <div class="small">Clave: ${escapeHtml(pass)}</div>
+      <div class="small">Nota: ${escapeHtml(k.note||'')}</div>
+      <div class="tags">${(k.tags||[]).map(t=>' <span class="tag">'+escapeHtml(t)+'</span>').join('')}</div>`;
+    const row = document.createElement('div'); row.className='row';
+    const editBtn = document.createElement('button'); editBtn.textContent='Editar';
+    const delBtn = document.createElement('button'); delBtn.textContent='Borrar';
+    editBtn.onclick = ()=> populateEdit(idx);
+    delBtn.onclick = ()=> { if(confirm('Borrar llave?')) { dbData.keys.splice(idx,1); saveDb(); renderKeys(id('searchKey').value); } };
+    row.appendChild(editBtn); row.appendChild(delBtn);
+    div.appendChild(row);
+    container.appendChild(div);
   });
 }
 
-document.getElementById('searchKey').addEventListener('input', e=>renderKeys(e.target.value));
-
-function editKey(index) {
-  const k = dbData.keys[index];
-  document.getElementById('keyName').value = k.name;
-  document.getElementById('keyUser').value = CryptoJS.AES.decrypt(k.user, masterKeyGlobal).toString(CryptoJS.enc.Utf8);
-  document.getElementById('keyPass').value = CryptoJS.AES.decrypt(k.pass, masterKeyGlobal).toString(CryptoJS.enc.Utf8);
-  document.getElementById('keyNote').value = k.note;
-  document.getElementById('keyTags').value = k.tags.join(',');
-  document.getElementById('saveKeyBtn').onclick = ()=>{ saveKey(index); };
-}
-
-function saveKey(index=null) {
-  const k = {
-    name: document.getElementById('keyName').value,
-    user: CryptoJS.AES.encrypt(document.getElementById('keyUser').value, masterKeyGlobal).toString(),
-    pass: CryptoJS.AES.encrypt(document.getElementById('keyPass').value, masterKeyGlobal).toString(),
-    note: document.getElementById('keyNote').value,
-    tags: document.getElementById('keyTags').value.split(',').map(t=>t.trim()).filter(t=>t)
-  };
-  if(index!==null) dbData.keys[index] = k; else dbData.keys.push(k);
+/* --- Save / Edit keys --- */
+id('saveKeyBtn').onclick = ()=>{
+  if(!dbData || !dbFileId) return alert('Abre o crea un .db primero.');
+  const name = id('keyName').value.trim();
+  const user = id('keyUser').value;
+  const pass = id('keyPass').value;
+  const note = id('keyNote').value;
+  const tags = id('keyTags').value.split(',').map(t=>t.trim()).filter(t=>t);
+  if(!name) return alert('Nombre de llave obligatorio.');
+  const encUser = CryptoJS.AES.encrypt(user, masterKey).toString();
+  const encPass = CryptoJS.AES.encrypt(pass, masterKey).toString();
+  // If editing existing (we detect by same name) replace first occurrence, else push
+  const existingIndex = dbData.keys.findIndex(k => k._editing === true);
+  if(existingIndex >= 0){
+    dbData.keys[existingIndex] = { name, user:encUser, pass:encPass, note, tags };
+    cleanupEditingFlags();
+  } else {
+    dbData.keys.push({ name, user:encUser, pass:encPass, note, tags });
+  }
   saveDb();
-  clearKeyForm();
-  renderKeys();
+  clearForm();
+  renderKeys(id('searchKey').value);
+};
+
+function populateEdit(index){
+  const k = dbData.keys[index];
+  try {
+    id('keyName').value = k.name;
+    id('keyUser').value = CryptoJS.AES.decrypt(k.user, masterKey).toString(CryptoJS.enc.Utf8);
+    id('keyPass').value = CryptoJS.AES.decrypt(k.pass, masterKey).toString(CryptoJS.enc.Utf8);
+    id('keyNote').value = k.note;
+    id('keyTags').value = (k.tags||[]).join(',');
+    cleanupEditingFlags();
+    dbData.keys[index]._editing = true;
+    showStatus('Editando elemento: ' + k.name);
+  } catch(e){
+    showStatus('Error al preparar edición: ' + (e.message||e), 'error');
+  }
 }
 
-function clearKeyForm() {
-  document.getElementById('keyName').value='';
-  document.getElementById('keyUser').value='';
-  document.getElementById('keyPass').value='';
-  document.getElementById('keyNote').value='';
-  document.getElementById('keyTags').value='';
-  document.getElementById('saveKeyBtn').onclick=()=>saveKey();
+function cleanupEditingFlags(){
+  (dbData.keys||[]).forEach(k => { if(k._editing) delete k._editing; });
 }
 
-// --- SAVE DB ---
-async function saveDb() {
-  const content = CryptoJS.AES.encrypt(JSON.stringify(dbData), masterKeyGlobal).toString();
-  const file = new Blob([content], {type:'application/octet-stream'});
-  await gapi.client.drive.files.update({ fileId: dbFileId, media:{body:file} });
+id('logoutBtn').onclick = ()=> {
+  const auth = gapi.auth2.getAuthInstance();
+  if(auth) auth.signOut().then(()=> location.reload());
+};
+
+id('searchKey').addEventListener('input', e => renderKeys(e.target.value));
+
+function clearForm(){ id('keyName').value=''; id('keyUser').value=''; id('keyPass').value=''; id('keyNote').value=''; id('keyTags').value=''; }
+
+/* --- Save DB to Drive (overwrite file) --- */
+async function saveDb(){
+  try{
+    const content = CryptoJS.AES.encrypt(JSON.stringify(dbData), masterKey).toString();
+    const blob = new Blob([content], { type: 'application/octet-stream' });
+
+    // Use resumable or multipart update. We'll do multipart update via fetch.
+    const accessToken = gapi.auth2.getAuthInstance().currentUser.get().getAuthResponse().access_token;
+
+    const metadata = { name: 'llavero.db' }; // name can remain as is, Drive ignores for update
+    // To update we use uploadType=media to replace content:
+    const res = await fetch(`https://www.googleapis.com/upload/drive/v3/files/${dbFileId}?uploadType=media`, {
+      method: 'PATCH',
+      headers: {
+        Authorization: 'Bearer ' + accessToken,
+        'Content-Type': 'application/octet-stream'
+      },
+      body: blob
+    });
+    if(!res.ok) throw await res.json();
+    showStatus('Guardado en Drive correctamente.', 'ok');
+    loadDbList();
+  } catch(err){
+    showStatus('Error guardando DB: ' + (err.message || JSON.stringify(err)), 'error');
+    console.error('saveDb error', err);
+  }
 }
 
-// --- SESSION TIMER ---
-function resetSessionTimer() {
+/* --- Session timer (5 min inactivity) --- */
+function resetSessionTimer(){
   if(sessionTimer) clearTimeout(sessionTimer);
-  sessionTimer = setTimeout(()=>{ alert('Sesión expirada'); location.reload(); },5*60*1000);
-  ['click','input'].forEach(e=>document.addEventListener(e,resetSessionTimer));
+  sessionTimer = setTimeout(()=>{ alert('Sesión expirada por inactividad.'); location.reload(); }, 5*60*1000);
+  // renew on interaction
+  ['click','input','keydown','touchstart'].forEach(evt => document.addEventListener(evt, resetSessionTimer));
+  const expiresAt = new Date(Date.now() + 5*60*1000);
+  id('sessionInfo').textContent = 'Sesión expira a las ' + expiresAt.toLocaleTimeString();
 }
 
-// --- EVENTS ---
-document.getElementById('createDbBtn').onclick = createDb;
+/* --- Helpers --- */
+function escapeHtml(s){ if(!s) return ''; return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
-// --- START ---
+/* --- Start --- */
 start();
 </script>
 </body>
