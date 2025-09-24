@@ -24,7 +24,6 @@ let sessionTimer = null;
 let isLoading = false;
 let currentDbName = '';
 let activeDbFiles = [];
-let keyViewMode = 'list'; // 'list' or 'card'
 
 // --- DOM ELEMENTS ---
 let DOMElements;
@@ -36,19 +35,12 @@ function showStatus(message, type = 'info') {
     console.log(`[STATUS] ${type}: ${message}`);
     if (DOMElements && DOMElements.statusMessage) {
         DOMElements.statusMessage.innerHTML = `<strong>Estado:</strong> ${message}`;
-        
         const baseClasses = ['p-3', 'rounded-md', 'text-sm', 'my-4'];
         let typeClasses = [];
-
         switch (type) {
-            case 'ok':
-                typeClasses = ['bg-green-100', 'text-green-800', 'dark:bg-green-900/50', 'dark:text-green-300'];
-                break;
-            case 'error':
-                typeClasses = ['bg-red-100', 'text-red-800', 'dark:bg-red-900/50', 'dark:text-red-300'];
-                break;
-            default:
-                typeClasses = ['text-slate-500', 'dark:text-slate-400'];
+            case 'ok': typeClasses = ['bg-green-100', 'text-green-800', 'dark:bg-green-900/50', 'dark:text-green-300']; break;
+            case 'error': typeClasses = ['bg-red-100', 'text-red-800', 'dark:bg-red-900/50', 'dark:text-red-300']; break;
+            default: typeClasses = ['text-slate-500', 'dark:text-slate-400'];
         }
         DOMElements.statusMessage.className = [...baseClasses, ...typeClasses].join(' ');
     }
@@ -61,8 +53,8 @@ function setLoading(loading, element) {
         if (loading) {
             element.dataset.originalText = element.innerHTML;
             element.innerHTML = '<div class="spinner mx-auto"></div>';
-        } else {
-            element.innerHTML = element.dataset.originalText || '';
+        } else if (element.dataset.originalText) {
+            element.innerHTML = element.dataset.originalText;
         }
     }
 }
@@ -83,8 +75,9 @@ const GDriveService = {
         const headers = new Headers(options.headers || {});
         headers.set('Authorization', `Bearer ${accessToken}`);
         const response = await fetch(url, { ...options, headers });
+        if (response.status === 204) return response; // Handle no-content responses like DELETE
         if (!response.ok) {
-            const error = await response.json();
+            const error = await response.json().catch(() => ({ error: { message: `HTTP Error ${response.status}` } }));
             throw new Error(error.error?.message || 'Ocurrió un error en la API de Google Drive.');
         }
         return response;
@@ -113,9 +106,35 @@ const GDriveService = {
         const url = `https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media`;
         return this.authorizedFetch(url, { method: 'PATCH', body: new Blob([content], { type: 'application/octet-stream' }) });
     },
+    async renameFile(fileId, newName) {
+        const url = `https://www.googleapis.com/drive/v3/files/${fileId}`;
+        const metadata = { name: newName };
+        return this.authorizedFetch(url, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(metadata)
+        });
+    },
+    async deleteFile(fileId) {
+        const url = `https://www.googleapis.com/drive/v3/files/${fileId}`;
+        return this.authorizedFetch(url, { method: 'DELETE' });
+    }
 };
 
 // --- RENDER FUNCTIONS & VIEW MANAGEMENT ---
+
+function toggleMenu(forceClose = false) {
+    const isOpen = !DOMElements.sideMenu.classList.contains('-translate-x-full');
+    if (forceClose || isOpen) {
+        DOMElements.sideMenu.classList.add('-translate-x-full');
+        DOMElements.menuOverlay.classList.add('opacity-0');
+        DOMElements.menuOverlay.classList.add('hidden');
+    } else {
+        DOMElements.sideMenu.classList.remove('-translate-x-full');
+        DOMElements.menuOverlay.classList.remove('hidden');
+        DOMElements.menuOverlay.classList.remove('opacity-0');
+    }
+}
 
 function showKeyListView() {
     DOMElements.keyListView.classList.remove('-translate-x-full');
@@ -126,9 +145,8 @@ function showKeyListView() {
 }
 
 function showKeyFormView(isEditing = false) {
-    if (!isEditing) {
-        resetKeyForm();
-    }
+    if (!isEditing) resetKeyForm();
+    toggleMenu(true);
     DOMElements.keyListView.classList.add('-translate-x-full');
     DOMElements.keyListView.classList.remove('translate-x-0');
     DOMElements.keyFormView.classList.add('translate-x-0');
@@ -139,70 +157,53 @@ function showKeyFormView(isEditing = false) {
 function renderDbList() {
     const select = DOMElements.dbSelect;
     select.innerHTML = '';
-    
-    // Sort files alphabetically by name
     const sortedFiles = [...activeDbFiles].sort((a, b) => a.name.localeCompare(b.name));
-
     if (sortedFiles.length === 0) {
-        const option = document.createElement('option');
-        option.textContent = 'No se encontraron llaveros';
-        option.disabled = true;
-        select.appendChild(option);
+        select.innerHTML = '<option disabled>No se encontraron llaveros</option>';
         DOMElements.openDbBtn.disabled = true;
         return;
     }
-    
     DOMElements.openDbBtn.disabled = false;
     sortedFiles.forEach(file => {
         const option = document.createElement('option');
         option.value = file.id;
         option.textContent = file.name;
         option.dataset.name = file.name;
-        if (dbFileId === file.id) {
-            option.selected = true;
-        }
         select.appendChild(option);
     });
 }
 
 function getDecryptedAndFilteredKeys() {
-    if (!dbData || !dbData.keys) return [];
+    if (!dbData?.keys) return [];
     const filter = DOMElements.searchInput.value.toLowerCase();
     return dbData.keys.map(k => {
         try {
-            return {
-                ...k,
-                d_user: CryptoService.decrypt(k.user, masterKey),
-                d_pass: CryptoService.decrypt(k.pass, masterKey),
-            };
-        } catch (e) { 
-            console.error(`Failed to decrypt key ID ${k.id}`, e);
-            return null;
-        }
+            return { ...k, d_user: CryptoService.decrypt(k.user, masterKey), d_pass: CryptoService.decrypt(k.pass, masterKey) };
+        } catch (e) { console.error(`Failed to decrypt key ID ${k.id}`, e); return null; }
     }).filter(Boolean).filter(k => {
         if (!filter) return true;
-        const searchCorpus = [k.name, k.d_user, k.note, ...(k.tags || [])].join(' ').toLowerCase();
-        return searchCorpus.includes(filter);
+        return [k.name, k.d_user, k.note, ...(k.tags || [])].join(' ').toLowerCase().includes(filter);
     }).sort((a, b) => a.name.localeCompare(b.name));
 }
 
 function renderKeys() {
     DOMElements.keyList.innerHTML = '';
     if (!dbData) {
-        DOMElements.keysPanel.classList.add('hidden');
+        DOMElements.viewsContainer.classList.add('hidden');
         DOMElements.noDbOpenMessage.classList.remove('hidden');
+        DOMElements.addNewKeyMenuBtn.disabled = true;
         return;
     }
 
-    DOMElements.keysPanel.classList.remove('hidden');
+    DOMElements.viewsContainer.classList.remove('hidden');
     DOMElements.noDbOpenMessage.classList.add('hidden');
+    DOMElements.addNewKeyMenuBtn.disabled = false;
     DOMElements.activeDbName.textContent = currentDbName;
 
     const decryptedAndFilteredKeys = getDecryptedAndFilteredKeys();
-
     DOMElements.keyCount.textContent = decryptedAndFilteredKeys.length;
     DOMElements.emptyDbMessage.classList.toggle('hidden', dbData.keys.length > 0);
-    DOMElements.noResultsMessage.classList.toggle('hidden', decryptedAndFilteredKeys.length > 0 || dbData.keys.length === 0 || DOMElements.searchInput.value === '');
+    DOMElements.noResultsMessage.classList.toggle('hidden', decryptedAndFilteredKeys.length > 0 || dbData.keys.length === 0 || !DOMElements.searchInput.value);
 
     decryptedAndFilteredKeys.forEach(dKey => {
         const item = createKeyListItem(dKey);
@@ -213,28 +214,22 @@ function renderKeys() {
 function createKeyListItem(dKey) {
     const item = document.createElement('div');
     item.className = 'key-item bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden';
-    
     const tagsHtml = (dKey.tags || []).map(tag => `<span class="text-xs bg-sky-100 text-sky-800 px-2 py-1 rounded-full dark:bg-sky-900/70 dark:text-sky-300">${escapeHtml(tag)}</span>`).join('');
-
     item.innerHTML = `
         <button class="key-item-header w-full flex justify-between items-center text-left p-3 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors">
             <span class="font-bold text-slate-800 dark:text-slate-100 break-all">${escapeHtml(dKey.name)}</span>
             ${ICONS.chevronDown}
         </button>
-        <div class="key-item-body">
-            <div class="p-3 border-t border-slate-100 dark:border-slate-700 space-y-2 text-sm">
-                ${createRevealingFieldHTML('Usuario', dKey.d_user)}
-                ${createRevealingFieldHTML('Contraseña', dKey.d_pass, true)}
-                ${dKey.note ? `<div class="pt-2 text-slate-600 dark:text-slate-300"><strong class="font-medium text-slate-800 dark:text-slate-200">Nota:</strong><p class="whitespace-pre-wrap break-words p-2 bg-slate-50 dark:bg-slate-700/50 rounded mt-1">${escapeHtml(dKey.note)}</p></div>` : ''}
-                ${tagsHtml ? `<div class="pt-2 border-t border-slate-100 dark:border-slate-700 flex flex-wrap gap-2">${tagsHtml}</div>` : ''}
-                <div class="flex gap-2 pt-2 border-t border-slate-100 dark:border-slate-700">
-                    <button class="edit-btn text-sm flex items-center gap-1.5 text-blue-600 dark:text-blue-400 hover:underline">${ICONS.edit} Editar</button>
-                    <button class="delete-btn text-sm flex items-center gap-1.5 text-red-600 dark:text-red-400 hover:underline">${ICONS.delete} Eliminar</button>
-                </div>
+        <div class="key-item-body"><div class="p-3 border-t border-slate-100 dark:border-slate-700 space-y-2 text-sm">
+            ${createRevealingFieldHTML('Usuario', dKey.d_user)}
+            ${createRevealingFieldHTML('Contraseña', dKey.d_pass, true)}
+            ${dKey.note ? `<div class="pt-2 text-slate-600 dark:text-slate-300"><strong class="font-medium text-slate-800 dark:text-slate-200">Nota:</strong><p class="whitespace-pre-wrap break-words p-2 bg-slate-50 dark:bg-slate-700/50 rounded mt-1">${escapeHtml(dKey.note)}</p></div>` : ''}
+            ${tagsHtml ? `<div class="pt-2 border-t border-slate-100 dark:border-slate-700 flex flex-wrap gap-2">${tagsHtml}</div>` : ''}
+            <div class="flex gap-2 pt-2 border-t border-slate-100 dark:border-slate-700">
+                <button class="edit-btn text-sm flex items-center gap-1.5 text-blue-600 dark:text-blue-400 hover:underline">${ICONS.edit} Editar</button>
+                <button class="delete-btn text-sm flex items-center gap-1.5 text-red-600 dark:text-red-400 hover:underline">${ICONS.delete} Eliminar</button>
             </div>
-        </div>
-    `;
-
+        </div></div>`;
     item.querySelector('.key-item-header').onclick = () => item.classList.toggle('expanded');
     item.querySelector('.edit-btn').onclick = () => populateEditForm(dKey.id);
     item.querySelector('.delete-btn').onclick = () => handleDeleteKey(dKey.id);
@@ -245,44 +240,31 @@ function createKeyListItem(dKey) {
 function createRevealingFieldHTML(label, value, isMono = false) {
     if (!value) return '';
     const maskedValue = '••••••••';
-    return `
-        <div class="flex items-center justify-between gap-2 p-2 bg-slate-50 dark:bg-slate-700/50 rounded">
-            <div class="flex-grow min-w-0">
-                <span class="font-medium text-slate-800 dark:text-slate-200">${label}:</span>
-                <span class="value-span ${isMono ? 'font-mono' : ''} text-slate-700 dark:text-slate-300 break-all ml-1" data-value="${escapeHtml(value)}">${maskedValue}</span>
-            </div>
-            <div class="flex-shrink-0 flex items-center gap-2">
-                <button class="reveal-btn p-1 text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 transition-colors" title="Mostrar/Ocultar">${ICONS.eye}</button>
-                <button class="copy-btn p-1 text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 transition-colors" title="Copiar ${label}">${ICONS.copy}</button>
-            </div>
-        </div>`;
+    return `<div class="flex items-center justify-between gap-2 p-2 bg-slate-50 dark:bg-slate-700/50 rounded">
+        <div class="flex-grow min-w-0">
+            <span class="font-medium text-slate-800 dark:text-slate-200">${label}:</span>
+            <span class="value-span ${isMono ? 'font-mono' : ''} text-slate-700 dark:text-slate-300 break-all ml-1" data-value="${escapeHtml(value)}">${maskedValue}</span>
+        </div>
+        <div class="flex-shrink-0 flex items-center gap-2">
+            <button class="reveal-btn p-1 text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 transition-colors" title="Mostrar/Ocultar">${ICONS.eye}</button>
+            <button class="copy-btn p-1 text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 transition-colors" title="Copiar ${label}">${ICONS.copy}</button>
+        </div>
+    </div>`;
 }
 
 function attachRevealingFieldListeners(parentElement) {
-    parentElement.querySelectorAll('.reveal-btn').forEach(btn => {
-        btn.onclick = (e) => {
-            const currentBtn = e.currentTarget;
-            const container = currentBtn.closest('div');
-            const valueSpan = container.querySelector('.value-span');
-            if (valueSpan.textContent === '••••••••') {
-                valueSpan.textContent = valueSpan.dataset.value;
-                currentBtn.innerHTML = ICONS.eyeOff;
-            } else {
-                valueSpan.textContent = '••••••••';
-                currentBtn.innerHTML = ICONS.eye;
-            }
-        };
+    parentElement.querySelectorAll('.reveal-btn').forEach(btn => btn.onclick = (e) => {
+        const valueSpan = e.currentTarget.closest('div').parentElement.querySelector('.value-span');
+        const isMasked = valueSpan.textContent === '••••••••';
+        valueSpan.textContent = isMasked ? valueSpan.dataset.value : '••••••••';
+        e.currentTarget.innerHTML = isMasked ? ICONS.eyeOff : ICONS.eye;
     });
-    parentElement.querySelectorAll('.copy-btn').forEach(btn => {
-        btn.onclick = (e) => {
-            const currentBtn = e.currentTarget;
-            const container = currentBtn.closest('div');
-            const valueSpan = container.querySelector('.value-span');
-            navigator.clipboard.writeText(valueSpan.dataset.value);
-            const originalIcon = currentBtn.innerHTML;
-            currentBtn.innerHTML = ICONS.check;
-            setTimeout(() => currentBtn.innerHTML = originalIcon, 1500);
-        };
+    parentElement.querySelectorAll('.copy-btn').forEach(btn => btn.onclick = (e) => {
+        const valueSpan = e.currentTarget.closest('div').parentElement.querySelector('.value-span');
+        navigator.clipboard.writeText(valueSpan.dataset.value);
+        const originalIcon = e.currentTarget.innerHTML;
+        e.currentTarget.innerHTML = ICONS.check;
+        setTimeout(() => e.currentTarget.innerHTML = originalIcon, 1500);
     });
 }
 
@@ -295,11 +277,7 @@ async function loadDbListAndRender() {
         activeDbFiles = files || [];
         renderDbList();
         showStatus(`Se encontraron ${activeDbFiles.length} llavero(s).`);
-        return activeDbFiles;
-    } catch (e) {
-        showStatus(`Error al listar archivos: ${e.message}`, 'error');
-        return [];
-    }
+    } catch (e) { showStatus(`Error al listar archivos: ${e.message}`, 'error'); }
 }
 
 async function handleCreateDb(event) {
@@ -307,29 +285,20 @@ async function handleCreateDb(event) {
     const name = DOMElements.newDbNameInput.value.trim();
     const mKey = DOMElements.createMasterKeyInput.value;
     if (!name || !mKey) return alert('El nombre del nuevo llavero y la clave maestra son requeridos.');
-
     setLoading(true, DOMElements.createDbBtn);
     showStatus(`Creando '${name}.db'...`);
     try {
         const newDbData = { keys: [] };
         const encryptedContent = CryptoService.encrypt(JSON.stringify(newDbData), mKey);
         const created = await GDriveService.createFile(`${name}.db`, encryptedContent);
-        
-        dbData = newDbData;
-        masterKey = mKey;
-        dbFileId = created.id;
-        currentDbName = `${name}.db`;
-        
+        dbData = newDbData; masterKey = mKey; dbFileId = created.id; currentDbName = `${name}.db`;
         showStatus(`Llavero '${currentDbName}' creado y abierto.`, 'ok');
         DOMElements.createDbForm.reset();
         await loadDbListAndRender();
         renderKeys();
         showKeyListView();
-    } catch (e) {
-        showStatus(`Error al crear archivo: ${e.message}`, 'error');
-    } finally {
-        setLoading(false, DOMElements.createDbBtn);
-    }
+        toggleMenu(true);
+    } catch (e) { showStatus(`Error al crear archivo: ${e.message}`, 'error'); } finally { setLoading(false, DOMElements.createDbBtn); }
 }
 
 async function handleOpenDb(event) {
@@ -338,59 +307,33 @@ async function handleOpenDb(event) {
     const { id, name } = openingFile;
     const mKey = DOMElements.modalMasterKeyInput.value;
     if (!mKey) return alert('La clave maestra es requerida.');
-    
     setLoading(true, DOMElements.modalUnlockBtn);
     showStatus(`Abriendo '${name}'...`);
     try {
         const encryptedContent = await GDriveService.getFileContent(id);
         const decryptedJson = CryptoService.decrypt(encryptedContent, mKey);
-
-        if (!decryptedJson) {
-            throw new Error("El descifrado falló. La clave maestra podría ser incorrecta o el archivo está corrupto.");
-        }
-        
-        let parsedData;
-        try {
-            parsedData = JSON.parse(decryptedJson);
-        } catch (e) {
-            throw new Error("El archivo del llavero parece estar corrupto y no se puede leer.");
-        }
-
-        dbData = parsedData;
-        if (!dbData || !Array.isArray(dbData.keys)) {
-            // Handle case where file is valid JSON but wrong format by treating it as empty
-            dbData = { keys: [] };
-        }
-        
-        masterKey = mKey;
-        dbFileId = id;
-        currentDbName = name;
-        
+        if (!decryptedJson) throw new Error("Descifrado falló. Clave maestra incorrecta o archivo corrupto.");
+        let parsedData = JSON.parse(decryptedJson);
+        dbData = (parsedData && Array.isArray(parsedData.keys)) ? parsedData : { keys: [] };
+        masterKey = mKey; dbFileId = id; currentDbName = name;
         DOMElements.openDbModal.classList.add('hidden');
         DOMElements.modalMasterKeyInput.value = '';
         openingFile = null;
         showStatus(`'${name}' abierto correctamente.`, 'ok');
-        renderDbList(); // Re-render to show selection
         renderKeys();
         showKeyListView();
-    } catch (e) {
-        showStatus(e.message, 'error');
-    } finally {
-        setLoading(false, DOMElements.modalUnlockBtn);
-    }
+        toggleMenu(true);
+    } catch (e) { showStatus(e.message, 'error'); } finally { setLoading(false, DOMElements.modalUnlockBtn); }
 }
 
 async function saveDb() {
     if (!dbFileId || !masterKey) return;
-    showStatus('Guardando en Google Drive...');
+    showStatus('Guardando...');
     try {
         const encryptedContent = CryptoService.encrypt(JSON.stringify(dbData), masterKey);
         await GDriveService.updateFileContent(dbFileId, encryptedContent);
         showStatus('Guardado en Drive correctamente.', 'ok');
-        await loadDbListAndRender();
-    } catch (e) {
-        showStatus(`Error al guardar en Drive: ${e.message}`, 'error');
-    }
+    } catch (e) { showStatus(`Error al guardar: ${e.message}`, 'error'); }
 }
 
 function handleSaveKey(event) {
@@ -398,7 +341,6 @@ function handleSaveKey(event) {
     if (!dbData) return;
     const name = DOMElements.keyNameInput.value.trim();
     if (!name) return alert('El nombre de la llave es requerido.');
-    
     const keyData = {
         name,
         user: CryptoService.encrypt(DOMElements.keyUserInput.value, masterKey),
@@ -406,15 +348,13 @@ function handleSaveKey(event) {
         note: DOMElements.keyNoteInput.value,
         tags: DOMElements.keyTagsInput.value.split(',').map(t => t.trim()).filter(Boolean),
     };
-
     const existingId = DOMElements.keyIdInput.value;
-    if (existingId) { // Editing
+    if (existingId) {
         const index = dbData.keys.findIndex(k => k.id === existingId);
         if (index > -1) dbData.keys[index] = { ...dbData.keys[index], ...keyData };
-    } else { // Adding
+    } else {
         dbData.keys.push({ id: `id_${Date.now()}_${Math.random()}`, ...keyData });
     }
-    
     saveDb();
     renderKeys();
     showKeyListView();
@@ -427,6 +367,37 @@ function handleDeleteKey(keyId) {
     renderKeys();
 }
 
+async function handleRenameDb(event) {
+    event.preventDefault();
+    let newName = DOMElements.renameDbInput.value.trim();
+    if (!newName) return alert('El nuevo nombre no puede estar vacío.');
+    if (!newName.endsWith('.db')) newName += '.db';
+    
+    setLoading(true, DOMElements.renameConfirmBtn);
+    try {
+        await GDriveService.renameFile(dbFileId, newName);
+        currentDbName = newName;
+        DOMElements.activeDbName.textContent = currentDbName;
+        DOMElements.renameDbModal.classList.add('hidden');
+        showStatus(`Llavero renombrado a '${newName}'.`, 'ok');
+        await loadDbListAndRender();
+    } catch(e) { showStatus(`Error al renombrar: ${e.message}`, 'error'); }
+    finally { setLoading(false, DOMElements.renameConfirmBtn); }
+}
+
+async function handleDeleteDb() {
+    setLoading(true, DOMElements.deleteConfirmBtn);
+    try {
+        await GDriveService.deleteFile(dbFileId);
+        DOMElements.deleteDbModal.classList.add('hidden');
+        showStatus(`Llavero '${currentDbName}' eliminado.`, 'ok');
+        dbData = null; dbFileId = null; masterKey = ''; currentDbName = '';
+        renderKeys();
+        await loadDbListAndRender();
+    } catch(e) { showStatus(`Error al eliminar: ${e.message}`, 'error'); }
+    finally { setLoading(false, DOMElements.deleteConfirmBtn); }
+}
+
 function resetKeyForm() {
     DOMElements.keyForm.reset();
     DOMElements.keyIdInput.value = '';
@@ -437,7 +408,6 @@ function resetKeyForm() {
 function populateEditForm(keyId) {
     const key = dbData.keys.find(k => k.id === keyId);
     if (!key) return;
-    
     try {
         DOMElements.keyIdInput.value = key.id;
         DOMElements.keyNameInput.value = key.name;
@@ -445,51 +415,36 @@ function populateEditForm(keyId) {
         DOMElements.keyPassInput.value = CryptoService.decrypt(key.pass, masterKey);
         DOMElements.keyNoteInput.value = key.note || '';
         DOMElements.keyTagsInput.value = (key.tags || []).join(', ');
-        
         DOMElements.keyFormTitle.textContent = `Editando '${key.name}'`;
         DOMElements.cancelEditBtn.classList.remove('hidden');
         showKeyFormView(true);
-    } catch (e) {
-        showStatus('Error al preparar la llave para edición.', 'error');
-    }
+    } catch (e) { showStatus('Error al preparar la llave para edición.', 'error'); }
 }
 
 // --- AUTH & SESSION ---
 
 function resetSessionTimer() {
-    if (sessionTimer) clearTimeout(sessionTimer);
+    clearTimeout(sessionTimer);
     const expiresAt = new Date(Date.now() + SESSION_TIMEOUT);
     DOMElements.sessionTimerInfo.textContent = `La sesión expira a las ${expiresAt.toLocaleTimeString()}`;
-    sessionTimer = setTimeout(() => {
-        alert('La sesión expiró por inactividad.');
-        window.location.reload();
-    }, SESSION_TIMEOUT);
+    sessionTimer = setTimeout(() => { alert('La sesión expiró por inactividad.'); window.location.reload(); }, SESSION_TIMEOUT);
 }
 
 async function onSignedIn() {
     DOMElements.loginView.classList.add('hidden');
     DOMElements.appView.classList.remove('hidden');
+    DOMElements.menuBtn.classList.remove('hidden');
+    DOMElements.signOutBtn.classList.remove('hidden');
     document.body.addEventListener('click', resetSessionTimer, { passive: true });
     document.body.addEventListener('input', resetSessionTimer, { passive: true });
     resetSessionTimer();
+    renderKeys();
     await loadDbListAndRender();
 }
 
-function handleGsiResponse(resp) {
-    if (resp.error) return showStatus(`Error de token: ${resp.error}`, 'error');
-    accessToken = resp.access_token;
-    showStatus('Autenticación correcta. Obteniendo datos...', 'ok');
-    onSignedIn();
-}
-
 function handleSignOut() {
-    if (accessToken) {
-        google.accounts.oauth2.revoke(accessToken, () => {
-            window.location.reload();
-        });
-    } else {
-        window.location.reload();
-    }
+    if (accessToken) google.accounts.oauth2.revoke(accessToken, () => window.location.reload());
+    else window.location.reload();
 }
 
 // --- INITIALIZATION ---
@@ -509,7 +464,6 @@ document.addEventListener('DOMContentLoaded', () => {
         newDbNameInput: document.getElementById('new-db-name-input'),
         createMasterKeyInput: document.getElementById('create-master-key-input'),
         createDbBtn: document.getElementById('create-db-btn'),
-        keyFormContainer: document.getElementById('key-form-container'),
         keyForm: document.getElementById('key-form'),
         keyFormTitle: document.getElementById('key-form-title'),
         keyIdInput: document.getElementById('key-id-input'),
@@ -523,6 +477,7 @@ document.addEventListener('DOMContentLoaded', () => {
         activeDbName: document.getElementById('active-db-name'),
         keyCount: document.getElementById('key-count'),
         noDbOpenMessage: document.getElementById('no-db-open-message'),
+        viewsContainer: document.getElementById('views-container'),
         keysPanel: document.getElementById('keys-panel'),
         emptyDbMessage: document.getElementById('empty-db-message'),
         noResultsMessage: document.getElementById('no-results-message'),
@@ -532,11 +487,27 @@ document.addEventListener('DOMContentLoaded', () => {
         modalMasterKeyInput: document.getElementById('modal-master-key-input'),
         modalCancelBtn: document.getElementById('modal-cancel-btn'),
         modalUnlockBtn: document.getElementById('modal-unlock-btn'),
-        addFirstKeyBtn: document.getElementById('add-first-key-btn'),
-        addNewKeyBtn: document.getElementById('add-new-key-btn'),
         backToListBtn: document.getElementById('back-to-list-btn'),
         keyListView: document.getElementById('key-list-view'),
         keyFormView: document.getElementById('key-form-view'),
+        menuBtn: document.getElementById('menu-btn'),
+        sideMenu: document.getElementById('side-menu'),
+        menuOverlay: document.getElementById('menu-overlay'),
+        closeMenuBtn: document.getElementById('close-menu-btn'),
+        addNewKeyMenuBtn: document.getElementById('add-new-key-menu-btn'),
+        dbManagementBtn: document.getElementById('db-management-btn'),
+        dbManagementDropdown: document.getElementById('db-management-dropdown'),
+        renameDbBtn: document.getElementById('rename-db-btn'),
+        deleteDbBtn: document.getElementById('delete-db-btn'),
+        renameDbModal: document.getElementById('rename-db-modal'),
+        renameDbForm: document.getElementById('rename-db-form'),
+        renameDbInput: document.getElementById('rename-db-input'),
+        renameCancelBtn: document.getElementById('rename-cancel-btn'),
+        renameConfirmBtn: document.getElementById('rename-confirm-btn'),
+        deleteDbModal: document.getElementById('delete-db-modal'),
+        deleteDbName: document.getElementById('delete-db-name'),
+        deleteCancelBtn: document.getElementById('delete-cancel-btn'),
+        deleteConfirmBtn: document.getElementById('delete-confirm-btn'),
     };
     
     // --- EVENT LISTENERS ---
@@ -545,9 +516,12 @@ document.addEventListener('DOMContentLoaded', () => {
     DOMElements.keyForm.onsubmit = handleSaveKey;
     DOMElements.cancelEditBtn.onclick = showKeyListView;
     DOMElements.backToListBtn.onclick = showKeyListView;
-    DOMElements.addNewKeyBtn.onclick = () => showKeyFormView();
-    DOMElements.addFirstKeyBtn.onclick = () => showKeyFormView();
     DOMElements.searchInput.oninput = () => renderKeys();
+    DOMElements.menuBtn.onclick = () => toggleMenu();
+    DOMElements.closeMenuBtn.onclick = () => toggleMenu(true);
+    DOMElements.menuOverlay.onclick = () => toggleMenu(true);
+    DOMElements.addNewKeyMenuBtn.onclick = () => showKeyFormView();
+    DOMElements.dbManagementBtn.onclick = () => DOMElements.dbManagementDropdown.classList.toggle('hidden');
     
     DOMElements.openDbBtn.onclick = () => {
         const selected = DOMElements.dbSelect.options[DOMElements.dbSelect.selectedIndex];
@@ -557,51 +531,51 @@ document.addEventListener('DOMContentLoaded', () => {
         DOMElements.openDbModal.classList.remove('hidden');
         DOMElements.modalMasterKeyInput.focus();
     };
-
     DOMElements.openDbForm.onsubmit = handleOpenDb;
-    DOMElements.modalCancelBtn.onclick = () => {
-        DOMElements.openDbModal.classList.add('hidden');
-        DOMElements.modalMasterKeyInput.value = '';
-        openingFile = null;
+    DOMElements.modalCancelBtn.onclick = () => DOMElements.openDbModal.classList.add('hidden');
+
+    DOMElements.renameDbBtn.onclick = () => {
+        DOMElements.renameDbInput.value = currentDbName.replace('.db', '');
+        DOMElements.renameDbModal.classList.remove('hidden');
+        DOMElements.dbManagementDropdown.classList.add('hidden');
+        DOMElements.renameDbInput.focus();
     };
-    
+    DOMElements.renameCancelBtn.onclick = () => DOMElements.renameDbModal.classList.add('hidden');
+    DOMElements.renameDbForm.onsubmit = handleRenameDb;
+
+    DOMElements.deleteDbBtn.onclick = () => {
+        DOMElements.deleteDbName.textContent = currentDbName;
+        DOMElements.deleteDbModal.classList.remove('hidden');
+        DOMElements.dbManagementDropdown.classList.add('hidden');
+    };
+    DOMElements.deleteCancelBtn.onclick = () => DOMElements.deleteDbModal.classList.add('hidden');
+    DOMElements.deleteConfirmBtn.onclick = handleDeleteDb;
+
     document.querySelectorAll('[data-toggle-password]').forEach(btn => {
         const input = document.getElementById(btn.dataset.togglePassword);
-        btn.innerHTML = ICONS.eye; // Initial icon
-        btn.onclick = () => {
-            if (input) {
-                const isPassword = input.type === 'password';
-                input.type = isPassword ? 'text' : 'password';
-                btn.innerHTML = isPassword ? ICONS.eyeOff : ICONS.eye;
-            }
-        };
+        btn.innerHTML = ICONS.eye;
+        btn.onclick = () => { if(input) { const isPwd = input.type === 'password'; input.type = isPwd ? 'text' : 'password'; btn.innerHTML = isPwd ? ICONS.eyeOff : ICONS.eye; }};
+    });
+    
+    // Hide dropdown if clicked outside
+    document.addEventListener('click', (e) => {
+        if (!DOMElements.dbManagementBtn.contains(e.target) && !DOMElements.dbManagementDropdown.contains(e.target)) {
+            DOMElements.dbManagementDropdown.classList.add('hidden');
+        }
     });
 
-    // --- DYNAMIC SCRIPT LOADING FOR GOOGLE SIGN-IN ---
     const gsiScript = document.createElement('script');
     gsiScript.src = 'https://accounts.google.com/gsi/client';
     gsiScript.async = true;
     gsiScript.defer = true;
     gsiScript.onload = () => {
-        // This function runs only after the GSI script is loaded and ready.
         try {
-            tokenClient = google.accounts.oauth2.initTokenClient({
-                client_id: CLIENT_ID,
-                scope: SCOPES,
-                callback: handleGsiResponse,
-            });
+            tokenClient = google.accounts.oauth2.initTokenClient({ client_id: CLIENT_ID, scope: SCOPES, callback: (resp) => { if (resp.error) return showStatus(`Error de token: ${resp.error}`, 'error'); accessToken = resp.access_token; showStatus('Autenticado.', 'ok'); onSignedIn(); } });
             DOMElements.signInBtn.disabled = false;
-            DOMElements.signInBtn.onclick = () => {
-                if (tokenClient) tokenClient.requestAccessToken({ prompt: 'consent' });
-            };
+            DOMElements.signInBtn.onclick = () => tokenClient.requestAccessToken({ prompt: 'consent' });
             showStatus('Listo para iniciar sesión.', 'ok');
-        } catch (error) {
-            console.error("GSI initialization error:", error);
-            showStatus('No se pudo inicializar el inicio de sesión de Google.', 'error');
-        }
+        } catch (error) { showStatus('No se pudo inicializar el inicio de sesión de Google.', 'error'); }
     };
-    gsiScript.onerror = () => {
-        showStatus('Error al cargar el script de inicio de sesión de Google.', 'error');
-    };
+    gsiScript.onerror = () => showStatus('Error al cargar script de Google.', 'error');
     document.body.appendChild(gsiScript);
 });
