@@ -541,7 +541,7 @@ async function handleRenameDb(event) {
         // Update biometric data if it exists
         const bioData = getBiometricData();
         if (bioData[dbFileId]) {
-            bioData[dbFileId].name = newName;
+            bioData[dbFileId].forEach(cred => cred.name = newName);
             saveBiometricData(bioData);
         }
 
@@ -735,6 +735,23 @@ function populateTagFilterSelect() {
 
 // --- BIOMETRIC AUTHENTICATION (WEBAUTHN) ---
 
+function parseUserAgent(ua) {
+    let os = 'Dispositivo Desconocido';
+    if (/Windows/i.test(ua)) os = 'Windows';
+    else if (/Macintosh|Mac OS/i.test(ua)) os = 'macOS';
+    else if (/iPhone|iPad/i.test(ua)) os = 'iOS';
+    else if (/Android/i.test(ua)) os = 'Android';
+    else if (/Linux/i.test(ua)) os = 'Linux';
+
+    let browser = 'Navegador Desconocido';
+    if (/Edg/i.test(ua)) browser = 'Edge';
+    else if (/Chrome/i.test(ua)) browser = 'Chrome';
+    else if (/Safari/i.test(ua)) browser = 'Safari';
+    else if (/Firefox/i.test(ua)) browser = 'Firefox';
+
+    return `${browser} en ${os}`;
+}
+
 async function checkBiometricSupport() {
     if (window.PublicKeyCredential && typeof PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable === 'function') {
         try {
@@ -809,13 +826,18 @@ async function setupBiometrics() {
 
         if (credential) {
             const data = getBiometricData();
-            data[dbFileId] = {
+            if (!data[dbFileId] || !Array.isArray(data[dbFileId])) {
+                data[dbFileId] = [];
+            }
+            const newCredentialRecord = {
                 credentialId: arrayBufferToBase64(credential.rawId),
                 name: currentDbName,
                 encryptedMasterKey: CryptoService.encrypt(masterKey, BIO_ENCRYPTION_KEY),
+                deviceInfo: navigator.userAgent,
             };
+            data[dbFileId].push(newCredentialRecord);
             saveBiometricData(data);
-            showToast('¡Desbloqueo biométrico activado para este llavero!', 'success');
+            showToast('¡Desbloqueo biométrico activado para este llavero en este dispositivo!', 'success');
         }
     } catch (err) {
         console.error("Error al configurar biometría:", err);
@@ -825,7 +847,15 @@ async function setupBiometrics() {
 
 function promptToSetupBiometrics() {
     const bioData = getBiometricData();
-    if (isBiometricSupported && dbFileId && !bioData[dbFileId]) {
+    // Prompt if supported, a db is open, and there are no credentials for this db ON THIS DEVICE
+    // (A simple check is to see if any existing credential can be used right now)
+    // For simplicity, we just check if the file has *any* credential. The user can add another from the menu.
+    // A better check: don't prompt if there's already one for this fileId.
+    let credentialsForThisFile = bioData[dbFileId];
+     if (credentialsForThisFile && !Array.isArray(credentialsForThisFile)) {
+        credentialsForThisFile = [credentialsForThisFile];
+    }
+    if (isBiometricSupported && dbFileId && (!credentialsForThisFile || credentialsForThisFile.length === 0)) {
         showToast('¿Quieres desbloquear este llavero con tu huella/rostro la próxima vez?', 'info', 10000, [
             { label: 'Sí, configurar', callback: setupBiometrics },
         ]);
@@ -836,8 +866,12 @@ async function handleBiometricUnlock() {
     if (!openingFile || !isBiometricSupported) return;
 
     const bioData = getBiometricData();
-    const fileBioInfo = bioData[openingFile.id];
-    if (!fileBioInfo) return;
+    let credentialsForFile = bioData[openingFile.id];
+     if (credentialsForFile && !Array.isArray(credentialsForFile)) {
+        credentialsForFile = [credentialsForFile];
+    }
+    
+    if (!credentialsForFile || credentialsForFile.length === 0) return;
     
     setLoading(true, DOMElements.modalBiometricBtn);
 
@@ -845,24 +879,33 @@ async function handleBiometricUnlock() {
         const challenge = new Uint8Array(32);
         crypto.getRandomValues(challenge);
 
+        const allowCredentials = credentialsForFile.map(cred => ({
+            type: 'public-key',
+            id: base64ToArrayBuffer(cred.credentialId),
+        }));
+
         const assertion = await navigator.credentials.get({
             publicKey: {
                 challenge,
-                allowCredentials: [{
-                    type: 'public-key',
-                    id: base64ToArrayBuffer(fileBioInfo.credentialId),
-                }],
+                allowCredentials,
                 userVerification: 'required',
                 timeout: 60000,
             }
         });
 
         if (assertion) {
-            const decryptedMasterKey = CryptoService.decrypt(fileBioInfo.encryptedMasterKey, BIO_ENCRYPTION_KEY);
-            if (decryptedMasterKey) {
-                await unlockDbWithMasterKey(openingFile.id, openingFile.name, decryptedMasterKey);
+            const successfulCredentialId = arrayBufferToBase64(assertion.rawId);
+            const usedCredential = credentialsForFile.find(cred => cred.credentialId === successfulCredentialId);
+
+            if (usedCredential) {
+                 const decryptedMasterKey = CryptoService.decrypt(usedCredential.encryptedMasterKey, BIO_ENCRYPTION_KEY);
+                if (decryptedMasterKey) {
+                    await unlockDbWithMasterKey(openingFile.id, openingFile.name, decryptedMasterKey);
+                } else {
+                    throw new Error("No se pudo descifrar la clave maestra guardada.");
+                }
             } else {
-                throw new Error("No se pudo descifrar la clave maestra guardada.");
+                 throw new Error("La credencial biométrica utilizada no se reconoce.");
             }
         }
     } catch (err) {
@@ -885,6 +928,7 @@ function renderBiometricsInModal() {
     list.innerHTML = '';
     const bioData = getBiometricData();
     const fileIds = Object.keys(bioData);
+    let hasEntries = false;
 
     if (fileIds.length === 0) {
         list.innerHTML = '<p class="text-slate-500 text-sm">No hay llaveros con desbloqueo biométrico activado.</p>';
@@ -892,25 +936,45 @@ function renderBiometricsInModal() {
     }
 
     fileIds.forEach(fileId => {
-        const fileInfo = bioData[fileId];
-        const div = document.createElement('div');
-        div.className = 'flex justify-between items-center p-2 bg-slate-50 dark:bg-slate-800 rounded';
-        div.innerHTML = `
-            <span class="text-slate-800 dark:text-slate-200 truncate pr-4">${escapeHtml(fileInfo.name)}</span>
-            <button class="remove-bio-btn text-red-600 dark:text-red-400 hover:underline text-sm" data-file-id="${escapeHtml(fileId)}">Eliminar</button>
-        `;
-        list.appendChild(div);
+        let credentials = bioData[fileId];
+        if(!Array.isArray(credentials)) credentials = [credentials]; // Migration for old format
+
+        credentials.forEach(cred => {
+            hasEntries = true;
+            const div = document.createElement('div');
+            div.className = 'flex justify-between items-center p-2 bg-slate-50 dark:bg-slate-700/50 rounded';
+            div.innerHTML = `
+                <div class="flex-grow min-w-0 pr-2">
+                    <p class="font-semibold text-slate-800 dark:text-slate-200 truncate">${escapeHtml(cred.name)}</p>
+                    <p class="text-xs text-slate-500 dark:text-slate-400">${escapeHtml(parseUserAgent(cred.deviceInfo || ''))}</p>
+                </div>
+                <button class="remove-bio-btn flex-shrink-0 text-red-600 dark:text-red-400 hover:underline text-sm" data-file-id="${escapeHtml(fileId)}" data-credential-id="${escapeHtml(cred.credentialId)}">Eliminar</button>
+            `;
+            list.appendChild(div);
+        });
     });
+    
+    if (!hasEntries) {
+         list.innerHTML = '<p class="text-slate-500 text-sm">No hay llaveros con desbloqueo biométrico activado.</p>';
+    }
+
 
     list.querySelectorAll('.remove-bio-btn').forEach(btn => {
         btn.onclick = (e) => {
-            const idToRemove = e.target.dataset.fileId;
-            if (confirm('¿Seguro que quieres quitar el desbloqueo biométrico para este llavero?')) {
+            const fileIdToRemoveFrom = e.target.dataset.fileId;
+            const credIdToRemove = e.target.dataset.credentialId;
+
+            if (confirm('¿Seguro que quieres quitar el desbloqueo biométrico para este dispositivo?')) {
                 const currentData = getBiometricData();
-                delete currentData[idToRemove];
-                saveBiometricData(currentData);
-                renderBiometricsInModal();
-                showToast('Desbloqueo biométrico eliminado.', 'info');
+                if(currentData[fileIdToRemoveFrom] && Array.isArray(currentData[fileIdToRemoveFrom])) {
+                    currentData[fileIdToRemoveFrom] = currentData[fileIdToRemoveFrom].filter(cred => cred.credentialId !== credIdToRemove);
+                    if (currentData[fileIdToRemoveFrom].length === 0) {
+                        delete currentData[fileIdToRemoveFrom];
+                    }
+                    saveBiometricData(currentData);
+                    renderBiometricsInModal();
+                    showToast('Desbloqueo biométrico eliminado.', 'info');
+                }
             }
         };
     });
@@ -1124,7 +1188,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         
         // Check for biometric data
         const bioData = getBiometricData();
-        const hasBio = isBiometricSupported && bioData[openingFile.id];
+        let credentialsForFile = bioData[openingFile.id];
+        if (credentialsForFile && !Array.isArray(credentialsForFile)) { // Migration for old format
+            credentialsForFile = [credentialsForFile];
+        }
+        const hasBio = isBiometricSupported && credentialsForFile && credentialsForFile.length > 0;
+
         DOMElements.modalBiometricBtn.classList.toggle('hidden', !hasBio);
         DOMElements.biometricDivider.classList.toggle('hidden', !hasBio);
         
