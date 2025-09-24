@@ -13,15 +13,15 @@ let sessionTimer = null;
 let isLoading = false;
 let currentDbName = '';
 let activeDbFiles = [];
+let keyViewMode = 'list'; // 'list' or 'card'
+
 // Initialization flags to solve race condition
 let gsiScriptReady = false;
 let domContentLoaded = false;
 
 
 // --- DOM ELEMENTS ---
-// Declared here, but assigned inside the DOMContentLoaded listener
 let DOMElements;
-
 let openingFile = null;
 
 // --- UTILITY & HELPER FUNCTIONS ---
@@ -105,7 +105,7 @@ const GDriveService = {
 function renderDbList() {
     DOMElements.dbList.innerHTML = '';
     if (activeDbFiles.length === 0) {
-        DOMElements.dbList.innerHTML = '<p class="text-sm text-slate-500 text-center">No se encontraron archivos .db.</p>';
+        DOMElements.dbList.innerHTML = '<p class="text-sm text-slate-500 text-center">No se encontraron llaveros.</p>';
         return;
     }
     activeDbFiles.forEach(file => {
@@ -122,6 +122,23 @@ function renderDbList() {
     });
 }
 
+function getDecryptedAndFilteredKeys() {
+    const filter = DOMElements.searchInput.value.toLowerCase();
+    return dbData.keys.map(k => {
+        try {
+            return {
+                ...k,
+                d_user: CryptoService.decrypt(k.user, masterKey),
+                d_pass: CryptoService.decrypt(k.pass, masterKey),
+            };
+        } catch (e) { return null; }
+    }).filter(Boolean).filter(k => {
+        if (!filter) return true;
+        const searchCorpus = [k.name, k.d_user, k.note, ...(k.tags || [])].join(' ').toLowerCase();
+        return searchCorpus.includes(filter);
+    }).sort((a, b) => a.name.localeCompare(b.name));
+}
+
 function renderKeys() {
     DOMElements.keyList.innerHTML = '';
     if (!dbData) {
@@ -136,83 +153,134 @@ function renderKeys() {
     DOMElements.keyFormContainer.classList.remove('hidden');
     DOMElements.activeDbName.textContent = currentDbName;
 
-    const filter = DOMElements.searchInput.value.toLowerCase();
-    const decryptedAndFilteredKeys = dbData.keys.map(k => {
-        try {
-            return {
-                ...k,
-                d_user: CryptoService.decrypt(k.user, masterKey),
-                d_pass: CryptoService.decrypt(k.pass, masterKey),
-            };
-        } catch (e) { return null; }
-    }).filter(Boolean).filter(k => {
-        if (!filter) return true;
-        const searchCorpus = [k.name, k.d_user, k.note, ...(k.tags || [])].join(' ').toLowerCase();
-        return searchCorpus.includes(filter);
-    }).sort((a, b) => a.name.localeCompare(b.name));
+    // Update view toggle button styles
+    DOMElements.viewToggleList.classList.toggle('bg-blue-500', keyViewMode === 'list');
+    DOMElements.viewToggleList.classList.toggle('text-white', keyViewMode === 'list');
+    DOMElements.viewToggleCard.classList.toggle('bg-blue-500', keyViewMode === 'card');
+    DOMElements.viewToggleCard.classList.toggle('text-white', keyViewMode === 'card');
+
+    const decryptedAndFilteredKeys = getDecryptedAndFilteredKeys();
 
     DOMElements.keyCount.textContent = decryptedAndFilteredKeys.length;
-    DOMElements.emptyDbMessage.classList.toggle('hidden', dbData.keys.length > 0);
-    DOMElements.noResultsMessage.classList.toggle('hidden', !filter || decryptedAndFilteredKeys.length > 0);
+    DOMElements.emptyDbMessage.classList.toggle('hidden', dbData.keys.length > 0 || decryptedAndFilteredKeys.length > 0);
+    DOMElements.noResultsMessage.classList.toggle('hidden', decryptedAndFilteredKeys.length > 0 || dbData.keys.length === 0);
 
     decryptedAndFilteredKeys.forEach(dKey => {
-        const item = document.createElement('div');
-        item.className = 'bg-white p-3 rounded-lg border border-slate-200 shadow-sm space-y-2';
-        const tagsHtml = (dKey.tags || []).map(tag => `<span class="text-xs bg-sky-100 text-sky-800 px-2 py-1 rounded-full">${escapeHtml(tag)}</span>`).join('');
-
-        item.innerHTML = `
-            <div class="flex justify-between items-start">
-                <h3 class="font-bold text-lg text-slate-800 break-all">${escapeHtml(dKey.name)}</h3>
-                <div class="flex gap-2 flex-shrink-0 ml-2">
-                    <button class="edit-btn p-1 text-xl hover:opacity-75 transition-opacity" title="Editar"><span role="img" aria-label="Editar">✏️</span></button>
-                    <button class="delete-btn p-1 text-xl hover:opacity-75 transition-opacity" title="Eliminar"><span role="img" aria-label="Eliminar">🗑️</span></button>
-                </div>
-            </div>
-            <div class="space-y-2 text-sm">
-                ${createFieldHTML('Usuario', dKey.d_user)}
-                ${createFieldHTML('Contraseña', dKey.d_pass, true)}
-                ${dKey.note ? `<div class="pt-2 text-slate-600"><strong class="font-medium text-slate-800">Nota:</strong><p class="whitespace-pre-wrap break-words p-2 bg-slate-50 rounded mt-1">${escapeHtml(dKey.note)}</p></div>` : ''}
-            </div>
-            ${tagsHtml ? `<div class="pt-2 border-t border-slate-100 flex flex-wrap gap-2">${tagsHtml}</div>` : ''}
-        `;
-
-        item.querySelector('.edit-btn').onclick = () => populateEditForm(dKey.id);
-        item.querySelector('.delete-btn').onclick = () => handleDeleteKey(dKey.id);
-        item.querySelectorAll('.copy-btn').forEach(btn => {
-            btn.onclick = () => {
-                navigator.clipboard.writeText(btn.dataset.value);
-                const originalText = btn.innerHTML;
-                btn.innerHTML = `<span role="img" aria-label="Copiado">✅</span>`;
-                setTimeout(() => btn.innerHTML = originalText, 1500);
-            };
-        });
+        const item = keyViewMode === 'list' ? createKeyListItem(dKey) : createKeyCardItem(dKey);
         DOMElements.keyList.appendChild(item);
     });
 }
 
-function createFieldHTML(label, value, isMono = false) {
+function createKeyListItem(dKey) {
+    const item = document.createElement('div');
+    item.className = 'key-item bg-white rounded-lg border border-slate-200 shadow-sm overflow-hidden';
+    
+    const tagsHtml = (dKey.tags || []).map(tag => `<span class="text-xs bg-sky-100 text-sky-800 px-2 py-1 rounded-full">${escapeHtml(tag)}</span>`).join('');
+
+    item.innerHTML = `
+        <button class="key-item-header w-full flex justify-between items-center text-left p-3 hover:bg-slate-50 transition-colors">
+            <span class="font-bold text-slate-800 break-all">${escapeHtml(dKey.name)}</span>
+            <svg class="key-item-chevron w-5 h-5 text-slate-400 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" /></svg>
+        </button>
+        <div class="key-item-body">
+            <div class="p-3 border-t border-slate-100 space-y-2 text-sm">
+                ${createRevealingFieldHTML('Usuario', dKey.d_user)}
+                ${createRevealingFieldHTML('Contraseña', dKey.d_pass, true)}
+                ${dKey.note ? `<div class="pt-2 text-slate-600"><strong class="font-medium text-slate-800">Nota:</strong><p class="whitespace-pre-wrap break-words p-2 bg-slate-50 rounded mt-1">${escapeHtml(dKey.note)}</p></div>` : ''}
+                ${tagsHtml ? `<div class="pt-2 border-t border-slate-100 flex flex-wrap gap-2">${tagsHtml}</div>` : ''}
+                <div class="flex gap-2 pt-2 border-t border-slate-100">
+                    <button class="edit-btn text-sm flex items-center gap-1 text-blue-600 hover:underline">✏️ Editar</button>
+                    <button class="delete-btn text-sm flex items-center gap-1 text-red-600 hover:underline">🗑️ Eliminar</button>
+                </div>
+            </div>
+        </div>
+    `;
+
+    item.querySelector('.key-item-header').onclick = () => item.classList.toggle('expanded');
+    item.querySelector('.edit-btn').onclick = () => populateEditForm(dKey.id);
+    item.querySelector('.delete-btn').onclick = () => handleDeleteKey(dKey.id);
+    attachRevealingFieldListeners(item);
+    return item;
+}
+
+function createKeyCardItem(dKey) {
+    const item = document.createElement('div');
+    item.className = 'bg-white p-3 rounded-lg border border-slate-200 shadow-sm space-y-2';
+    const tagsHtml = (dKey.tags || []).map(tag => `<span class="text-xs bg-sky-100 text-sky-800 px-2 py-1 rounded-full">${escapeHtml(tag)}</span>`).join('');
+
+    item.innerHTML = `
+        <div class="flex justify-between items-start">
+            <h3 class="font-bold text-lg text-slate-800 break-all">${escapeHtml(dKey.name)}</h3>
+            <div class="flex gap-2 flex-shrink-0 ml-2">
+                <button class="edit-btn p-1 text-xl hover:opacity-75 transition-opacity" title="Editar">✏️</button>
+                <button class="delete-btn p-1 text-xl hover:opacity-75 transition-opacity" title="Eliminar">🗑️</button>
+            </div>
+        </div>
+        <div class="space-y-2 text-sm">
+            ${createRevealingFieldHTML('Usuario', dKey.d_user)}
+            ${createRevealingFieldHTML('Contraseña', dKey.d_pass, true)}
+            ${dKey.note ? `<div class="pt-2 text-slate-600"><strong class="font-medium text-slate-800">Nota:</strong><p class="whitespace-pre-wrap break-words p-2 bg-slate-50 rounded mt-1">${escapeHtml(dKey.note)}</p></div>` : ''}
+        </div>
+        ${tagsHtml ? `<div class="pt-2 border-t border-slate-100 flex flex-wrap gap-2">${tagsHtml}</div>` : ''}
+    `;
+
+    item.querySelector('.edit-btn').onclick = () => populateEditForm(dKey.id);
+    item.querySelector('.delete-btn').onclick = () => handleDeleteKey(dKey.id);
+    attachRevealingFieldListeners(item);
+    return item;
+}
+
+function createRevealingFieldHTML(label, value, isMono = false) {
     if (!value) return '';
+    const maskedValue = '••••••••';
     return `
         <div class="flex items-center justify-between gap-2 p-2 bg-slate-50 rounded">
-            <div class="flex-grow">
+            <div class="flex-grow min-w-0">
                 <span class="font-medium text-slate-800">${label}:</span>
-                <span class="${isMono ? 'font-mono' : ''} text-slate-700 break-all ml-1">${escapeHtml(value)}</span>
+                <span class="value-span ${isMono ? 'font-mono' : ''} text-slate-700 break-all ml-1" data-value="${escapeHtml(value)}">${maskedValue}</span>
             </div>
-            <button class="copy-btn p-1 text-xl hover:opacity-75 transition-opacity flex-shrink-0" title="Copiar ${label}" data-value="${escapeHtml(value)}">
-                <span role="img" aria-label="Copiar">📋</span>
-            </button>
+            <div class="flex-shrink-0 flex items-center gap-2">
+                <button class="reveal-btn p-1 text-lg hover:opacity-75 transition-opacity" title="Mostrar/Ocultar">👁️</button>
+                <button class="copy-btn p-1 text-lg hover:opacity-75 transition-opacity" title="Copiar ${label}">📋</button>
+            </div>
         </div>`;
+}
+
+function attachRevealingFieldListeners(parentElement) {
+    parentElement.querySelectorAll('.reveal-btn').forEach(btn => {
+        btn.onclick = (e) => {
+            const container = e.currentTarget.closest('.flex');
+            const valueSpan = container.querySelector('.value-span');
+            if (valueSpan.textContent === '••••••••') {
+                valueSpan.textContent = valueSpan.dataset.value;
+                e.currentTarget.classList.add('opacity-50');
+            } else {
+                valueSpan.textContent = '••••••••';
+                e.currentTarget.classList.remove('opacity-50');
+            }
+        };
+    });
+    parentElement.querySelectorAll('.copy-btn').forEach(btn => {
+        btn.onclick = (e) => {
+            const container = e.currentTarget.closest('.flex');
+            const valueSpan = container.querySelector('.value-span');
+            navigator.clipboard.writeText(valueSpan.dataset.value);
+            const originalText = btn.innerHTML;
+            btn.innerHTML = `✅`;
+            setTimeout(() => btn.innerHTML = originalText, 1500);
+        };
+    });
 }
 
 // --- CORE LOGIC ---
 
 async function loadDbListAndRender() {
-    showStatus('Cargando lista de bases de datos...');
+    showStatus('Cargando lista de llaveros...');
     try {
         const { files } = await GDriveService.listDbFiles();
         activeDbFiles = files || [];
         renderDbList();
-        showStatus(`Se encontraron ${activeDbFiles.length} base(s) de datos.`);
+        showStatus(`Se encontraron ${activeDbFiles.length} llavero(s).`);
         return activeDbFiles;
     } catch (e) {
         showStatus(`Error al listar archivos: ${e.message}`, 'error');
@@ -224,7 +292,7 @@ async function handleCreateDb(event) {
     event.preventDefault();
     const name = DOMElements.newDbNameInput.value.trim();
     const mKey = DOMElements.createMasterKeyInput.value;
-    if (!name || !mKey) return alert('El nombre de la nueva BD y la clave maestra son requeridos.');
+    if (!name || !mKey) return alert('El nombre del nuevo llavero y la clave maestra son requeridos.');
 
     setLoading(true, DOMElements.createDbBtn);
     showStatus(`Creando '${name}.db'...`);
@@ -237,9 +305,8 @@ async function handleCreateDb(event) {
         masterKey = mKey;
         dbFileId = created.id;
         currentDbName = `${name}.db`;
-        localStorage.setItem('lastOpenedDbId', dbFileId);
         
-        showStatus(`Base de datos '${currentDbName}' creada y abierta.`, 'ok');
+        showStatus(`Llavero '${currentDbName}' creado y abierto.`, 'ok');
         DOMElements.createDbForm.reset();
         await loadDbListAndRender();
         renderKeys();
@@ -270,16 +337,15 @@ async function handleOpenDb(event) {
         masterKey = mKey;
         dbFileId = id;
         currentDbName = name;
-        localStorage.setItem('lastOpenedDbId', dbFileId);
         
         DOMElements.openDbModal.classList.add('hidden');
         DOMElements.modalMasterKeyInput.value = '';
         openingFile = null;
-        showStatus(`'${name}' abierta correctamente.`, 'ok');
+        showStatus(`'${name}' abierto correctamente.`, 'ok');
         renderDbList();
         renderKeys();
     } catch (e) {
-        showStatus(`No se pudo abrir la BD. Revisa la clave maestra.`, 'error');
+        showStatus(`No se pudo abrir el llavero. Revisa la clave maestra.`, 'error');
     } finally {
         setLoading(false, DOMElements.modalUnlockBtn);
     }
@@ -302,7 +368,7 @@ function handleSaveKey(event) {
     event.preventDefault();
     if (!dbData) return;
     const name = DOMElements.keyNameInput.value.trim();
-    if (!name) return alert('El nombre de la clave es requerido.');
+    if (!name) return alert('El nombre de la llave es requerido.');
     
     const keyData = {
         name,
@@ -326,7 +392,7 @@ function handleSaveKey(event) {
 }
 
 function handleDeleteKey(keyId) {
-    if (!dbData || !confirm('¿Estás seguro de que quieres eliminar esta clave?')) return;
+    if (!dbData || !confirm('¿Estás seguro de que quieres eliminar esta llave?')) return;
     dbData.keys = dbData.keys.filter(k => k.id !== keyId);
     saveDb();
     renderKeys();
@@ -335,7 +401,7 @@ function handleDeleteKey(keyId) {
 function resetKeyForm() {
     DOMElements.keyForm.reset();
     DOMElements.keyIdInput.value = '';
-    DOMElements.keyFormTitle.textContent = 'Añadir Nueva Clave';
+    DOMElements.keyFormTitle.textContent = 'Añadir llave nueva';
     DOMElements.cancelEditBtn.classList.add('hidden');
 }
 
@@ -356,7 +422,7 @@ function populateEditForm(keyId) {
         DOMElements.keyFormContainer.scrollIntoView({ behavior: 'smooth' });
         DOMElements.keyNameInput.focus();
     } catch (e) {
-        showStatus('Error al preparar la clave para edición.', 'error');
+        showStatus('Error al preparar la llave para edición.', 'error');
     }
 }
 
@@ -379,17 +445,8 @@ async function onSignedIn() {
     document.body.addEventListener('input', resetSessionTimer, { passive: true });
     resetSessionTimer();
 
-    const files = await loadDbListAndRender();
-    const lastDbId = localStorage.getItem('lastOpenedDbId');
-    if (lastDbId) {
-        const lastFile = files.find(f => f.id === lastDbId);
-        if (lastFile) {
-            openingFile = lastFile;
-            DOMElements.modalDbName.textContent = lastFile.name;
-            DOMElements.openDbModal.classList.remove('hidden');
-            DOMElements.modalMasterKeyInput.focus();
-        }
-    }
+    await loadDbListAndRender();
+    // Removed automatic prompt to open last DB. User must now select one.
 }
 
 function handleGsiResponse(resp) {
@@ -412,48 +469,30 @@ function handleSignOut() {
 // --- INITIALIZATION ---
 
 function tryInitializeApp() {
-    // This function acts as a gatekeeper. It will only run the initialization
-    // logic once both the DOM and the GSI script are ready.
-    if (!gsiScriptReady || !domContentLoaded) {
-        return; // Wait for the other event to fire.
-    }
+    if (!gsiScriptReady || !domContentLoaded) return;
     
-    // Both are ready, proceed with initialization.
-    console.log("Both DOM and GSI Script are ready. Initializing app.");
     try {
         tokenClient = google.accounts.oauth2.initTokenClient({
             client_id: CLIENT_ID,
             scope: SCOPES,
             callback: handleGsiResponse,
         });
-
-        // Now it's safe to assign the click handler and enable the button.
         DOMElements.signInBtn.disabled = false;
         DOMElements.signInBtn.onclick = () => {
-            if (tokenClient) {
-                tokenClient.requestAccessToken({ prompt: 'consent' });
-            } else {
-                showStatus('El cliente de Google no está listo. Por favor, recarga la página.', 'error');
-            }
+            if (tokenClient) tokenClient.requestAccessToken({ prompt: 'consent' });
         };
         showStatus('Listo para iniciar sesión.', 'ok');
-
     } catch (error) {
         showStatus('No se pudo inicializar el inicio de sesión de Google.', 'error');
-        console.error("GSI Initialization Error:", error);
     }
 }
 
-// Called by the `onload` attribute of the GSI script tag in index.html
-// Must be a global function.
 window.handleGsiLoad = function() {
     gsiScriptReady = true;
     tryInitializeApp();
 }
 
-// Called when the DOM is fully loaded and parsed.
 document.addEventListener('DOMContentLoaded', () => {
-    // Assign all DOM elements now that they are available
     DOMElements = {
         loginView: document.getElementById('login-view'),
         appView: document.getElementById('app-view'),
@@ -490,12 +529,13 @@ document.addEventListener('DOMContentLoaded', () => {
         modalMasterKeyInput: document.getElementById('modal-master-key-input'),
         modalCancelBtn: document.getElementById('modal-cancel-btn'),
         modalUnlockBtn: document.getElementById('modal-unlock-btn'),
-        addKeyBtn: document.getElementById('add-key-btn'),
+        addFirstKeyBtn: document.getElementById('add-first-key-btn'),
+        viewToggleList: document.getElementById('view-toggle-list'),
+        viewToggleCard: document.getElementById('view-toggle-card'),
     };
     
     domContentLoaded = true;
-
-    // Set up all other event listeners
+    
     DOMElements.signOutBtn.onclick = handleSignOut;
     DOMElements.createDbForm.onsubmit = handleCreateDb;
     DOMElements.keyForm.onsubmit = handleSaveKey;
@@ -507,12 +547,28 @@ document.addEventListener('DOMContentLoaded', () => {
         DOMElements.modalMasterKeyInput.value = '';
         openingFile = null;
     };
-    DOMElements.addKeyBtn.onclick = () => {
+    DOMElements.addFirstKeyBtn.onclick = () => {
         resetKeyForm();
         DOMElements.keyFormContainer.scrollIntoView({ behavior: 'smooth' });
         DOMElements.keyNameInput.focus();
     };
+    DOMElements.viewToggleList.onclick = () => {
+        keyViewMode = 'list';
+        renderKeys();
+    };
+    DOMElements.viewToggleCard.onclick = () => {
+        keyViewMode = 'card';
+        renderKeys();
+    };
 
-    // Attempt to initialize the app
+    document.querySelectorAll('[data-toggle-password]').forEach(btn => {
+        btn.onclick = () => {
+            const input = document.getElementById(btn.dataset.togglePassword);
+            if (input) {
+                input.type = input.type === 'password' ? 'text' : 'password';
+            }
+        };
+    });
+
     tryInitializeApp();
 });
