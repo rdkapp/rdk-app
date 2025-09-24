@@ -1,748 +1,213 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>RDK APP v11.1.0</title>
-  
-  <!-- Tailwind CSS -->
-  <script src="https://cdn.tailwindcss.com"></script>
-  
-  <!-- React y ReactDOM -->
-  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
-  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
-  
-  <!-- Babel para transpilación de JSX en el navegador -->
-  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-
-  <!-- sql.js (SQLite para el navegador) -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/sql-wasm.js"></script>
-  
-  <!-- Define Google API load handlers globally to prevent race conditions -->
-  <script>
-    // This function is called by gsi/client script tag on load
-    function gisLoaded() {
-      window.gsiClientIsLoaded = true;
-    }
-  </script>
-
-  <!-- Google Identity Services -->
-  <script async defer src="https://accounts.google.com/gsi/client" onload="gisLoaded()"></script>
-
-  <!-- Google Material Symbols (Icon Font) -->
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Sharp:opsz,wght,FILL,GRAD@24,400,0,0" />
-  
-  <style>
-    /* Estilo de barra de desplazamiento tipo iOS */
-    ::-webkit-scrollbar { width: 6px; height: 6px; }
-    ::-webkit-scrollbar-thumb { background: #c1c1c1; border-radius: 3px; }
-    ::-webkit-scrollbar-thumb:hover { background: #a8a8a8; }
-    body { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
-    /* Estilo base para los iconos */
-    .material-symbols-sharp { vertical-align: middle; font-size: 20px; }
-    /* Animación para Toasts */
-    @keyframes slide-in { from { transform: translateX(100%); } to { transform: translateX(0); } }
-    @keyframes slide-out { from { transform: translateX(0); } to { translateX(100%); opacity: 0; } }
-    .toast-in { animation: slide-in 0.3s ease-out forwards; }
-    .toast-out { animation: slide-out 0.3s ease-in forwards; }
-  </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Llavero Minimalista</title>
+<style>
+body { font-family: Arial,sans-serif; margin:0; padding:0; background:#f5f5f5; }
+header { background:#4A90E2; color:#fff; padding:15px; text-align:center; font-size:1.2em; }
+.container { padding:10px; max-width:500px; margin:auto; }
+input, select, textarea, button { width:100%; padding:8px; margin:5px 0; box-sizing:border-box; }
+button { background:#4A90E2; color:#fff; border:none; cursor:pointer; }
+button:hover { background:#357ABD; }
+.key-item { background:#fff; padding:10px; margin:5px 0; border-radius:5px; }
+.flex { display:flex; gap:5px; }
+.flex button { flex:1; }
+.tag { display:inline-block; background:#ddd; padding:2px 6px; margin:2px; border-radius:4px; }
+.hidden { display:none; }
+</style>
 </head>
-<body class="bg-gray-100 dark:bg-zinc-900">
-  <div id="root"></div>
+<body>
+<header>Llavero Personal Minimalista</header>
+<div class="container">
 
-  <script type="text/babel">
-    // --- APP CONFIGURATION ---
-    const APP_VERSION = "11.1.0";
-    const SESSION_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutos
+<!-- Login -->
+<div id="loginDiv">
+  <button id="googleSignInBtn">Iniciar sesión con Google</button>
+</div>
 
-    // --- GOOGLE API CONFIGURATION ---
-    const GOOGLE_CLIENT_ID = '576080826935-2mtnj52ndc8plnsjodjevt3e2gsh4m3a.apps.googleusercontent.com';
-    const DRIVE_API_SCOPE = 'https://www.googleapis.com/auth/drive.appdata https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile';
-    
-    // --- CONSTANTS ---
-    const SALT_LENGTH = 16;
-    const IV_LENGTH = 12;
-    const PBKDF2_ITERATIONS = 100000;
-    const AUTOSAVE_DELAY = 30000; // 30 seconds
+<!-- Main Panel -->
+<div id="mainDiv" class="hidden">
 
-    // --- CRYPTO SERVICE ---
-    const bufferToBase64 = (buffer) => { let binary = ''; const bytes = new Uint8Array(buffer); const len = bytes.byteLength; for (let i = 0; i < len; i++) { binary += String.fromCharCode(bytes[i]); } return window.btoa(binary); };
-    const base64ToUint8Array = (base64) => { const binary_string = window.atob(base64); const len = binary_string.length; const bytes = new Uint8Array(len); for (let i = 0; i < len; i++) { bytes[i] = binary_string.charCodeAt(i); } return bytes; };
-    const deriveKey = async (password, salt) => { const passwordEncoder = new TextEncoder(); const baseKey = await window.crypto.subtle.importKey('raw', passwordEncoder.encode(password), { name: 'PBKDF2' }, false, ['deriveKey']); return window.crypto.subtle.deriveKey({ name: 'PBKDF2', salt, iterations: PBKDF2_ITERATIONS, hash: 'SHA-256' }, baseKey, { name: 'AES-GCM', length: 256 }, true, ['encrypt', 'decrypt']); };
-    
-    const decryptDBFile = async (encryptedFileContent, password) => {
-        try {
-            const fileStr = new TextDecoder().decode(encryptedFileContent);
-            const fileJson = JSON.parse(fileStr);
-            const salt = base64ToUint8Array(fileJson.salt);
-            const iv = base64ToUint8Array(fileJson.iv);
-            const encryptedData = base64ToUint8Array(fileJson.data);
+<h3>Archivos Llavero</h3>
+<div id="dbList"></div>
+<input type="text" id="newDbName" placeholder="Nombre nuevo archivo .db">
+<input type="password" id="masterKey" placeholder="Clave maestra">
+<button id="createDbBtn">Crear / Abrir</button>
+<button id="logoutBtn">Cerrar sesión</button>
 
-            const key = await deriveKey(password, salt);
+<hr>
 
-            const decryptedBuffer = await window.crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, encryptedData);
-            return { dbBuffer: new Uint8Array(decryptedBuffer), masterKey: key };
-        } catch (e) {
-            console.error("Decryption failed:", e);
-            throw new Error("No se pudo descifrar. La contraseña maestra podría ser incorrecta.");
-        }
-    };
+<input type="text" id="searchKey" placeholder="Buscar por nombre o nota">
+<div id="keyList"></div>
 
-    const encryptDBFile = async (dbUint8Array, salt, keyToUse) => {
-        const iv = window.crypto.getRandomValues(new Uint8Array(IV_LENGTH));
-        const encryptedData = await window.crypto.subtle.encrypt({ name: 'AES-GCM', iv }, keyToUse, dbUint8Array);
-        
-        const fileJson = {
-            salt: bufferToBase64(salt),
-            iv: bufferToBase64(iv),
-            data: bufferToBase64(encryptedData)
-        };
-        return new TextEncoder().encode(JSON.stringify(fileJson));
-    };
+<h4>Agregar / Editar llave</h4>
+<input type="text" id="keyName" placeholder="Nombre de llave">
+<input type="text" id="keyUser" placeholder="Usuario / Mail">
+<input type="text" id="keyPass" placeholder="Clave">
+<textarea id="keyNote" placeholder="Nota"></textarea>
+<input type="text" id="keyTags" placeholder="Etiquetas (separadas por coma)">
+<div class="flex">
+  <button id="saveKeyBtn">Guardar</button>
+  <button id="cancelEditBtn">Cancelar</button>
+</div>
 
-    const encryptField = async (text, key) => { const iv = window.crypto.getRandomValues(new Uint8Array(IV_LENGTH)); const encodedText = new TextEncoder().encode(text); const encryptedData = await window.crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, encodedText); const combined = new Uint8Array(iv.length + encryptedData.byteLength); combined.set(iv, 0); combined.set(new Uint8Array(encryptedData), iv.length); return bufferToBase64(combined.buffer); };
-    const decryptField = async (encryptedBase64, key) => { try { const combined = base64ToUint8Array(encryptedBase64); const iv = combined.slice(0, IV_LENGTH); const encryptedData = combined.slice(IV_LENGTH); const decryptedBuffer = await window.crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, encryptedData); return new TextDecoder().decode(decryptedBuffer); } catch (e) { return "Error al descifrar"; }};
-    
-    // --- DATABASE SERVICE ---
-    const createTables = (db) => { db.run(`CREATE TABLE IF NOT EXISTS credentials (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, encrypted_username TEXT NOT NULL, encrypted_password TEXT NOT NULL, comment TEXT, tag_id INTEGER, FOREIGN KEY (tag_id) REFERENCES tags(id));`); db.run(`CREATE TABLE IF NOT EXISTS metadata (key TEXT PRIMARY KEY, value TEXT);`); db.run(`CREATE TABLE IF NOT EXISTS tags (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL UNIQUE);`); };
-    const getRawMetadata = (db, key) => { if (!db) return null; const res = db.exec("SELECT value FROM metadata WHERE key = ?", [key]); return (res.length > 0 && res[0].values.length > 0) ? res[0].values[0][0] : null; };
-    const setRawMetadata = (db, key, value) => db.run("INSERT OR REPLACE INTO metadata (key, value) VALUES (?, ?)", [key, value]);
-    const getKeychainName = (db) => getRawMetadata(db, 'keychain_name') || 'MiLlavero';
-    const setKeychainName = (db, name) => setRawMetadata(db, 'keychain_name', name);
-    const initDb = async (SQL) => { 
-      const database = new SQL.Database();
-      createTables(database);
-      const salt = window.crypto.getRandomValues(new Uint8Array(SALT_LENGTH));
-      return { database, salt };
-    };
-    const exportDb = (db) => db.export();
-    const getCredentials = (db) => { const res = db.exec(`SELECT c.id, c.name, c.encrypted_username, c.encrypted_password, c.comment, t.name FROM credentials c LEFT JOIN tags t ON c.tag_id = t.id`); return res.length === 0 ? [] : res[0].values.map(row => ({ id: row[0], name: row[1], username: row[2], password: row[3], comment: row[4], tag: row[5] || 'Sin Etiqueta' })); };
-    const addCredential = (db, cred) => { db.run('INSERT INTO credentials (name, encrypted_username, encrypted_password, comment, tag_id) VALUES (?, ?, ?, ?, (SELECT id FROM tags WHERE name = ?))', [cred.name, cred.username, cred.password, cred.comment, cred.tag]); };
-    const updateCredential = (db, cred) => { db.run('UPDATE credentials SET name = ?, encrypted_username = ?, encrypted_password = ?, comment = ?, tag_id = (SELECT id FROM tags WHERE name = ?) WHERE id = ?', [cred.name, cred.username, cred.password, cred.comment, cred.tag, cred.id]); };
-    const deleteCredential = (db, id) => { db.run('DELETE FROM credentials WHERE id = ?', [id]); };
-    const getTags = (db) => { const res = db.exec('SELECT id, name FROM tags ORDER BY name'); return res.length === 0 ? [] : res[0].values.map(row => ({ id: row[0], name: row[1] })); };
-    const addTag = (db, name) => { db.run('INSERT INTO tags (name) VALUES (?)', [name]); };
-    const deleteTag = (db, id) => { const usage = db.exec('SELECT COUNT(*) FROM credentials WHERE tag_id = ?', [id]); if (usage[0].values[0][0] > 0) throw new Error("No se puede eliminar la etiqueta porque está en uso."); db.run('DELETE FROM tags WHERE id = ?', [id]); };
-    
-    // --- UI COMPONENTS ---
-    const Icon = ({ name, className }) => <span className={`material-symbols-sharp ${className || ''}`}>{name}</span>;
-    const Spinner = ({ className }) => <div className={`animate-spin rounded-full h-5 w-5 border-b-2 ${className || 'border-white'}`}></div>;
-    const NotificationContext = React.createContext();
-    const useNotifier = () => React.useContext(NotificationContext);
-    const Toast = ({ message, type, onClose }) => { const [isExiting, setIsExiting] = React.useState(false); const baseStyle = "w-full max-w-sm p-4 text-white rounded-lg shadow-lg flex items-center"; const typeStyles = { success: "bg-green-500", error: "bg-red-500", info: "bg-blue-500" }; const icons = { success: "check_circle", error: "error", info: "info" }; React.useEffect(() => { const timer = setTimeout(() => { setIsExiting(true); setTimeout(onClose, 300); }, 4000); return () => clearTimeout(timer); }, [onClose]); return (<div className={`${baseStyle} ${typeStyles[type]} ${isExiting ? 'toast-out' : 'toast-in'}`}><Icon name={icons[type]} className="mr-3 text-2xl"/><p className="flex-grow">{message}</p><button onClick={() => { setIsExiting(true); setTimeout(onClose, 300); }} className="ml-4 p-1 rounded-full hover:bg-black/20"><Icon name="close" className="text-xl"/></button></div>); };
-    const NotifierProvider = ({ children }) => { const [toasts, setToasts] = React.useState([]); const toastId = React.useRef(0); const addToast = React.useCallback((message, type = 'info') => { setToasts(currentToasts => [...currentToasts, { id: toastId.current++, message, type }]); }, []); const removeToast = React.useCallback((id) => { setToasts(currentToasts => currentToasts.filter(toast => toast.id !== id)); }, []); return (<NotificationContext.Provider value={addToast}>{children}<div className="fixed top-20 right-4 z-[100] space-y-2">{toasts.map(toast => <Toast key={toast.id} {...toast} onClose={() => removeToast(toast.id)} />)}</div></NotificationContext.Provider>); };
-    const GlobalHeader = () => (<header className="fixed top-0 left-0 right-0 z-30 flex items-center justify-center p-4 h-16 border-b border-gray-200 dark:border-zinc-700 bg-white/80 dark:bg-zinc-900/80 backdrop-blur-sm"><h1 className="text-xl font-bold text-gray-900 dark:text-white truncate">RDK APP v{APP_VERSION}</h1></header>);
-    const GlobalFooter = () => (<footer className="fixed bottom-0 left-0 right-0 bg-gray-100 dark:bg-zinc-800 border-t border-gray-200 dark:border-zinc-700 p-2 text-center text-sm text-gray-500 dark:text-gray-400 z-30 h-10 flex items-center justify-center">Solution by Ale Fernández 2025 - PY - v{APP_VERSION}</footer>);
-    const SettingsModal = ({ isOpen, onClose, keychainName, onSaveKeychainName, tags, onAddTag, onDeleteTag, addToast }) => { const { useState, useEffect } = React; const [name, setName] = useState(keychainName); const [newTagName, setNewTagName] = useState(''); useEffect(() => { setName(keychainName); }, [isOpen, keychainName]); if (!isOpen) return null; const handleSaveName = () => { if (name.trim()) { onSaveKeychainName(name.trim()); addToast("Nombre guardado.", "success"); } }; const handleAddTag = (e) => { e.preventDefault(); if (newTagName.trim() && !tags.some(t => t.name.toLowerCase() === newTagName.trim().toLowerCase())) { onAddTag(newTagName.trim()); setNewTagName(''); addToast("Etiqueta agregada.", "success"); } else { addToast("La etiqueta no puede estar vacía o ya existe.", "error"); } }; const handleDeleteTagWithConfirm = (id) => { if (window.confirm("¿Estás seguro de que quieres eliminar esta etiqueta?")) { onDeleteTag(id); } }; return (<div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50" onClick={onClose}><div className="bg-white dark:bg-zinc-800 rounded-lg shadow-xl w-full max-w-lg m-4" onClick={(e) => e.stopPropagation()}><div className="p-6"><h2 className="text-xl font-bold text-gray-900 dark:text-white">Configuración</h2><div className="mt-6 space-y-6"><div><label htmlFor="keychainName" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Nombre del Llavero</label><div className="flex mt-1"><input type="text" name="keychainName" id="keychainName" value={name} onChange={(e) => setName(e.target.value)} className="flex-grow block w-full rounded-l-md border-gray-300 dark:border-zinc-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 bg-gray-50 dark:bg-zinc-700 text-gray-900 dark:text-white" /><button type="button" onClick={handleSaveName} className="px-4 py-2 border border-blue-600 bg-blue-600 text-white rounded-r-md hover:bg-blue-700 text-sm font-medium">Guardar Nombre</button></div></div><div><h3 className="text-lg font-medium text-gray-900 dark:text-white">Gestionar Etiquetas</h3><form onSubmit={handleAddTag} className="flex mt-2"><input type="text" value={newTagName} onChange={(e) => setNewTagName(e.target.value)} placeholder="Nueva etiqueta" className="flex-grow block w-full rounded-l-md border-gray-300 dark:border-zinc-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 bg-gray-50 dark:bg-zinc-700 text-gray-900 dark:text-white" /><button type="submit" className="px-4 py-2 border border-blue-600 bg-blue-600 text-white rounded-r-md hover:bg-blue-700 text-sm font-medium">Agregar</button></form><div className="mt-3 max-h-40 overflow-y-auto space-y-2 pr-2">{tags.map(tag => (<div key={tag.id} className="flex justify-between items-center bg-gray-100 dark:bg-zinc-700 p-2 rounded-md"><span className="text-sm text-gray-800 dark:text-gray-200">{tag.name}</span><button onClick={() => handleDeleteTagWithConfirm(tag.id)} className="text-red-500 hover:text-red-700 dark:hover:text-red-400"><Icon name="delete" className="text-base" /></button></div>))}</div></div></div></div><div className="bg-gray-50 dark:bg-zinc-900/50 px-6 py-4 flex justify-end"><button type="button" onClick={onClose} className="py-2 px-4 border border-gray-300 dark:border-zinc-600 rounded-md shadow-sm text-sm font-medium text-gray-700 dark:text-gray-200 bg-white dark:bg-zinc-700 hover:bg-gray-50 dark:hover:bg-zinc-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">Cerrar</button></div></div></div>); };
-    const CredentialModal = ({ isOpen, onClose, onSave, credential, tags, addToast, masterKey }) => { const { useState, useEffect } = React; const [formData, setFormData] = useState({ name: '', username: '', password: '', comment: '', tag: '' }); const [isPasswordVisibleInModal, setIsPasswordVisibleInModal] = useState(false); useEffect(() => { const decryptAndSet = async () => { if (credential && masterKey) { const [decUsername, decPassword] = await Promise.all([ decryptField(credential.username, masterKey), decryptField(credential.password, masterKey) ]); setFormData({ ...credential, username: decUsername, password: decPassword, tag: credential.tag || (tags.length > 0 ? tags[0].name : '') }); } else { setFormData({ name: '', username: '', password: '', comment: '', tag: tags.length > 0 ? tags[0].name : '' }); } }; if(isOpen) { decryptAndSet(); setIsPasswordVisibleInModal(false); } }, [credential, tags, isOpen, masterKey]); const handleChange = (e) => { const { name, value } = e.target; setFormData(prev => ({ ...prev, [name]: value })); }; const handleSubmit = async (e) => { e.preventDefault(); if (!formData.name || !formData.username || !formData.password) { addToast("Nombre, Usuario y Contraseña son requeridos.", "error"); return; } if (tags.length > 0 && !formData.tag) { addToast("Debe seleccionar una etiqueta.", "error"); return; } const [encUsername, encPassword] = await Promise.all([ encryptField(formData.username, masterKey), encryptField(formData.password, masterKey) ]); onSave({ ...formData, username: encUsername, password: encPassword }); }; if (!isOpen) return null; return (<div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50" onClick={onClose}><div className="bg-white dark:bg-zinc-800 rounded-lg shadow-xl w-full max-w-lg m-4" onClick={(e) => e.stopPropagation()}><form onSubmit={handleSubmit}><div className="p-6"><h2 className="text-xl font-bold text-gray-900 dark:text-white">{credential ? 'Editar Credencial' : 'Agregar Nueva Credencial'}</h2><div className="mt-6 space-y-4"><div><label htmlFor="name" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Nombre de llave</label><input type="text" name="name" id="name" value={formData.name} onChange={handleChange} required className="mt-1 block w-full rounded-md border-gray-300 dark:border-zinc-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 bg-gray-50 dark:bg-zinc-700 text-gray-900 dark:text-white" /></div><div><label htmlFor="username" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Usuario / Email</label><input type="text" name="username" id="username" value={formData.username} onChange={handleChange} required className="mt-1 block w-full rounded-md border-gray-300 dark:border-zinc-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 bg-gray-50 dark:bg-zinc-700 text-gray-900 dark:text-white" /></div><div><label htmlFor="password" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Contraseña</label><div className="relative mt-1"><input type={isPasswordVisibleInModal ? 'text' : 'password'} name="password" id="password" value={formData.password} onChange={handleChange} required className="block w-full rounded-md border-gray-300 dark:border-zinc-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 bg-gray-50 dark:bg-zinc-700 text-gray-900 dark:text-white pr-10" /><button type="button" onClick={() => setIsPasswordVisibleInModal(!isPasswordVisibleInModal)} className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300" title={isPasswordVisibleInModal ? 'Ocultar contraseña' : 'Mostrar contraseña'}><Icon name={isPasswordVisibleInModal ? 'visibility_off' : 'visibility'} /></button></div></div><div><label htmlFor="comment" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Comentario</label><textarea name="comment" id="comment" value={formData.comment} onChange={handleChange} rows={3} className="mt-1 block w-full rounded-md border-gray-300 dark:border-zinc-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 bg-gray-50 dark:bg-zinc-700 text-gray-900 dark:text-white"></textarea></div><div><label htmlFor="tag" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Etiqueta</label><select name="tag" id="tag" value={formData.tag} onChange={handleChange} className="mt-1 block w-full rounded-md border-gray-300 dark:border-zinc-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 bg-gray-50 dark:bg-zinc-700 text-gray-900 dark:text-white" disabled={tags.length === 0}>{tags.length === 0 ? <option>Cree una etiqueta primero</option> : tags.map(tag => <option key={tag.id} value={tag.name}>{tag.name}</option>)}</select></div></div></div><div className="bg-gray-50 dark:bg-zinc-900/50 px-6 py-4 flex justify-end space-x-3"><button type="button" onClick={onClose} className="py-2 px-4 border border-gray-300 dark:border-zinc-600 rounded-md shadow-sm text-sm font-medium text-gray-700 dark:text-gray-200 bg-white dark:bg-zinc-700 hover:bg-gray-50 dark:hover:bg-zinc-600">Cancelar</button><button type="submit" className="py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700">Guardar</button></div></form></div></div>); };
-    const CredentialItem = ({ credential, onEdit, onDelete, masterKey }) => { const { useState } = React; const [isExpanded, setIsExpanded] = useState(false); const [isPasswordVisible, setIsPasswordVisible] = useState(false); const [decryptedPassword, setDecryptedPassword] = useState(null); const [isUsernameVisible, setIsUsernameVisible] = useState(false); const [decryptedUsername, setDecryptedUsername] = useState(null); const addToast = useNotifier(); const handleToggleUsername = async () => { if (isUsernameVisible) { setIsUsernameVisible(false); setDecryptedUsername(null); } else { const decUsername = await decryptField(credential.username, masterKey); setDecryptedUsername(decUsername); setIsUsernameVisible(true); } }; const handleTogglePassword = async () => { if (isPasswordVisible) { setIsPasswordVisible(false); setDecryptedPassword(null); } else { const decPassword = await decryptField(credential.password, masterKey); setDecryptedPassword(decPassword); setIsPasswordVisible(true); } }; const handleCopy = async (encryptedValue, field) => { const decryptedValue = await decryptField(encryptedValue, masterKey); navigator.clipboard.writeText(decryptedValue); addToast(`${field} copiado al portapapeles.`, 'success'); }; const getTagColor = (tagName) => { if(!tagName) tagName = 'Sin Etiqueta'; let hash = 0; for (let i = 0; i < tagName.length; i++) { hash = tagName.charCodeAt(i) + ((hash << 5) - hash); } const color = (hash & 0x00FFFFFF).toString(16).toUpperCase(); const hexColor = "00000".substring(0, 6 - color.length) + color; const r = parseInt(hexColor.substring(0,2), 16); const g = parseInt(hexColor.substring(2,4), 16); const b = parseInt(hexColor.substring(4,6), 16); const brightness = (r * 299 + g * 587 + b * 114) / 1000; const textColor = brightness > 125 ? 'text-black' : 'text-white'; return { backgroundColor: `#${hexColor}`, colorClass: textColor }; }; const tagStyle = getTagColor(credential.tag); return (<div className="w-full bg-gray-50 dark:bg-zinc-700/50 rounded-lg shadow-sm transition-shadow hover:shadow-md"><button onClick={() => setIsExpanded(!isExpanded)} className="w-full flex items-center justify-between px-4 py-2 text-left"><div className="flex items-center min-w-0 mr-3"><div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center mr-3 text-base font-bold text-white bg-gradient-to-br from-blue-500 to-indigo-600`}>{credential.name.charAt(0).toUpperCase()}</div><div className="truncate"><p className="font-semibold text-gray-900 dark:text-white truncate">{credential.name}</p></div></div><div className='flex items-center flex-shrink-0'><span className={`text-xs font-medium px-2 py-1 rounded-full ${tagStyle.colorClass}`} style={{ backgroundColor: tagStyle.backgroundColor }}>{credential.tag}</span><Icon name={isExpanded ? 'expand_less' : 'expand_more'} className="ml-2 text-gray-500 dark:text-gray-400" /></div></button>{isExpanded && (<div className="border-t border-gray-200 dark:border-zinc-600 px-4 py-3"><div className="space-y-3"><div><p className="text-xs font-medium text-gray-500 dark:text-gray-400">Usuario / Email</p><div className="flex items-center mt-1"><p className="text-sm text-gray-800 dark:text-gray-200 flex-grow">{isUsernameVisible ? decryptedUsername : '••••••••••••'}</p><button onClick={handleToggleUsername} className="ml-2 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"><Icon name={isUsernameVisible ? 'visibility_off' : 'visibility'} /></button><button onClick={() => handleCopy(credential.username, 'Usuario')} className="ml-2 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"><Icon name="content_copy" /></button></div></div><div><p className="text-xs font-medium text-gray-500 dark:text-gray-400">Contraseña</p><div className="flex items-center mt-1"><p className="text-sm text-gray-800 dark:text-gray-200 flex-grow">{isPasswordVisible ? decryptedPassword : '••••••••••••'}</p><button onClick={handleTogglePassword} className="ml-2 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"><Icon name={isPasswordVisible ? 'visibility_off' : 'visibility'} /></button><button onClick={() => handleCopy(credential.password, 'Contraseña')} className="ml-2 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"><Icon name="content_copy" /></button></div></div>{credential.comment && <div><p className="text-xs font-medium text-gray-500 dark:text-gray-400">Comentario</p><p className="text-sm text-gray-800 dark:text-gray-200 mt-1 whitespace-pre-wrap">{credential.comment}</p></div>}</div><div className="mt-4 flex justify-end space-x-2"><button onClick={onEdit} className="text-sm text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 font-medium">Editar</button><button onClick={onDelete} className="text-sm text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300 font-medium">Eliminar</button></div></div>)}</div>); };
-    
-    // --- APP ---
-    const App = () => {
-      const { useState, useEffect, useRef, useCallback } = React;
-      
-      // App State
-      const [appStatus, setAppStatus] = useState('initializing'); // initializing, auth, create-keychain, select-keychain, unlocked, loading
-      const [error, setError] = useState(null);
-      const [SQL, setSQL] = useState(null);
+</div>
+</div>
 
-      // User & Auth State
-      const [user, setUser] = useState(null);
-      const [accessToken, setAccessToken] = useState(null);
-      const tokenClient = useRef(null);
-      
-      // Keychain State
-      const [keychains, setKeychains] = useState([]);
-      const [db, setDb] = useState(null);
-      const [masterKey, setMasterKey] = useState(null);
-      const [currentFileId, setCurrentFileId] = useState(null);
-      const [currentSalt, setCurrentSalt] = useState(null);
-      const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
-      
-      const addToast = useNotifier();
-      
-      // --- Initialization Effect ---
-      useEffect(() => {
-        const loadSqlJs = async () => {
-            try {
-                const sqlModule = await initSqlJs({ locateFile: file => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/${file}` });
-                setSQL(() => sqlModule);
-            } catch (err) {
-                console.error("Failed to load sql.js:", err);
-                setError("No se pudo cargar un componente crítico. Por favor, recargue la página.");
-                setAppStatus('auth');
-            }
-        };
-        loadSqlJs();
-        
-        const checkGisReady = setInterval(() => {
-            if (window.gsiClientIsLoaded && SQL) {
-                clearInterval(checkGisReady);
-                initializeGisClient();
-            }
-        }, 100);
+<script src="https://apis.google.com/js/api.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
+<script>
+let CLIENT_ID = '576080826935-2mtnj52ndc8plnsjodjevt3e2gsh4m3a.apps.googleusercontent.com';
+let SCOPES = 'https://www.googleapis.com/auth/drive.file';
+let dbData = null;
+let dbFileId = null;
+let masterKeyGlobal = '';
+let sessionTimer = null;
 
-        const initializeGisClient = () => {
-            tokenClient.current = google.accounts.oauth2.initTokenClient({
-                client_id: GOOGLE_CLIENT_ID,
-                scope: DRIVE_API_SCOPE,
-                callback: (tokenResponse) => {
-                    if (tokenResponse && tokenResponse.access_token) {
-                        handleAuthSuccess(tokenResponse.access_token);
-                    } else {
-                        // This case handles silent sign-in failure, which is expected
-                        setAppStatus('auth');
-                    }
-                },
-                error_callback: (error) => {
-                    if (error && error.type === 'popup_closed') {
-                        console.info('Auth popup closed by user.');
-                        setAppStatus('auth');
-                    } else if (error && (error.type === 'popup_failed_to_open' || error.type === 'popup_blocked_by_browser')) {
-                         console.info("Silent sign-in failed due to browser privacy settings. This is expected.");
-                         setAppStatus('auth');
+// --- GOOGLE LOGIN ---
+function start() {
+  gapi.load('client:auth2', initClient);
+}
 
-                    } else {
-                        console.error('GSI Error:', error);
-                        setError("Ocurrió un error de autenticación.");
-                        setAppStatus('auth');
-                    }
-                }
-            });
-            setAppStatus('auth');
-        };
-        
-        return () => clearInterval(checkGisReady);
-      }, [SQL]);
+function initClient() {
+  gapi.auth2.init({client_id: CLIENT_ID}).then(() => {
+    document.getElementById('googleSignInBtn').onclick = signIn;
+  });
+}
 
-      // --- Session Timeout Effect ---
-      useEffect(() => {
-        let timeoutId;
-        const resetTimeout = () => {
-          clearTimeout(timeoutId);
-          if (appStatus === 'unlocked') {
-            timeoutId = setTimeout(() => {
-              addToast("Sesión cerrada por inactividad.", "info");
-              handleLock();
-            }, SESSION_TIMEOUT_MS);
-          }
-        };
-        window.addEventListener('mousemove', resetTimeout);
-        window.addEventListener('keydown', resetTimeout);
-        window.addEventListener('click', resetTimeout);
-        resetTimeout();
-        return () => {
-          clearTimeout(timeoutId);
-          window.removeEventListener('mousemove', resetTimeout);
-          window.removeEventListener('keydown', resetTimeout);
-          window.removeEventListener('click', resetTimeout);
-        };
-      }, [appStatus]);
+function signIn() {
+  gapi.auth2.getAuthInstance().signIn().then(() => {
+    gapi.client.load('drive', 'v3', loadDbList);
+    document.getElementById('loginDiv').classList.add('hidden');
+    document.getElementById('mainDiv').classList.remove('hidden');
+  });
+}
 
-      // --- Autosave Effect ---
-      const handleSaveChanges = useCallback(async () => {
-        if (!db || !masterKey || !currentSalt || !currentFileId || !accessToken) return;
-        setAppStatus('loading');
-        try {
-            const newId = await handleSaveToDrive(accessToken, db, currentFileId, masterKey, currentSalt);
-            if (newId && newId !== currentFileId) {
-                setCurrentFileId(newId);
-            }
-            addToast("Cambios guardados en Drive.", "success");
-            setHasUnsavedChanges(false);
-        } catch (error) {
-            console.error("Autosave failed:", error);
-            addToast(`El autoguardado falló: ${error.message}`, "error");
-        } finally {
-            setAppStatus('unlocked');
-        }
-      }, [db, currentFileId, masterKey, currentSalt, accessToken, addToast]);
+function logout() {
+  gapi.auth2.getAuthInstance().signOut().then(() => location.reload());
+}
 
-      useEffect(() => {
-        if (appStatus === 'unlocked' && hasUnsavedChanges) {
-          const timer = setTimeout(() => {
-            handleSaveChanges();
-          }, AUTOSAVE_DELAY);
-          return () => clearTimeout(timer);
-        }
-      }, [hasUnsavedChanges, appStatus, handleSaveChanges]);
+document.getElementById('logoutBtn').onclick = logout;
 
-      // --- Drive API Helpers (using fetch) ---
-      const driveFetch = async (url, options = {}, tokenOverride = null) => {
-          const tokenToUse = tokenOverride || accessToken;
-          if (!tokenToUse) throw new Error("No hay token de acceso.");
-          const defaultHeaders = { 'Authorization': `Bearer ${tokenToUse}` };
-          options.headers = { ...defaultHeaders, ...options.headers };
-          const response = await fetch(url, options);
-          if (!response.ok) {
-              const errorBody = await response.json().catch(() => ({ error: { message: "Error de red o respuesta no-JSON." } }));
-              const errorMessage = errorBody.error?.message || `HTTP error! status: ${response.status}`;
-              throw new Error(errorMessage);
-          }
-          return response;
-      };
+// --- DB HANDLING ---
+async function loadDbList() {
+  const res = await gapi.client.drive.files.list({
+    q: "mimeType='application/octet-stream' and trashed=false",
+    fields: "files(id,name)"
+  });
+  const list = res.result.files;
+  const dbListDiv = document.getElementById('dbList');
+  dbListDiv.innerHTML = '';
+  list.forEach(f => {
+    const btn = document.createElement('button');
+    btn.textContent = f.name;
+    btn.onclick = () => openDb(f.id, f.name);
+    dbListDiv.appendChild(btn);
+  });
+}
 
-      const listKeychains = async (token) => {
-          const q = "'appDataFolder' in parents and trashed = false and name contains '.db'";
-          const fields = 'files(id, name)';
-          const url = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=${encodeURIComponent(fields)}`;
-          const response = await driveFetch(url, {}, token);
-          const data = await response.json();
-          return data.files || [];
-      };
-      
-      const handleSaveToDrive = useCallback(async (token, dbToSave, existingFileId, keyToUse, saltToUse) => {
-        if (!dbToSave || !keyToUse || !saltToUse) {
-            throw new Error("No se puede guardar: faltan datos clave.");
-        }
-        
-        const dbUint8Array = exportDb(dbToSave);
-        const fileContentToUpload = await encryptDBFile(dbUint8Array, saltToUse, keyToUse);
-        const keychainName = getKeychainName(dbToSave);
-        const fileName = `${keychainName}.db`;
-        
-        // --- Create-and-Replace Strategy ---
-        const metadata = { name: fileName, parents: ['appDataFolder'] };
-        const form = new FormData();
-        form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
-        form.append('file', new Blob([fileContentToUpload], { type: 'application/octet-stream' }));
-        
-        const createUrl = `https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart`;
-        const createResponse = await driveFetch(createUrl, { method: 'POST', body: form }, token);
-        const newData = await createResponse.json();
-        const newFileId = newData.id;
+async function createDb() {
+  const name = document.getElementById('newDbName').value.trim();
+  const key = document.getElementById('masterKey').value;
+  if(!name || !key) return alert('Ingrese nombre y clave maestra');
+  masterKeyGlobal = key;
+  dbData = { keys: [] };
+  const content = CryptoJS.AES.encrypt(JSON.stringify(dbData), key).toString();
+  const fileMetadata = { name: name + '.db', mimeType: 'application/octet-stream' };
+  const file = new Blob([content], {type:'application/octet-stream'});
+  const res = await gapi.client.drive.files.create({ resource:fileMetadata, media: { body: file }, fields:'id' });
+  dbFileId = res.result.id;
+  renderKeys();
+  resetSessionTimer();
+}
 
-        if (!newFileId) {
-            throw new Error("No se pudo crear el nuevo archivo en Drive durante el guardado.");
-        }
+async function openDb(fileId, fileName) {
+  const key = prompt('Ingrese clave maestra para ' + fileName);
+  if(!key) return;
+  masterKeyGlobal = key;
+  const res = await gapi.client.drive.files.get({ fileId:fileId, alt:'media' });
+  try {
+    const bytes = CryptoJS.AES.decrypt(res.body, key);
+    dbData = JSON.parse(bytes.toString(CryptoJS.enc.Utf8));
+    dbFileId = fileId;
+    renderKeys();
+    resetSessionTimer();
+  } catch(e) { alert('Clave incorrecta'); }
+}
 
-        if (existingFileId) {
-            try {
-                const deleteUrl = `https://www.googleapis.com/drive/v3/files/${existingFileId}`;
-                await driveFetch(deleteUrl, { method: 'DELETE' }, token);
-            } catch (deleteError) {
-                console.warn(`Could not delete old file (${existingFileId}).`, deleteError);
-                addToast("No se pudo eliminar la versión anterior del llavero.", "info");
-            }
-        }
-        
-        setHasUnsavedChanges(false);
-        return newFileId;
-      }, [addToast]);
+// --- ABM KEYS ---
+function renderKeys(filter='') {
+  const listDiv = document.getElementById('keyList');
+  listDiv.innerHTML = '';
+  dbData.keys.filter(k => k.name.includes(filter) || (k.note && k.note.includes(filter))).forEach((k,i)=>{
+    const div = document.createElement('div'); div.className='key-item';
+    const user = CryptoJS.AES.decrypt(k.user, masterKeyGlobal).toString(CryptoJS.enc.Utf8);
+    const pass = CryptoJS.AES.decrypt(k.pass, masterKeyGlobal).toString(CryptoJS.enc.Utf8);
+    div.innerHTML = `<b>${k.name}</b><br>Usuario: ${user}<br>Clave: ${pass}<br>Nota: ${k.note}<br>Etiquetas: ${k.tags.map(t=>'<span class="tag">'+t+'</span>').join(' ')}`;
+    const btnEdit = document.createElement('button'); btnEdit.textContent='Editar'; btnEdit.onclick=()=>editKey(i);
+    const btnDel = document.createElement('button'); btnDel.textContent='Borrar'; btnDel.onclick=()=>{ dbData.keys.splice(i,1); saveDb(); renderKeys(); };
+    const btnDiv = document.createElement('div'); btnDiv.className='flex'; btnDiv.appendChild(btnEdit); btnDiv.appendChild(btnDel);
+    div.appendChild(btnDiv);
+    listDiv.appendChild(div);
+  });
+}
 
-      // --- Handlers ---
-      const handleAuthSuccess = useCallback(async (token) => {
-        setAppStatus('loading');
-        setAccessToken(token);
-        try {
-          const userInfoResponse = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
-            headers: { 'Authorization': `Bearer ${token}` }
-          });
-          if (!userInfoResponse.ok) throw new Error("No se pudo obtener la información del usuario.");
-          const userInfo = await userInfoResponse.json();
-          setUser(userInfo);
+document.getElementById('searchKey').addEventListener('input', e=>renderKeys(e.target.value));
 
-          const keychainFiles = await listKeychains(token);
-          setKeychains(keychainFiles);
-          setAppStatus('select-keychain');
+function editKey(index) {
+  const k = dbData.keys[index];
+  document.getElementById('keyName').value = k.name;
+  document.getElementById('keyUser').value = CryptoJS.AES.decrypt(k.user, masterKeyGlobal).toString(CryptoJS.enc.Utf8);
+  document.getElementById('keyPass').value = CryptoJS.AES.decrypt(k.pass, masterKeyGlobal).toString(CryptoJS.enc.Utf8);
+  document.getElementById('keyNote').value = k.note;
+  document.getElementById('keyTags').value = k.tags.join(',');
+  document.getElementById('saveKeyBtn').onclick = ()=>{ saveKey(index); };
+}
 
-        } catch (err) {
-            console.error("Error during auth success flow:", err);
-            setError(`Error al inicializar: ${err.message}. Verifique la configuración de la API y los permisos.`);
-            setAppStatus('auth');
-        }
-      }, []);
+function saveKey(index=null) {
+  const k = {
+    name: document.getElementById('keyName').value,
+    user: CryptoJS.AES.encrypt(document.getElementById('keyUser').value, masterKeyGlobal).toString(),
+    pass: CryptoJS.AES.encrypt(document.getElementById('keyPass').value, masterKeyGlobal).toString(),
+    note: document.getElementById('keyNote').value,
+    tags: document.getElementById('keyTags').value.split(',').map(t=>t.trim()).filter(t=>t)
+  };
+  if(index!==null) dbData.keys[index] = k; else dbData.keys.push(k);
+  saveDb();
+  clearKeyForm();
+  renderKeys();
+}
 
-      const handleAuthClick = () => {
-        if (tokenClient.current) {
-            tokenClient.current.requestAccessToken({ prompt: 'consent' });
-        }
-      };
+function clearKeyForm() {
+  document.getElementById('keyName').value='';
+  document.getElementById('keyUser').value='';
+  document.getElementById('keyPass').value='';
+  document.getElementById('keyNote').value='';
+  document.getElementById('keyTags').value='';
+  document.getElementById('saveKeyBtn').onclick=()=>saveKey();
+}
 
-      const handleSignOut = () => {
-        if (accessToken) {
-            google.accounts.oauth2.revoke(accessToken, () => {
-                console.log('Access token revoked.');
-            });
-        }
-        setAccessToken(null);
-        setUser(null);
-        setKeychains([]);
-        setDb(null);
-        setMasterKey(null);
-        setCurrentFileId(null);
-        setCurrentSalt(null);
-        setHasUnsavedChanges(false);
-        setAppStatus('auth');
-        addToast("Sesión cerrada correctamente.", "info");
-      };
-      
-      const handleUnlockKeychain = async (fileId, password) => {
-        setAppStatus('loading');
-        try {
-            const fetchResponse = await driveFetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`);
-            const encryptedFileContent = new Uint8Array(await fetchResponse.arrayBuffer());
+// --- SAVE DB ---
+async function saveDb() {
+  const content = CryptoJS.AES.encrypt(JSON.stringify(dbData), masterKeyGlobal).toString();
+  const file = new Blob([content], {type:'application/octet-stream'});
+  await gapi.client.drive.files.update({ fileId: dbFileId, media:{body:file} });
+}
 
-            const { dbBuffer, masterKey: derivedKey } = await decryptDBFile(encryptedFileContent, password);
-            const finalDb = new SQL.Database(dbBuffer);
+// --- SESSION TIMER ---
+function resetSessionTimer() {
+  if(sessionTimer) clearTimeout(sessionTimer);
+  sessionTimer = setTimeout(()=>{ alert('Sesión expirada'); location.reload(); },5*60*1000);
+  ['click','input'].forEach(e=>document.addEventListener(e,resetSessionTimer));
+}
 
-            const fileStr = new TextDecoder().decode(encryptedFileContent);
-            const fileJson = JSON.parse(fileStr);
-            const salt = base64ToUint8Array(fileJson.salt);
+// --- EVENTS ---
+document.getElementById('createDbBtn').onclick = createDb;
 
-            setDb(finalDb);
-            setMasterKey(derivedKey);
-            setCurrentFileId(fileId);
-            setCurrentSalt(salt);
-            setHasUnsavedChanges(false);
-            setAppStatus('unlocked');
-            addToast("Llavero desbloqueado.", "success");
-        } catch (err) {
-            console.error("Unlock failed:", err);
-            addToast(err.message || "Error al desbloquear.", "error");
-            setAppStatus('select-keychain');
-        }
-      };
-
-      const handleCreateKeychain = async (name, password) => {
-        setAppStatus('loading');
-        try {
-            if (!SQL) throw new Error("El servicio de base de datos no está listo.");
-
-            const { database: newDb, salt } = await initDb(SQL);
-            setKeychainName(newDb, name);
-            const key = await deriveKey(password, salt);
-            
-            const newFileId = await handleSaveToDrive(accessToken, newDb, null, key, salt);
-            
-            setDb(newDb);
-            setMasterKey(key);
-            setCurrentSalt(salt);
-            setCurrentFileId(newFileId);
-            setHasUnsavedChanges(false);
-            addToast("Llavero creado y guardado en Drive.", "success");
-            setAppStatus('unlocked');
-        } catch (err) {
-            console.error("Error creating keychain:", err);
-            addToast(`No se pudo crear el llavero: ${err.message}`, "error");
-            setAppStatus('select-keychain');
-        }
-      };
-      
-      const handleLock = () => {
-          if(hasUnsavedChanges) {
-              handleSaveChanges().finally(() => {
-                setDb(null);
-                setMasterKey(null);
-                setCurrentFileId(null);
-                setCurrentSalt(null);
-                setHasUnsavedChanges(false);
-                setAppStatus('select-keychain');
-              });
-          } else {
-              setDb(null);
-              setMasterKey(null);
-              setCurrentFileId(null);
-              setCurrentSalt(null);
-              setHasUnsavedChanges(false);
-              setAppStatus('select-keychain');
-          }
-      };
-      
-      // --- DB Operations that modify state (Immutable Pattern) ---
-      const withDbMutation = (operation) => (...args) => {
-          operation(db, ...args);
-          const exportedData = exportDb(db);
-          setDb(new SQL.Database(exportedData));
-          setHasUnsavedChanges(true);
-      };
-
-      const handleAddCredential = withDbMutation(addCredential);
-      const handleUpdateCredential = withDbMutation(updateCredential);
-      const handleDeleteCredential = withDbMutation(deleteCredential);
-      const handleAddTag = withDbMutation(addTag);
-      const handleDeleteTag = withDbMutation((db, id) => {
-          try {
-              deleteTag(db, id);
-              addToast("Etiqueta eliminada.", "success");
-          } catch (e) {
-              addToast(e.message, "error");
-          }
-      });
-      const handleSaveKeychainName = withDbMutation(setKeychainName);
-
-      // --- RENDER LOGIC ---
-      const renderContent = () => {
-        switch (appStatus) {
-          case 'initializing':
-            return <div className="text-center"><Spinner className="border-gray-500 mx-auto"/> <p className="mt-2 text-gray-500">Inicializando...</p></div>;
-          case 'auth':
-            return (<div className="text-center max-w-sm mx-auto"><h2 className="text-2xl font-bold text-gray-900 dark:text-white">Bienvenido al Llavero Personal</h2><p className="mt-2 text-gray-600 dark:text-gray-400">Una forma segura de guardar tus credenciales, directamente en tu Google Drive.</p>{error && <p className="mt-4 text-red-500 bg-red-100 dark:bg-red-900/50 p-3 rounded-md whitespace-pre-wrap">{error}</p>}<button onClick={handleAuthClick} className="mt-6 w-full inline-flex justify-center items-center py-3 px-4 border border-transparent shadow-sm text-base font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700"><svg className="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" /><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.3v2.84C4.01 20.49 7.72 23 12 23z" /><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.3C1.46 8.85 1 10.39 1 12s.46 3.15 1.3 4.93l3.54-2.84z" /><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.72 1 4.01 3.51 2.3 7.07l3.54 2.84c.87-2.6 3.3-4.53 6.16-4.53z" /></svg>Conectar con Google Drive</button></div>);
-          case 'create-keychain':
-            return <CreateKeychainScreen onConfirm={handleCreateKeychain} onCancel={() => setAppStatus('select-keychain')} />;
-          case 'select-keychain':
-            return <KeychainSelectionScreen 
-                        user={user} 
-                        keychains={keychains} 
-                        onUnlock={handleUnlockKeychain}
-                        onTriggerCreate={() => setAppStatus('create-keychain')}
-                        onSignOut={handleSignOut}
-                    />;
-          case 'unlocked':
-            return <UnlockedScreen db={db} masterKey={masterKey} onLock={handleLock} onSaveToDrive={handleSaveChanges} onAddCredential={handleAddCredential} onUpdateCredential={handleUpdateCredential} onDeleteCredential={handleDeleteCredential} onAddTag={handleAddTag} onDeleteTag={handleDeleteTag} onSaveKeychainName={handleSaveKeychainName} />;
-          case 'loading':
-            return <div className="text-center"><Spinner className="border-gray-500 mx-auto"/> <p className="mt-2 text-gray-500">Cargando...</p></div>;
-          default:
-            return <div className="text-center text-red-500">Estado desconocido: {appStatus}</div>;
-        }
-      };
-
-      return (
-        <div className="pt-16 pb-10 min-h-screen">
-          <GlobalHeader />
-          <main className="container mx-auto px-4 py-8">
-            <div className="flex items-center justify-center">
-              {renderContent()}
-            </div>
-          </main>
-          <GlobalFooter />
-        </div>
-      );
-    }
-    
-    const CreateKeychainScreen = ({ onConfirm, onCancel }) => {
-        const [name, setName] = React.useState('');
-        const [password, setPassword] = React.useState('');
-        const [confirm, setConfirm] = React.useState('');
-        const addToast = useNotifier();
-
-        const handleSubmit = (e) => {
-            e.preventDefault();
-            if (!name.trim()) {
-                addToast("El nombre del llavero no puede estar vacío.", "error");
-                return;
-            }
-            if (password.length < 8) {
-                addToast("La contraseña debe tener al menos 8 caracteres.", "error");
-                return;
-            }
-            if (password !== confirm) {
-                addToast("Las contraseñas no coinciden.", "error");
-                return;
-            }
-            onConfirm(name.trim(), password);
-        };
-
-        return (
-            <div className="w-full max-w-sm">
-                <form onSubmit={handleSubmit} className="bg-white dark:bg-zinc-800 rounded-lg shadow p-8">
-                    <h2 className="text-2xl font-bold text-center text-gray-900 dark:text-white">Crear Nuevo Llavero</h2>
-                    <p className="text-center text-sm text-gray-600 dark:text-gray-400 mt-2">Dale un nombre y una contraseña maestra a tu nuevo llavero. <strong className="text-red-500">Si olvidas la contraseña, tus datos serán irrecuperables.</strong></p>
-                    <div className="mt-6 space-y-4">
-                        <div>
-                            <label htmlFor="keychain-name-input" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Nombre del Llavero</label>
-                            <input id="keychain-name-input" type="text" value={name} onChange={e => setName(e.target.value)} placeholder="Ej: Personal, Trabajo..." className="mt-1 block w-full rounded-md border-gray-300 dark:border-zinc-600 shadow-sm bg-gray-50 dark:bg-zinc-700 text-gray-900 dark:text-white" required autoFocus />
-                        </div>
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300" htmlFor="master-password">Nueva Contraseña Maestra</label>
-                            <input id="master-password" type="password" value={password} onChange={e => setPassword(e.target.value)} className="mt-1 block w-full rounded-md border-gray-300 dark:border-zinc-600 shadow-sm bg-gray-50 dark:bg-zinc-700 text-gray-900 dark:text-white" required />
-                        </div>
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300" htmlFor="confirm-password">Confirmar Contraseña</label>
-                            <input id="confirm-password" type="password" value={confirm} onChange={e => setConfirm(e.target.value)} className="mt-1 block w-full rounded-md border-gray-300 dark:border-zinc-600 shadow-sm bg-gray-50 dark:bg-zinc-700 text-gray-900 dark:text-white" required />
-                        </div>
-                    </div>
-                    <div className="mt-6 flex justify-end space-x-3">
-                        <button type="button" onClick={onCancel} className="py-2 px-4 border border-gray-300 dark:border-zinc-600 rounded-md text-sm font-medium text-gray-700 dark:text-gray-200 bg-white dark:bg-zinc-700 hover:bg-gray-50 dark:hover:bg-zinc-600">Cancelar</button>
-                        <button type="submit" className="py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700">Crear y Abrir</button>
-                    </div>
-                </form>
-            </div>
-        );
-    };
-
-    const KeychainSelectionScreen = ({ user, keychains, onUnlock, onTriggerCreate, onSignOut }) => {
-        const { useState } = React;
-        const [unlockingFile, setUnlockingFile] = useState(null);
-        const [password, setPassword] = useState('');
-
-        const handleUnlockSubmit = (e) => {
-            e.preventDefault();
-            onUnlock(unlockingFile.id, password);
-            setUnlockingFile(null);
-            setPassword('');
-        };
-
-        const UnlockModal = () => (
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
-                <form onSubmit={handleUnlockSubmit} className="bg-white dark:bg-zinc-800 rounded-lg shadow-xl w-full max-w-sm m-4 p-6">
-                    <h3 className="text-lg font-bold text-gray-900 dark:text-white">Desbloquear "{unlockingFile.name.replace('.db', '')}"</h3>
-                    <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">Ingresa tu contraseña maestra.</p>
-                    <input type="password" value={password} onChange={e => setPassword(e.target.value)} className="mt-4 block w-full rounded-md border-gray-300 dark:border-zinc-600 shadow-sm bg-gray-50 dark:bg-zinc-700 text-gray-900 dark:text-white" autoFocus />
-                    <div className="mt-6 flex justify-end space-x-3">
-                        <button type="button" onClick={() => setUnlockingFile(null)} className="py-2 px-4 border border-gray-300 dark:border-zinc-600 rounded-md text-sm font-medium text-gray-700 dark:text-gray-200 bg-white dark:bg-zinc-700 hover:bg-gray-50 dark:hover:bg-zinc-600">Cancelar</button>
-                        <button type="submit" className="py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700">Desbloquear</button>
-                    </div>
-                </form>
-            </div>
-        );
-
-        return (
-            <div className="w-full max-w-md">
-                {unlockingFile && <UnlockModal />}
-                <div className="text-center mb-6">
-                    {user && <img src={user.picture} alt="Foto de perfil" className="w-16 h-16 rounded-full mx-auto mb-3" />}
-                    <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Hola, {user ? user.given_name : 'Usuario'}</h2>
-                    <p className="text-gray-600 dark:text-gray-400">Selecciona un llavero para desbloquear o crea uno nuevo.</p>
-                </div>
-                <div className="bg-white dark:bg-zinc-800 rounded-lg shadow p-4 space-y-2">
-                    {keychains.length > 0 ? keychains.map(file => (
-                        <button key={file.id} onClick={() => setUnlockingFile(file)} className="w-full text-left p-3 rounded-md hover:bg-gray-100 dark:hover:bg-zinc-700 flex items-center">
-                            <Icon name="key" className="mr-3 text-blue-500" />
-                            <span className="text-gray-800 dark:text-gray-200">{file.name.replace('.db', '')}</span>
-                        </button>
-                    )) : <p className="text-center text-gray-500 p-4">No se encontraron llaveros. ¡Crea el primero!</p>}
-                </div>
-                <button onClick={onTriggerCreate} className="mt-4 w-full bg-green-600 text-white py-3 rounded-md shadow hover:bg-green-700 font-medium flex items-center justify-center">
-                    <Icon name="add" className="mr-2"/>Crear Nuevo Llavero
-                </button>
-                <button onClick={onSignOut} className="mt-2 w-full text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">Cerrar sesión</button>
-            </div>
-        );
-    };
-    
-    const UnlockedScreen = ({ db, masterKey, onLock, onSaveToDrive, onAddCredential, onUpdateCredential, onDeleteCredential, onAddTag, onDeleteTag, onSaveKeychainName }) => {
-        const { useState, useEffect, useMemo } = React;
-        const [credentials, setCredentials] = useState([]);
-        const [tags, setTags] = useState([]);
-        const [searchTerm, setSearchTerm] = useState('');
-        const [activeFilters, setActiveFilters] = useState([]);
-        const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
-        const [isCredentialModalOpen, setIsCredentialModalOpen] = useState(false);
-        const [editingCredential, setEditingCredential] = useState(null);
-        const [viewMode, setViewMode] = useState('list'); // 'list' or 'grid'
-
-        const addToast = useNotifier();
-
-        useEffect(() => {
-            if (db) {
-                setCredentials(getCredentials(db));
-                setTags(getTags(db));
-            }
-        }, [db]);
-        
-        const filteredCredentials = useMemo(() => {
-            return credentials
-              .filter(c => c.name.toLowerCase().includes(searchTerm.toLowerCase()) || (c.comment && c.comment.toLowerCase().includes(searchTerm.toLowerCase())))
-              .filter(c => activeFilters.length === 0 || activeFilters.includes(c.tag));
-        }, [credentials, searchTerm, activeFilters]);
-
-        const handleSaveCredential = (cred) => {
-            if (cred.id) {
-                onUpdateCredential(cred);
-                addToast("Credencial actualizada.", "success");
-            } else {
-                onAddCredential(cred);
-                addToast("Credencial agregada.", "success");
-            }
-            setIsCredentialModalOpen(false);
-            setEditingCredential(null);
-        };
-        
-        const handleEditCredential = (cred) => {
-            setEditingCredential(cred);
-            setIsCredentialModalOpen(true);
-        };
-
-        const handleDeleteCredentialConfirmed = (id) => {
-            if(window.confirm("¿Estás seguro de que quieres eliminar esta credencial?")) {
-                onDeleteCredential(id);
-                addToast("Credencial eliminada.", "success");
-            }
-        };
-        
-        const handleFilterToggle = (tag) => {
-            setActiveFilters(prev => prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag]);
-        };
-        
-        const keychainName = useMemo(() => getKeychainName(db), [db]);
-        
-        const listContainerClass = viewMode === 'list' 
-            ? 'space-y-3' 
-            : 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4';
-
-        return (
-            <div className="w-full">
-                <CredentialModal isOpen={isCredentialModalOpen} onClose={() => { setIsCredentialModalOpen(false); setEditingCredential(null); }} onSave={handleSaveCredential} credential={editingCredential} tags={tags} addToast={addToast} masterKey={masterKey} />
-                <SettingsModal isOpen={isSettingsModalOpen} onClose={() => setIsSettingsModalOpen(false)} keychainName={keychainName} onSaveKeychainName={onSaveKeychainName} tags={tags} onAddTag={onAddTag} onDeleteTag={onDeleteTag} addToast={addToast} />
-
-                <div className="flex justify-between items-center mb-4 flex-wrap gap-2">
-                    <h2 className="text-2xl font-bold text-gray-800 dark:text-gray-200">Llavero: <span className="text-blue-600 dark:text-blue-400">{keychainName}</span></h2>
-                    <div className="flex items-center space-x-2">
-                        <button onClick={() => setIsSettingsModalOpen(true)} className="p-2 rounded-full hover:bg-gray-200 dark:hover:bg-zinc-700 text-gray-600 dark:text-gray-300" title="Configuración"><Icon name="settings" /></button>
-                        <button onClick={onSaveToDrive} className="py-2 px-4 border border-blue-600 text-blue-600 dark:text-blue-400 dark:border-blue-500 rounded-md shadow-sm text-sm font-medium hover:bg-blue-50 dark:hover:bg-blue-900/50">Guardar</button>
-                        <button onClick={onLock} className="py-2 px-4 border border-gray-300 dark:border-zinc-600 rounded-md text-sm font-medium text-gray-700 dark:text-gray-200 bg-white dark:bg-zinc-700 hover:bg-gray-50 dark:hover:bg-zinc-600">Bloquear</button>
-                    </div>
-                </div>
-
-                <div className="sticky top-16 z-20 bg-gray-100/80 dark:bg-zinc-900/80 backdrop-blur-sm -mx-4 px-4 py-3 mb-4">
-                    <div className="relative mb-4">
-                        <input type="text" placeholder="Buscar por nombre o comentario..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full pl-10 pr-4 py-2 rounded-lg border border-gray-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500" />
-                        <Icon name="search" className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                    </div>
-                    <div className="flex justify-between items-center">
-                        <div className="dropdown relative">
-                           <button onClick={(e) => e.currentTarget.nextElementSibling.classList.toggle('hidden')} className="flex items-center px-4 py-2 bg-white dark:bg-zinc-800 border border-gray-300 dark:border-zinc-600 rounded-lg text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-zinc-700">
-                               <Icon name="filter_list" className="mr-2 text-base" />
-                               Filtros
-                               <Icon name="arrow_drop_down" className="ml-1 text-base" />
-                           </button>
-                           <div className="hidden absolute z-10 mt-2 w-56 rounded-md shadow-lg bg-white dark:bg-zinc-800 ring-1 ring-black ring-opacity-5">
-                               <div className="py-1">
-                                   {tags.map(tag => (
-                                       <a key={tag.name} href="#" onClick={(e) => { e.preventDefault(); handleFilterToggle(tag.name); }} className={`flex items-center justify-between px-4 py-2 text-sm ${activeFilters.includes(tag.name) ? 'bg-blue-50 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300' : 'text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-zinc-700'}`}>
-                                           {tag.name}
-                                           {activeFilters.includes(tag.name) && <Icon name="check" className="text-blue-600 text-base" />}
-                                       </a>
-                                   ))}
-                                   {tags.length > 0 && <div className="border-t border-gray-200 dark:border-zinc-700 my-1"></div>}
-                                   <a href="#" onClick={(e) => { e.preventDefault(); setActiveFilters([]); }} className="block px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-zinc-700">Limpiar Filtros</a>
-                               </div>
-                           </div>
-                        </div>
-                        <div className="flex items-center p-1 bg-gray-200 dark:bg-zinc-700 rounded-lg">
-                            <button onClick={() => setViewMode('list')} className={`p-1 rounded-md ${viewMode === 'list' ? 'bg-white dark:bg-zinc-900 shadow' : ''}`}><Icon name="view_list" className="text-gray-600 dark:text-gray-300" /></button>
-                            <button onClick={() => setViewMode('grid')} className={`p-1 rounded-md ${viewMode === 'grid' ? 'bg-white dark:bg-zinc-900 shadow' : ''}`}><Icon name="grid_view" className="text-gray-600 dark:text-gray-300" /></button>
-                        </div>
-                    </div>
-                     {activeFilters.length > 0 && <div className="mt-2 flex flex-wrap gap-2">{activeFilters.map(filter => <span key={filter} className="inline-flex items-center px-2 py-1 bg-blue-100 text-blue-800 text-xs font-medium rounded-full dark:bg-blue-900 dark:text-blue-300">{filter}<button onClick={() => handleFilterToggle(filter)} className="ml-1.5"><Icon name="close" className="text-xs"/></button></span>)}</div>}
-                </div>
-                
-                <div className={listContainerClass}>
-                    {filteredCredentials.length > 0 ? filteredCredentials.map(cred => (
-                        <CredentialItem key={cred.id} credential={cred} onEdit={() => handleEditCredential(cred)} onDelete={() => handleDeleteCredentialConfirmed(cred.id)} masterKey={masterKey} />
-                    )) : <p className="text-center text-gray-500 py-8">No se encontraron credenciales. ¡Crea la primera!</p>}
-                </div>
-
-                <div className="fixed bottom-12 right-6 z-40">
-                    <button onClick={() => { setEditingCredential(null); setIsCredentialModalOpen(true); }} className="w-14 h-14 bg-blue-600 text-white rounded-full shadow-lg flex items-center justify-center hover:bg-blue-700 transition-transform hover:scale-105">
-                        <Icon name="add" className="text-3xl" />
-                    </button>
-                </div>
-            </div>
-        );
-    };
-
-    // --- RENDER ROOT ---
-    const root = ReactDOM.createRoot(document.getElementById('root'));
-    root.render(
-      <React.StrictMode>
-        <NotifierProvider>
-          <App />
-        </NotifierProvider>
-      </React.StrictMode>
-    );
-
-  </script>
+// --- START ---
+start();
+</script>
 </body>
 </html>
