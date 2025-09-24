@@ -36,12 +36,21 @@ function showStatus(message, type = 'info') {
     console.log(`[STATUS] ${type}: ${message}`);
     if (DOMElements && DOMElements.statusMessage) {
         DOMElements.statusMessage.innerHTML = `<strong>Estado:</strong> ${message}`;
-        DOMElements.statusMessage.className = 'p-3 rounded-md text-sm my-4 ';
+        
+        const baseClasses = ['p-3', 'rounded-md', 'text-sm', 'my-4'];
+        let typeClasses = [];
+
         switch (type) {
-            case 'ok': DOMElements.statusMessage.classList.add('bg-green-100', 'text-green-800'); break;
-            case 'error': DOMElements.statusMessage.classList.add('bg-red-100', 'text-red-800'); break;
-            default: DOMElements.statusMessage.classList.add('text-slate-500');
+            case 'ok':
+                typeClasses = ['bg-green-100', 'text-green-800', 'dark:bg-green-900/50', 'dark:text-green-300'];
+                break;
+            case 'error':
+                typeClasses = ['bg-red-100', 'text-red-800', 'dark:bg-red-900/50', 'dark:text-red-300'];
+                break;
+            default:
+                typeClasses = ['text-slate-500', 'dark:text-slate-400'];
         }
+        DOMElements.statusMessage.className = [...baseClasses, ...typeClasses].join(' ');
     }
 }
 
@@ -157,6 +166,7 @@ function renderDbList() {
 }
 
 function getDecryptedAndFilteredKeys() {
+    if (!dbData || !dbData.keys) return [];
     const filter = DOMElements.searchInput.value.toLowerCase();
     return dbData.keys.map(k => {
         try {
@@ -165,7 +175,10 @@ function getDecryptedAndFilteredKeys() {
                 d_user: CryptoService.decrypt(k.user, masterKey),
                 d_pass: CryptoService.decrypt(k.pass, masterKey),
             };
-        } catch (e) { return null; }
+        } catch (e) { 
+            console.error(`Failed to decrypt key ID ${k.id}`, e);
+            return null;
+        }
     }).filter(Boolean).filter(k => {
         if (!filter) return true;
         const searchCorpus = [k.name, k.d_user, k.note, ...(k.tags || [])].join(' ').toLowerCase();
@@ -188,35 +201,35 @@ function renderKeys() {
     const decryptedAndFilteredKeys = getDecryptedAndFilteredKeys();
 
     DOMElements.keyCount.textContent = decryptedAndFilteredKeys.length;
-    DOMElements.emptyDbMessage.classList.toggle('hidden', dbData.keys.length > 0 || decryptedAndFilteredKeys.length > 0);
-    DOMElements.noResultsMessage.classList.toggle('hidden', decryptedAndFilteredKeys.length > 0 || dbData.keys.length === 0);
+    DOMElements.emptyDbMessage.classList.toggle('hidden', dbData.keys.length > 0);
+    DOMElements.noResultsMessage.classList.toggle('hidden', decryptedAndFilteredKeys.length > 0 || dbData.keys.length === 0 || DOMElements.searchInput.value === '');
 
     decryptedAndFilteredKeys.forEach(dKey => {
-        const item = createKeyListItem(dKey); // Defaulting to list view
+        const item = createKeyListItem(dKey);
         DOMElements.keyList.appendChild(item);
     });
 }
 
 function createKeyListItem(dKey) {
     const item = document.createElement('div');
-    item.className = 'key-item bg-white rounded-lg border border-slate-200 shadow-sm overflow-hidden';
+    item.className = 'key-item bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden';
     
-    const tagsHtml = (dKey.tags || []).map(tag => `<span class="text-xs bg-sky-100 text-sky-800 px-2 py-1 rounded-full">${escapeHtml(tag)}</span>`).join('');
+    const tagsHtml = (dKey.tags || []).map(tag => `<span class="text-xs bg-sky-100 text-sky-800 px-2 py-1 rounded-full dark:bg-sky-900/70 dark:text-sky-300">${escapeHtml(tag)}</span>`).join('');
 
     item.innerHTML = `
-        <button class="key-item-header w-full flex justify-between items-center text-left p-3 hover:bg-slate-50 transition-colors">
-            <span class="font-bold text-slate-800 break-all">${escapeHtml(dKey.name)}</span>
+        <button class="key-item-header w-full flex justify-between items-center text-left p-3 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors">
+            <span class="font-bold text-slate-800 dark:text-slate-100 break-all">${escapeHtml(dKey.name)}</span>
             ${ICONS.chevronDown}
         </button>
         <div class="key-item-body">
-            <div class="p-3 border-t border-slate-100 space-y-2 text-sm">
+            <div class="p-3 border-t border-slate-100 dark:border-slate-700 space-y-2 text-sm">
                 ${createRevealingFieldHTML('Usuario', dKey.d_user)}
                 ${createRevealingFieldHTML('Contraseña', dKey.d_pass, true)}
-                ${dKey.note ? `<div class="pt-2 text-slate-600"><strong class="font-medium text-slate-800">Nota:</strong><p class="whitespace-pre-wrap break-words p-2 bg-slate-50 rounded mt-1">${escapeHtml(dKey.note)}</p></div>` : ''}
-                ${tagsHtml ? `<div class="pt-2 border-t border-slate-100 flex flex-wrap gap-2">${tagsHtml}</div>` : ''}
-                <div class="flex gap-2 pt-2 border-t border-slate-100">
-                    <button class="edit-btn text-sm flex items-center gap-1.5 text-blue-600 hover:underline">${ICONS.edit} Editar</button>
-                    <button class="delete-btn text-sm flex items-center gap-1.5 text-red-600 hover:underline">${ICONS.delete} Eliminar</button>
+                ${dKey.note ? `<div class="pt-2 text-slate-600 dark:text-slate-300"><strong class="font-medium text-slate-800 dark:text-slate-200">Nota:</strong><p class="whitespace-pre-wrap break-words p-2 bg-slate-50 dark:bg-slate-700/50 rounded mt-1">${escapeHtml(dKey.note)}</p></div>` : ''}
+                ${tagsHtml ? `<div class="pt-2 border-t border-slate-100 dark:border-slate-700 flex flex-wrap gap-2">${tagsHtml}</div>` : ''}
+                <div class="flex gap-2 pt-2 border-t border-slate-100 dark:border-slate-700">
+                    <button class="edit-btn text-sm flex items-center gap-1.5 text-blue-600 dark:text-blue-400 hover:underline">${ICONS.edit} Editar</button>
+                    <button class="delete-btn text-sm flex items-center gap-1.5 text-red-600 dark:text-red-400 hover:underline">${ICONS.delete} Eliminar</button>
                 </div>
             </div>
         </div>
@@ -233,14 +246,14 @@ function createRevealingFieldHTML(label, value, isMono = false) {
     if (!value) return '';
     const maskedValue = '••••••••';
     return `
-        <div class="flex items-center justify-between gap-2 p-2 bg-slate-50 rounded">
+        <div class="flex items-center justify-between gap-2 p-2 bg-slate-50 dark:bg-slate-700/50 rounded">
             <div class="flex-grow min-w-0">
-                <span class="font-medium text-slate-800">${label}:</span>
-                <span class="value-span ${isMono ? 'font-mono' : ''} text-slate-700 break-all ml-1" data-value="${escapeHtml(value)}">${maskedValue}</span>
+                <span class="font-medium text-slate-800 dark:text-slate-200">${label}:</span>
+                <span class="value-span ${isMono ? 'font-mono' : ''} text-slate-700 dark:text-slate-300 break-all ml-1" data-value="${escapeHtml(value)}">${maskedValue}</span>
             </div>
             <div class="flex-shrink-0 flex items-center gap-2">
-                <button class="reveal-btn p-1 text-slate-500 hover:text-slate-800 transition-colors" title="Mostrar/Ocultar">${ICONS.eye}</button>
-                <button class="copy-btn p-1 text-slate-500 hover:text-slate-800 transition-colors" title="Copiar ${label}">${ICONS.copy}</button>
+                <button class="reveal-btn p-1 text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 transition-colors" title="Mostrar/Ocultar">${ICONS.eye}</button>
+                <button class="copy-btn p-1 text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 transition-colors" title="Copiar ${label}">${ICONS.copy}</button>
             </div>
         </div>`;
 }
@@ -331,10 +344,23 @@ async function handleOpenDb(event) {
     try {
         const encryptedContent = await GDriveService.getFileContent(id);
         const decryptedJson = CryptoService.decrypt(encryptedContent, mKey);
-        if (!decryptedJson) throw new Error("El descifrado falló. La clave maestra podría ser incorrecta.");
 
-        dbData = JSON.parse(decryptedJson);
-        if (!Array.isArray(dbData.keys)) dbData.keys = [];
+        if (!decryptedJson) {
+            throw new Error("El descifrado falló. La clave maestra podría ser incorrecta o el archivo está corrupto.");
+        }
+        
+        let parsedData;
+        try {
+            parsedData = JSON.parse(decryptedJson);
+        } catch (e) {
+            throw new Error("El archivo del llavero parece estar corrupto y no se puede leer.");
+        }
+
+        dbData = parsedData;
+        if (!dbData || !Array.isArray(dbData.keys)) {
+            // Handle case where file is valid JSON but wrong format by treating it as empty
+            dbData = { keys: [] };
+        }
         
         masterKey = mKey;
         dbFileId = id;
@@ -348,7 +374,7 @@ async function handleOpenDb(event) {
         renderKeys();
         showKeyListView();
     } catch (e) {
-        showStatus(`No se pudo abrir el llavero. Revisa la clave maestra.`, 'error');
+        showStatus(e.message, 'error');
     } finally {
         setLoading(false, DOMElements.modalUnlockBtn);
     }
