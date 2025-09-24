@@ -1,467 +1,480 @@
 
-// --- CONFIGURATION ---
+/* -------- CONFIGURACIÓN -------- */
+// REEMPLAZA ESTO con tu Client ID de Google Cloud
 const CLIENT_ID = '576080826935-2mtnj52ndc8plnsjodjevt3e2gsh4m3a.apps.googleusercontent.com';
 const SCOPES = 'https://www.googleapis.com/auth/drive.file';
-const SESSION_TIMEOUT = 5 * 60 * 1000; // 5 minutes
+const LAST_DB_KEY = 'llavero_last_db_info'; // Key para localStorage
+/* -------------------------------------- */
 
-// --- GLOBAL STATE ---
+// Estado global de la aplicación
 let accessToken = null;
 let tokenClient = null;
-let dbData = null; // { keys: [] }
+let dbData = null; // Objeto con { keys: [...] }
 let dbFileId = null;
+let dbFileName = '';
 let masterKey = '';
 let sessionTimer = null;
-let isLoading = false;
-let currentDbName = '';
-let activeDbFiles = [];
 
-// --- DOM ELEMENTS ---
-const DOMElements = {
-    loginView: document.getElementById('login-view'),
-    appView: document.getElementById('app-view'),
-    statusMessage: document.getElementById('status-message'),
-    signInBtn: document.getElementById('signin-btn'),
-    signOutBtn: document.getElementById('signout-btn'),
-    sessionTimerInfo: document.getElementById('session-timer-info'),
-    dbList: document.getElementById('db-list'),
-    keyList: document.getElementById('key-list'),
-    createDbForm: document.getElementById('create-db-form'),
-    newDbNameInput: document.getElementById('new-db-name-input'),
-    createMasterKeyInput: document.getElementById('create-master-key-input'),
-    createDbBtn: document.getElementById('create-db-btn'),
-    keyFormContainer: document.getElementById('key-form-container'),
-    keyForm: document.getElementById('key-form'),
-    keyFormTitle: document.getElementById('key-form-title'),
-    keyIdInput: document.getElementById('key-id-input'),
-    keyNameInput: document.getElementById('key-name-input'),
-    keyUserInput: document.getElementById('key-user-input'),
-    keyPassInput: document.getElementById('key-pass-input'),
-    keyNoteInput: document.getElementById('key-note-input'),
-    keyTagsInput: document.getElementById('key-tags-input'),
-    cancelEditBtn: document.getElementById('cancel-edit-btn'),
-    searchInput: document.getElementById('search-input'),
-    activeDbName: document.getElementById('active-db-name'),
-    keyCount: document.getElementById('key-count'),
-    noDbOpenMessage: document.getElementById('no-db-open-message'),
-    keysPanel: document.getElementById('keys-panel'),
-    emptyDbMessage: document.getElementById('empty-db-message'),
-    noResultsMessage: document.getElementById('no-results-message'),
-    openDbModal: document.getElementById('open-db-modal'),
-    openDbForm: document.getElementById('open-db-form'),
-    modalDbName: document.getElementById('modal-db-name'),
-    modalMasterKeyInput: document.getElementById('modal-master-key-input'),
-    modalCancelBtn: document.getElementById('modal-cancel-btn'),
-    modalUnlockBtn: document.getElementById('modal-unlock-btn'),
+// Referencias a elementos del DOM
+const el = {
+    statusMsg: document.getElementById('statusMsg'),
+    loginBlock: document.getElementById('loginBlock'),
+    mainPanel: document.getElementById('mainPanel'),
+    btnSignIn: document.getElementById('btnSignIn'),
+    btnSignInText: document.getElementById('btnSignInText'),
+    btnSignInSpinner: document.getElementById('btnSignInSpinner'),
+    logoutBtn: document.getElementById('logoutBtn'),
+    dbList: document.getElementById('dbList'),
+    newDbName: document.getElementById('newDbName'),
+    createDbBtn: document.getElementById('createDbBtn'),
+    searchKey: document.getElementById('searchKey'),
+    keyList: document.getElementById('keyList'),
+    keyFormContainer: document.getElementById('keyFormContainer'),
+    formTitle: document.getElementById('formTitle'),
+    keyId: document.getElementById('keyId'),
+    keyName: document.getElementById('keyName'),
+    keyUser: document.getElementById('keyUser'),
+    keyPass: document.getElementById('keyPass'),
+    keyNote: document.getElementById('keyNote'),
+    keyTags: document.getElementById('keyTags'),
+    saveKeyBtn: document.getElementById('saveKeyBtn'),
+    cancelEditBtn: document.getElementById('cancelEditBtn'),
+    masterKeyModal: document.getElementById('masterKeyModal'),
+    dbNameToUnlock: document.getElementById('dbNameToUnlock'),
+    masterKeyInput: document.getElementById('masterKeyInput'),
+    unlockDbBtn: document.getElementById('unlockDbBtn'),
+    cancelUnlockBtn: document.getElementById('cancelUnlockBtn'),
 };
 
-let openingFile = null;
-
-// --- UTILITY & HELPER FUNCTIONS ---
-
-function showStatus(message, type = 'info') {
-    console.log(`[STATUS] ${type}: ${message}`);
-    DOMElements.statusMessage.innerHTML = `<strong>Status:</strong> ${message}`;
-    DOMElements.statusMessage.className = 'p-3 rounded-md text-sm my-4 ';
-    switch (type) {
-        case 'ok': DOMElements.statusMessage.classList.add('bg-green-100', 'text-green-800'); break;
-        case 'error': DOMElements.statusMessage.classList.add('bg-red-100', 'text-red-800'); break;
-        default: DOMElements.statusMessage.classList.add('text-slate-500');
-    }
-}
-
-function setLoading(loading, element) {
-    isLoading = loading;
-    if (element) {
-        element.disabled = loading;
-        if (loading) {
-            element.dataset.originalText = element.innerHTML;
-            element.innerHTML = '<div class="spinner mx-auto"></div>';
-        } else {
-            element.innerHTML = element.dataset.originalText || '';
-        }
-    }
-}
-
-function escapeHtml(str) {
-    if (str === null || str === undefined) return '';
-    return String(str).replace(/[&<>"']/g, match => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[match]);
-}
-
-// --- SERVICES (Crypto, GDrive) ---
-const CryptoService = {
-    encrypt: (text, key) => CryptoJS.AES.encrypt(text, key).toString(),
-    decrypt: (ciphertext, key) => CryptoJS.AES.decrypt(ciphertext, key).toString(CryptoJS.enc.Utf8),
-};
-
-const GDriveService = {
-    async authorizedFetch(url, options = {}) {
-        const headers = new Headers(options.headers || {});
-        headers.set('Authorization', `Bearer ${accessToken}`);
-        const response = await fetch(url, { ...options, headers });
-        if (!response.ok) {
-            const error = await response.json();
-            throw new Error(error.error?.message || 'A Google Drive API error occurred.');
-        }
-        return response;
-    },
-    async listDbFiles() {
-        const q = "mimeType='application/octet-stream' and trashed=false and name ends with '.db'";
-        const url = `https://www.googleapis.com/drive/v3/files?pageSize=100&fields=files(id,name,modifiedTime)&q=${encodeURIComponent(q)}&orderBy=modifiedTime desc`;
-        const res = await this.authorizedFetch(url);
-        return res.json();
-    },
-    async getFileContent(fileId) {
-        const url = `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`;
-        const res = await this.authorizedFetch(url);
-        return res.text();
-    },
-    async createFile(name, content) {
-        const metadata = { name, mimeType: 'application/octet-stream' };
-        const form = new FormData();
-        form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
-        form.append('file', new Blob([content], { type: 'application/octet-stream' }));
-        const url = `https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id`;
-        const res = await this.authorizedFetch(url, { method: 'POST', body: form });
-        return res.json();
-    },
-    async updateFileContent(fileId, content) {
-        const url = `https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media`;
-        return this.authorizedFetch(url, { method: 'PATCH', body: new Blob([content], { type: 'application/octet-stream' }) });
-    },
-};
-
-// --- RENDER FUNCTIONS ---
-
-function renderDbList() {
-    DOMElements.dbList.innerHTML = '';
-    if (activeDbFiles.length === 0) {
-        DOMElements.dbList.innerHTML = '<p class="text-sm text-slate-500 text-center">No .db files found.</p>';
+/**
+ * Se ejecuta cuando el script de Google GSI ha cargado.
+ * Esta es la forma segura de inicializar el cliente.
+ */
+function onGsiLoaded() {
+    if (!CLIENT_ID || CLIENT_ID.includes('YOUR_')) {
+        showStatus('Error: Debes configurar tu CLIENT_ID en script.js', 'error');
         return;
     }
-    activeDbFiles.forEach(file => {
-        const button = document.createElement('button');
-        button.className = `w-full text-left p-3 rounded-md border transition-colors text-sm ${dbFileId === file.id ? 'bg-blue-100 border-blue-400 font-semibold' : 'bg-slate-50 hover:bg-slate-100 border-slate-200'}`;
-        button.innerHTML = `<span class="block font-medium text-slate-700">${escapeHtml(file.name)}</span><span class="block text-xs text-slate-500">Modified: ${new Date(file.modifiedTime).toLocaleString()}</span>`;
-        button.onclick = () => {
-            openingFile = file;
-            DOMElements.modalDbName.textContent = file.name;
-            DOMElements.openDbModal.classList.remove('hidden');
-            DOMElements.modalMasterKeyInput.focus();
-        };
-        DOMElements.dbList.appendChild(button);
+
+    tokenClient = google.accounts.oauth2.initTokenClient({
+        client_id: CLIENT_ID,
+        scope: SCOPES,
+        callback: handleGoogleAuthResponse,
     });
+
+    el.btnSignIn.disabled = false;
+    el.btnSignInText.textContent = 'Iniciar Sesión con Google';
 }
 
-function renderKeys() {
-    DOMElements.keyList.innerHTML = '';
+/**
+ * Muestra un mensaje de estado al usuario.
+ * @param {string} msg El mensaje a mostrar.
+ * @param {'info'|'ok'|'error'} kind El tipo de mensaje.
+ */
+function showStatus(msg, kind = 'info') {
+    console.log(`[STATUS | ${kind}]`, msg);
+    const classes = {
+        info: 'bg-blue-100 text-blue-800',
+        ok: 'bg-green-100 text-green-800',
+        error: 'bg-red-100 text-red-800',
+    };
+    el.statusMsg.textContent = msg;
+    el.statusMsg.className = `p-3 my-4 rounded-lg text-center transition-opacity duration-300 opacity-100 ${classes[kind]}`;
+    setTimeout(() => {
+        el.statusMsg.classList.remove('opacity-100');
+        el.statusMsg.classList.add('opacity-0');
+    }, 5000);
+}
+
+/**
+ * Maneja la respuesta del flujo de autenticación de Google.
+ * @param {google.accounts.oauth2.TokenResponse} resp La respuesta del token.
+ */
+function handleGoogleAuthResponse(resp) {
+    el.btnSignInSpinner.classList.add('hidden');
+    el.btnSignInText.classList.remove('hidden');
+
+    if (resp.error) {
+        showStatus('Error de autenticación: ' + resp.error, 'error');
+        return;
+    }
+    accessToken = resp.access_token;
+    showStatus('Autenticado correctamente.', 'ok');
+    onSignedIn();
+}
+
+/**
+ * Se ejecuta después de un inicio de sesión exitoso.
+ */
+async function onSignedIn() {
+    el.loginBlock.classList.add('hidden');
+    el.mainPanel.classList.remove('hidden');
+    resetSessionTimer();
+
+    await loadDbList();
+    
+    // Intenta abrir la última base de datos usada
+    const lastDbInfo = JSON.parse(localStorage.getItem(LAST_DB_KEY));
+    if (lastDbInfo) {
+        showStatus(`Intentando reabrir "${lastDbInfo.name}"...`);
+        openDbPrompt(lastDbInfo.id, lastDbInfo.name);
+    }
+}
+
+/**
+ * Cierra la sesión del usuario y recarga la página.
+ */
+function signOut() {
+    if (accessToken) {
+        google.accounts.oauth2.revoke(accessToken, () => {
+            console.log('Token revocado.');
+        });
+    }
+    accessToken = null;
+    localStorage.removeItem(LAST_DB_KEY);
+    location.reload();
+}
+
+
+// --- API de Google Drive ---
+
+async function apiCall(url, options = {}) {
+    const defaultHeaders = {
+        Authorization: 'Bearer ' + accessToken
+    };
+    options.headers = { ...defaultHeaders, ...options.headers };
+    const res = await fetch(url, options);
+    if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.error.message || JSON.stringify(error));
+    }
+    return res.json();
+}
+
+async function driveListDbFiles() {
+    const q = "mimeType='application/octet-stream' and trashed=false and name ends with '.db'";
+    const url = `https://www.googleapis.com/drive/v3/files?pageSize=50&fields=files(id,name,modifiedTime)&q=${encodeURIComponent(q)}&orderBy=modifiedTime desc`;
+    const data = await apiCall(url);
+    return data.files || [];
+}
+
+async function driveGetFileContent(fileId) {
+    const url = `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`;
+    const res = await fetch(url, { headers: { Authorization: 'Bearer ' + accessToken } });
+    if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.error.message || JSON.stringify(error));
+    }
+    return res.text();
+}
+
+async function driveCreateFile(name, blob) {
+    const metadata = { name, mimeType: 'application/octet-stream' };
+    const form = new FormData();
+    form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
+    form.append('file', blob);
+    const url = 'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name';
+    return apiCall(url, { method: 'POST', body: form });
+}
+
+async function driveUpdateFileContent(fileId, blob) {
+    const url = `https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media`;
+    return apiCall(url, { method: 'PATCH', headers: { 'Content-Type': 'application/octet-stream' }, body: blob });
+}
+
+
+// --- Lógica de la Base de Datos ---
+
+async function loadDbList() {
+    try {
+        const files = await driveListDbFiles();
+        el.dbList.innerHTML = '';
+        if (files.length === 0) {
+            el.dbList.innerHTML = '<p class="text-slate-500 text-sm text-center">No hay bases de datos. ¡Crea una!</p>';
+        }
+        files.forEach(f => {
+            const btn = document.createElement('button');
+            btn.className = 'w-full text-left p-2 rounded-md hover:bg-slate-100 transition truncate';
+            btn.textContent = f.name;
+            btn.title = `Última modif.: ${new Date(f.modifiedTime).toLocaleString()}`;
+            btn.onclick = () => openDbPrompt(f.id, f.name);
+            el.dbList.appendChild(btn);
+        });
+    } catch (e) {
+        showStatus('Error listando archivos: ' + e.message, 'error');
+    }
+}
+
+async function createDb() {
+    const nameBase = el.newDbName.value.trim();
+    if (!nameBase) {
+        return showStatus('El nombre de la base de datos es obligatorio.', 'error');
+    }
+    const key = prompt(`Crea una clave maestra para "${nameBase}.db".\n¡Guárdala en un lugar seguro!`);
+    if (!key) return showStatus('La creación fue cancelada.', 'info');
+
+    masterKey = key;
+    dbData = { keys: [] }; // Estructura inicial
+    const fileName = nameBase.endsWith('.db') ? nameBase : nameBase + '.db';
+    
+    try {
+        const encrypted = CryptoJS.AES.encrypt(JSON.stringify(dbData), masterKey).toString();
+        const blob = new Blob([encrypted], { type: 'application/octet-stream' });
+        const createdFile = await driveCreateFile(fileName, blob);
+
+        dbFileId = createdFile.id;
+        dbFileName = createdFile.name;
+        localStorage.setItem(LAST_DB_KEY, JSON.stringify({ id: dbFileId, name: dbFileName }));
+
+        showStatus(`Base de datos "${dbFileName}" creada y abierta.`, 'ok');
+        el.newDbName.value = '';
+        await loadDbList();
+        el.searchKey.disabled = false;
+        el.keyFormContainer.classList.remove('hidden');
+        renderKeys();
+    } catch (e) {
+        showStatus('Error creando archivo: ' + e.message, 'error');
+    }
+}
+
+function openDbPrompt(fileId, fileName) {
+    el.dbNameToUnlock.textContent = fileName;
+    el.masterKeyModal.classList.remove('hidden');
+    el.masterKeyInput.focus();
+
+    const unlockHandler = async () => {
+        const key = el.masterKeyInput.value;
+        if (!key) {
+            showStatus('Debes ingresar una clave maestra.', 'error');
+            return;
+        }
+        masterKey = key;
+        el.masterKeyInput.value = '';
+        el.masterKeyModal.classList.add('hidden');
+        
+        try {
+            const encryptedContent = await driveGetFileContent(fileId);
+            const decrypted = CryptoJS.AES.decrypt(encryptedContent, masterKey).toString(CryptoJS.enc.Utf8);
+            if (!decrypted) throw new Error('Clave incorrecta o datos corruptos.');
+
+            dbData = JSON.parse(decrypted);
+            dbFileId = fileId;
+            dbFileName = fileName;
+            localStorage.setItem(LAST_DB_KEY, JSON.stringify({ id: fileId, name: fileName }));
+
+            showStatus(`Base de datos "${fileName}" desbloqueada.`, 'ok');
+            el.searchKey.disabled = false;
+            el.keyFormContainer.classList.remove('hidden');
+            renderKeys();
+            
+        } catch (e) {
+            showStatus('No se pudo abrir la base de datos. Clave incorrecta o archivo dañado.', 'error');
+            dbData = null; // Limpiar estado si falla
+        } finally {
+            // Limpiar listeners para evitar duplicados
+            el.unlockDbBtn.removeEventListener('click', unlockHandler);
+            el.masterKeyInput.removeEventListener('keydown', keydownHandler);
+        }
+    };
+
+    const keydownHandler = (event) => {
+        if (event.key === 'Enter') unlockHandler();
+    };
+
+    // Agregar listeners, asegurándose de que sean únicos
+    el.unlockDbBtn.onclick = unlockHandler;
+    el.masterKeyInput.addEventListener('keydown', keydownHandler);
+}
+
+// --- Lógica de Llaves (CRUD) ---
+
+function renderKeys(filter = '') {
     if (!dbData) {
-        DOMElements.keysPanel.classList.add('hidden');
-        DOMElements.noDbOpenMessage.classList.remove('hidden');
-        DOMElements.keyFormContainer.classList.add('hidden');
+        el.keyList.innerHTML = '<p class="text-center text-slate-500 p-4">Abre o crea una base de datos para ver tus llaves.</p>';
         return;
     }
 
-    DOMElements.keysPanel.classList.remove('hidden');
-    DOMElements.noDbOpenMessage.classList.add('hidden');
-    DOMElements.keyFormContainer.classList.remove('hidden');
-    DOMElements.activeDbName.textContent = currentDbName;
-
-    const filter = DOMElements.searchInput.value.toLowerCase();
-    const decryptedAndFilteredKeys = dbData.keys.map(k => {
-        try {
-            return {
-                ...k,
-                d_user: CryptoService.decrypt(k.user, masterKey),
-                d_pass: CryptoService.decrypt(k.pass, masterKey),
-            };
-        } catch (e) { return null; }
-    }).filter(Boolean).filter(k => {
+    const lowerFilter = filter.toLowerCase();
+    const filteredKeys = dbData.keys.filter(k => {
         if (!filter) return true;
-        const searchCorpus = [k.name, k.d_user, k.note, ...(k.tags || [])].join(' ').toLowerCase();
-        return searchCorpus.includes(filter);
-    }).sort((a, b) => a.name.localeCompare(b.name));
+        const tags = (k.tags || []).join(' ').toLowerCase();
+        return k.name.toLowerCase().includes(lowerFilter) ||
+               (k.note && k.note.toLowerCase().includes(lowerFilter)) ||
+               tags.includes(lowerFilter);
+    });
 
-    DOMElements.keyCount.textContent = decryptedAndFilteredKeys.length;
-    DOMElements.emptyDbMessage.classList.toggle('hidden', dbData.keys.length > 0);
-    DOMElements.noResultsMessage.classList.toggle('hidden', !filter || decryptedAndFilteredKeys.length > 0);
+    if (filteredKeys.length === 0) {
+        el.keyList.innerHTML = filter
+            ? '<p class="text-center text-slate-500 p-4">No se encontraron llaves con ese filtro.</p>'
+            : '<p class="text-center text-slate-500 p-4">No hay llaves. ¡Agrega una nueva!</p>';
+        return;
+    }
 
-    decryptedAndFilteredKeys.forEach(dKey => {
-        const item = document.createElement('div');
-        item.className = 'bg-white p-4 rounded-lg border border-slate-200 shadow-sm space-y-3';
-        const tagsHtml = (dKey.tags || []).map(tag => `<span class="text-xs bg-sky-100 text-sky-800 px-2 py-1 rounded-full">${escapeHtml(tag)}</span>`).join('');
+    el.keyList.innerHTML = '';
+    filteredKeys.forEach((key, originalIndex) => {
+        let user = '(Error al descifrar)';
+        let pass = '(Error al descifrar)';
+        try {
+            user = CryptoJS.AES.decrypt(key.user, masterKey).toString(CryptoJS.enc.Utf8) || '<i>vacío</i>';
+            pass = CryptoJS.AES.decrypt(key.pass, masterKey).toString(CryptoJS.enc.Utf8) || '<i>vacío</i>';
+        } catch (e) { /* Mantener el mensaje de error */ }
 
-        item.innerHTML = `
+        const div = document.createElement('div');
+        div.className = 'bg-slate-50 p-3 rounded-lg border';
+        const tagsHtml = (key.tags || []).map(t => `<span class="bg-blue-100 text-blue-800 text-xs font-semibold mr-2 px-2.5 py-0.5 rounded-full">${escapeHtml(t)}</span>`).join('');
+
+        div.innerHTML = `
             <div class="flex justify-between items-start">
-                <h3 class="font-bold text-lg text-slate-800 break-all">${escapeHtml(dKey.name)}</h3>
-                <div class="flex gap-2 flex-shrink-0 ml-2">
-                    <button class="edit-btn p-1 text-slate-500 hover:text-blue-600" title="Edit"><svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg></button>
-                    <button class="delete-btn p-1 text-slate-500 hover:text-red-600" title="Delete"><svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg></button>
+                <h4 class="font-bold text-lg text-slate-800">${escapeHtml(key.name)}</h4>
+                <div class="flex gap-2">
+                    <button class="edit-btn" title="Editar">✏️</button>
+                    <button class="delete-btn" title="Borrar">🗑️</button>
                 </div>
             </div>
-            <div class="space-y-2 text-sm">
-                ${createFieldHTML('User', dKey.d_user)}
-                ${createFieldHTML('Password', dKey.d_pass, true)}
-                ${dKey.note ? `<div class="pt-2 text-slate-600"><strong class="font-medium text-slate-800">Note:</strong><p class="whitespace-pre-wrap break-words p-2 bg-slate-50 rounded mt-1">${escapeHtml(dKey.note)}</p></div>` : ''}
+            <div class="text-sm text-slate-600 mt-2 space-y-1">
+                <p><strong>Usuario:</strong> ${escapeHtml(user)} <button class="copy-btn" data-value="${escapeHtml(user)}" title="Copiar usuario">📋</button></p>
+                <p><strong>Clave:</strong> ••••••••• <button class="copy-btn" data-value="${escapeHtml(pass)}" title="Copiar clave">📋</button></p>
+                ${key.note ? `<p class="pt-1"><strong>Nota:</strong> ${escapeHtml(key.note)}</p>` : ''}
             </div>
-            ${tagsHtml ? `<div class="pt-2 border-t border-slate-100 flex flex-wrap gap-2">${tagsHtml}</div>` : ''}
+            ${tagsHtml ? `<div class="mt-3">${tagsHtml}</div>` : ''}
         `;
 
-        item.querySelector('.edit-btn').onclick = () => populateEditForm(dKey.id);
-        item.querySelector('.delete-btn').onclick = () => handleDeleteKey(dKey.id);
-        item.querySelectorAll('.copy-btn').forEach(btn => {
-            btn.onclick = () => {
-                navigator.clipboard.writeText(btn.dataset.value);
-                const originalText = btn.innerHTML;
-                btn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" /></svg>`;
-                setTimeout(() => btn.innerHTML = originalText, 1500);
-            };
+        div.querySelector('.edit-btn').onclick = () => populateEditForm(originalIndex);
+        div.querySelector('.delete-btn').onclick = () => deleteKey(originalIndex);
+        
+        div.querySelectorAll('.copy-btn').forEach(btn => {
+            btn.onclick = () => copyToClipboard(btn.dataset.value, btn);
         });
-        DOMElements.keyList.appendChild(item);
+        
+        el.keyList.appendChild(div);
     });
 }
 
-function createFieldHTML(label, value, isMono = false) {
-    if (!value) return '';
-    return `
-        <div class="flex items-center justify-between gap-2 p-2 bg-slate-50 rounded">
-            <div class="flex-grow">
-                <span class="font-medium text-slate-800">${label}:</span>
-                <span class="${isMono ? 'font-mono' : ''} text-slate-700 break-all ml-1">${escapeHtml(value)}</span>
-            </div>
-            <button class="copy-btn p-1 text-slate-500 hover:text-blue-600 flex-shrink-0" title="Copy ${label}" data-value="${escapeHtml(value)}">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
-            </button>
-        </div>`;
+function clearForm() {
+    el.keyForm.reset();
+    el.keyId.value = '';
+    el.formTitle.textContent = 'Agregar Nueva Llave';
+    el.saveKeyBtn.textContent = 'Guardar';
 }
 
-// --- CORE LOGIC ---
-
-async function loadDbListAndRender() {
-    showStatus('Loading database list...');
+function populateEditForm(index) {
+    const key = dbData.keys[index];
     try {
-        const { files } = await GDriveService.listDbFiles();
-        activeDbFiles = files || [];
-        renderDbList();
-        showStatus(`Found ${activeDbFiles.length} database(s).`);
-        return activeDbFiles;
-    } catch (e) {
-        showStatus(`Error listing files: ${e.message}`, 'error');
-        return [];
+        el.keyId.value = index;
+        el.keyName.value = key.name;
+        el.keyUser.value = CryptoJS.AES.decrypt(key.user, masterKey).toString(CryptoJS.enc.Utf8);
+        el.keyPass.value = CryptoJS.AES.decrypt(key.pass, masterKey).toString(CryptoJS.enc.Utf8);
+        el.keyNote.value = key.note || '';
+        el.keyTags.value = (key.tags || []).join(', ');
+        
+        el.formTitle.textContent = 'Editando Llave';
+        el.saveKeyBtn.textContent = 'Actualizar';
+        el.keyFormContainer.scrollIntoView({ behavior: 'smooth' });
+        el.keyName.focus();
+    } catch(e) {
+        showStatus('Error al cargar datos para edición.', 'error');
     }
 }
 
-async function handleCreateDb(event) {
-    event.preventDefault();
-    const name = DOMElements.newDbNameInput.value.trim();
-    const mKey = DOMElements.createMasterKeyInput.value;
-    if (!name || !mKey) return alert('New DB name and master key are required.');
-
-    setLoading(true, DOMElements.createDbBtn);
-    showStatus(`Creating '${name}.db'...`);
-    try {
-        const newDbData = { keys: [] };
-        const encryptedContent = CryptoService.encrypt(JSON.stringify(newDbData), mKey);
-        const created = await GDriveService.createFile(`${name}.db`, encryptedContent);
-        
-        dbData = newDbData;
-        masterKey = mKey;
-        dbFileId = created.id;
-        currentDbName = `${name}.db`;
-        localStorage.setItem('lastOpenedDbId', dbFileId);
-        
-        showStatus(`Database '${currentDbName}' created and opened.`, 'ok');
-        DOMElements.createDbForm.reset();
-        await loadDbListAndRender();
-        renderKeys();
-    } catch (e) {
-        showStatus(`Error creating file: ${e.message}`, 'error');
-    } finally {
-        setLoading(false, DOMElements.createDbBtn);
-    }
-}
-
-async function handleOpenDb(event) {
-    event.preventDefault();
-    if (!openingFile) return;
-    const { id, name } = openingFile;
-    const mKey = DOMElements.modalMasterKeyInput.value;
-    if (!mKey) return alert('Master key is required.');
+async function saveKey() {
+    if (!dbData || !dbFileId) return showStatus('Primero abre o crea una base de datos.', 'error');
     
-    setLoading(true, DOMElements.modalUnlockBtn);
-    showStatus(`Opening '${name}'...`);
-    try {
-        const encryptedContent = await GDriveService.getFileContent(id);
-        const decryptedJson = CryptoService.decrypt(encryptedContent, mKey);
-        if (!decryptedJson) throw new Error("Decryption failed. Master key may be incorrect.");
+    const id = el.keyId.value;
+    const name = el.keyName.value.trim();
+    if (!name) return showStatus('El nombre de la llave es obligatorio.', 'error');
 
-        dbData = JSON.parse(decryptedJson);
-        if (!Array.isArray(dbData.keys)) dbData.keys = [];
-        
-        masterKey = mKey;
-        dbFileId = id;
-        currentDbName = name;
-        localStorage.setItem('lastOpenedDbId', dbFileId);
-        
-        DOMElements.openDbModal.classList.add('hidden');
-        DOMElements.modalMasterKeyInput.value = '';
-        openingFile = null;
-        showStatus(`Successfully opened '${name}'.`, 'ok');
-        renderDbList();
-        renderKeys();
-    } catch (e) {
-        showStatus(`Failed to open DB. Check master key.`, 'error');
-    } finally {
-        setLoading(false, DOMElements.modalUnlockBtn);
+    const keyData = {
+        name: name,
+        user: CryptoJS.AES.encrypt(el.keyUser.value, masterKey).toString(),
+        pass: CryptoJS.AES.encrypt(el.keyPass.value, masterKey).toString(),
+        note: el.keyNote.value.trim(),
+        tags: el.keyTags.value.split(',').map(t => t.trim()).filter(Boolean),
+    };
+
+    if (id !== '') { // Editando
+        dbData.keys[parseInt(id, 10)] = keyData;
+    } else { // Creando
+        dbData.keys.push(keyData);
+    }
+    
+    dbData.keys.sort((a, b) => a.name.localeCompare(b.name));
+
+    await saveDb();
+    clearForm();
+    renderKeys(el.searchKey.value);
+}
+
+function deleteKey(index) {
+    const keyName = dbData.keys[index].name;
+    if (confirm(`¿Estás seguro de que quieres borrar la llave "${keyName}"?`)) {
+        dbData.keys.splice(index, 1);
+        saveDb();
+        renderKeys(el.searchKey.value);
     }
 }
 
 async function saveDb() {
-    if (!dbFileId || !masterKey) return;
-    showStatus('Saving to Google Drive...');
+    if (!dbData || !dbFileId) return;
     try {
-        const encryptedContent = CryptoService.encrypt(JSON.stringify(dbData), masterKey);
-        await GDriveService.updateFileContent(dbFileId, encryptedContent);
-        showStatus('Saved to Drive successfully.', 'ok');
-        await loadDbListAndRender();
+        // Asegurar que _editing flag no se guarde
+        const cleanData = JSON.parse(JSON.stringify(dbData));
+        const encrypted = CryptoJS.AES.encrypt(JSON.stringify(cleanData), masterKey).toString();
+        const blob = new Blob([encrypted], { type: 'application/octet-stream' });
+        await driveUpdateFileContent(dbFileId, blob);
+        showStatus('Guardado en Drive correctamente.', 'ok');
     } catch (e) {
-        showStatus(`Error saving to Drive: ${e.message}`, 'error');
+        showStatus('Error guardando en Drive: ' + e.message, 'error');
     }
 }
 
-function handleSaveKey(event) {
-    event.preventDefault();
-    if (!dbData) return;
-    const name = DOMElements.keyNameInput.value.trim();
-    if (!name) return alert('Key name is required.');
-    
-    const keyData = {
-        name,
-        user: CryptoService.encrypt(DOMElements.keyUserInput.value, masterKey),
-        pass: CryptoService.encrypt(DOMElements.keyPassInput.value, masterKey),
-        note: DOMElements.keyNoteInput.value,
-        tags: DOMElements.keyTagsInput.value.split(',').map(t => t.trim()).filter(Boolean),
-    };
 
-    const existingId = DOMElements.keyIdInput.value;
-    if (existingId) { // Editing
-        const index = dbData.keys.findIndex(k => k.id === existingId);
-        if (index > -1) dbData.keys[index] = { ...dbData.keys[index], ...keyData };
-    } else { // Adding
-        dbData.keys.push({ id: `id_${Date.now()}_${Math.random()}`, ...keyData });
-    }
-    
-    saveDb();
-    resetKeyForm();
-    renderKeys();
-}
-
-function handleDeleteKey(keyId) {
-    if (!dbData || !confirm('Are you sure you want to delete this key?')) return;
-    dbData.keys = dbData.keys.filter(k => k.id !== keyId);
-    saveDb();
-    renderKeys();
-}
-
-function resetKeyForm() {
-    DOMElements.keyForm.reset();
-    DOMElements.keyIdInput.value = '';
-    DOMElements.keyFormTitle.textContent = 'Add New Key';
-    DOMElements.cancelEditBtn.classList.add('hidden');
-}
-
-function populateEditForm(keyId) {
-    const key = dbData.keys.find(k => k.id === keyId);
-    if (!key) return;
-    
-    try {
-        DOMElements.keyIdInput.value = key.id;
-        DOMElements.keyNameInput.value = key.name;
-        DOMElements.keyUserInput.value = CryptoService.decrypt(key.user, masterKey);
-        DOMElements.keyPassInput.value = CryptoService.decrypt(key.pass, masterKey);
-        DOMElements.keyNoteInput.value = key.note || '';
-        DOMElements.keyTagsInput.value = (key.tags || []).join(', ');
-        
-        DOMElements.keyFormTitle.textContent = `Editing '${key.name}'`;
-        DOMElements.cancelEditBtn.classList.remove('hidden');
-        DOMElements.keyFormContainer.scrollIntoView({ behavior: 'smooth' });
-        DOMElements.keyNameInput.focus();
-    } catch (e) {
-        showStatus('Error preparing key for editing.', 'error');
-    }
-}
-
-// --- AUTH & SESSION ---
+// --- Utilidades y Sesión ---
 
 function resetSessionTimer() {
-    if (sessionTimer) clearTimeout(sessionTimer);
-    const expiresAt = new Date(Date.now() + SESSION_TIMEOUT);
-    DOMElements.sessionTimerInfo.textContent = `Session expires at ${expiresAt.toLocaleTimeString()}`;
+    clearTimeout(sessionTimer);
     sessionTimer = setTimeout(() => {
-        alert('Session expired due to inactivity.');
-        window.location.reload();
-    }, SESSION_TIMEOUT);
+        alert('La sesión ha expirado por inactividad.');
+        location.reload();
+    }, 15 * 60 * 1000); // 15 minutos
 }
 
-async function onSignedIn() {
-    DOMElements.loginView.classList.add('hidden');
-    DOMElements.appView.classList.remove('hidden');
-    document.body.addEventListener('click', resetSessionTimer, { passive: true });
-    document.body.addEventListener('input', resetSessionTimer, { passive: true });
-    resetSessionTimer();
-
-    const files = await loadDbListAndRender();
-    const lastDbId = localStorage.getItem('lastOpenedDbId');
-    if (lastDbId) {
-        const lastFile = files.find(f => f.id === lastDbId);
-        if (lastFile) {
-            openingFile = lastFile;
-            DOMElements.modalDbName.textContent = lastFile.name;
-            DOMElements.openDbModal.classList.remove('hidden');
-            DOMElements.modalMasterKeyInput.focus();
-        }
-    }
+function escapeHtml(s) {
+    if (s === null || s === undefined) return '';
+    return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
 
-function handleGsiResponse(resp) {
-    if (resp.error) return showStatus(`Token error: ${resp.error}`, 'error');
-    accessToken = resp.access_token;
-    showStatus('Authenticated successfully. Fetching data...', 'ok');
-    onSignedIn();
+function copyToClipboard(text, buttonElement) {
+    navigator.clipboard.writeText(text).then(() => {
+        const originalText = buttonElement.textContent;
+        buttonElement.textContent = '✅';
+        setTimeout(() => {
+            buttonElement.textContent = originalText;
+        }, 1500);
+    }).catch(err => {
+        console.error('Error al copiar:', err);
+        showStatus('No se pudo copiar el texto.', 'error');
+    });
 }
 
-function handleSignOut() {
-    if (accessToken) {
-        fetch(`https://oauth2.googleapis.com/revoke?token=${accessToken}`, {
-            method: 'POST',
-            headers: { 'Content-type': 'application/x-www-form-urlencoded' }
-        }).finally(() => window.location.reload());
-    } else {
-        window.location.reload();
-    }
-}
-
-// --- INITIALIZATION ---
+// --- Event Listeners Iniciales ---
 window.onload = () => {
-    DOMElements.signInBtn.onclick = () => tokenClient.requestAccessToken({ prompt: 'consent' });
-    DOMElements.signOutBtn.onclick = handleSignOut;
-    DOMElements.createDbForm.onsubmit = handleCreateDb;
-    DOMElements.keyForm.onsubmit = handleSaveKey;
-    DOMElements.cancelEditBtn.onclick = resetKeyForm;
-    DOMElements.searchInput.oninput = () => renderKeys();
-    DOMElements.openDbForm.onsubmit = handleOpenDb;
-    DOMElements.modalCancelBtn.onclick = () => {
-        DOMElements.openDbModal.classList.add('hidden');
-        DOMElements.modalMasterKeyInput.value = '';
-        openingFile = null;
+    // el.btnSignIn se configura en onGsiLoaded
+    el.logoutBtn.onclick = signOut;
+    el.createDbBtn.onclick = createDb;
+    el.searchKey.addEventListener('input', e => renderKeys(e.target.value));
+    el.saveKeyBtn.onclick = saveKey;
+    el.cancelEditBtn.onclick = clearForm;
+    el.cancelUnlockBtn.onclick = () => {
+        el.masterKeyInput.value = '';
+        el.masterKeyModal.classList.add('hidden');
+    };
+    
+    el.btnSignIn.onclick = () => {
+        el.btnSignInSpinner.classList.remove('hidden');
+        el.btnSignInText.classList.add('hidden');
+        tokenClient.requestAccessToken({ prompt: '' });
     };
 
-    try {
-        tokenClient = google.accounts.oauth2.initTokenClient({
-            client_id: CLIENT_ID,
-            scope: SCOPES,
-            callback: handleGsiResponse,
-        });
-    } catch (error) {
-        showStatus('Could not initialize Google Sign-In.', 'error');
-    }
+    document.addEventListener('mousemove', resetSessionTimer, { passive: true });
+    document.addEventListener('keydown', resetSessionTimer, { passive: true });
 };
