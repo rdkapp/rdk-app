@@ -1,4 +1,3 @@
-
 // --- CONFIGURATION ---
 const CLIENT_ID = '576080826935-2mtnj52ndc8plnsjodjevt3e2gsh4m3a.apps.googleusercontent.com';
 const SCOPES = 'https://www.googleapis.com/auth/drive.file';
@@ -61,7 +60,7 @@ let openingFile = null;
 
 function showStatus(message, type = 'info') {
     console.log(`[STATUS] ${type}: ${message}`);
-    DOMElements.statusMessage.innerHTML = `<strong>Status:</strong> ${message}`;
+    DOMElements.statusMessage.innerHTML = `<strong>Estado:</strong> ${message}`;
     DOMElements.statusMessage.className = 'p-3 rounded-md text-sm my-4 ';
     switch (type) {
         case 'ok': DOMElements.statusMessage.classList.add('bg-green-100', 'text-green-800'); break;
@@ -101,7 +100,7 @@ const GDriveService = {
         const response = await fetch(url, { ...options, headers });
         if (!response.ok) {
             const error = await response.json();
-            throw new Error(error.error?.message || 'A Google Drive API error occurred.');
+            throw new Error(error.error?.message || 'Ocurrió un error en la API de Google Drive.');
         }
         return response;
     },
@@ -136,13 +135,13 @@ const GDriveService = {
 function renderDbList() {
     DOMElements.dbList.innerHTML = '';
     if (activeDbFiles.length === 0) {
-        DOMElements.dbList.innerHTML = '<p class="text-sm text-slate-500 text-center">No .db files found.</p>';
+        DOMElements.dbList.innerHTML = '<p class="text-sm text-slate-500 text-center">No se encontraron archivos .db.</p>';
         return;
     }
     activeDbFiles.forEach(file => {
         const button = document.createElement('button');
         button.className = `w-full text-left p-3 rounded-md border transition-colors text-sm ${dbFileId === file.id ? 'bg-blue-100 border-blue-400 font-semibold' : 'bg-slate-50 hover:bg-slate-100 border-slate-200'}`;
-        button.innerHTML = `<span class="block font-medium text-slate-700">${escapeHtml(file.name)}</span><span class="block text-xs text-slate-500">Modified: ${new Date(file.modifiedTime).toLocaleString()}</span>`;
+        button.innerHTML = `<span class="block font-medium text-slate-700">${escapeHtml(file.name)}</span><span class="block text-xs text-slate-500">Modificado: ${new Date(file.modifiedTime).toLocaleString()}</span>`;
         button.onclick = () => {
             openingFile = file;
             DOMElements.modalDbName.textContent = file.name;
@@ -195,14 +194,14 @@ function renderKeys() {
             <div class="flex justify-between items-start">
                 <h3 class="font-bold text-lg text-slate-800 break-all">${escapeHtml(dKey.name)}</h3>
                 <div class="flex gap-2 flex-shrink-0 ml-2">
-                    <button class="edit-btn p-1 text-slate-500 hover:text-blue-600" title="Edit"><svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg></button>
-                    <button class="delete-btn p-1 text-slate-500 hover:text-red-600" title="Delete"><svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg></button>
+                    <button class="edit-btn p-1 text-xl hover:opacity-75 transition-opacity" title="Editar"><span role="img" aria-label="Editar">✏️</span></button>
+                    <button class="delete-btn p-1 text-xl hover:opacity-75 transition-opacity" title="Eliminar"><span role="img" aria-label="Eliminar">🗑️</span></button>
                 </div>
             </div>
             <div class="space-y-2 text-sm">
-                ${createFieldHTML('User', dKey.d_user)}
-                ${createFieldHTML('Password', dKey.d_pass, true)}
-                ${dKey.note ? `<div class="pt-2 text-slate-600"><strong class="font-medium text-slate-800">Note:</strong><p class="whitespace-pre-wrap break-words p-2 bg-slate-50 rounded mt-1">${escapeHtml(dKey.note)}</p></div>` : ''}
+                ${createFieldHTML('Usuario', dKey.d_user)}
+                ${createFieldHTML('Contraseña', dKey.d_pass, true)}
+                ${dKey.note ? `<div class="pt-2 text-slate-600"><strong class="font-medium text-slate-800">Nota:</strong><p class="whitespace-pre-wrap break-words p-2 bg-slate-50 rounded mt-1">${escapeHtml(dKey.note)}</p></div>` : ''}
             </div>
             ${tagsHtml ? `<div class="pt-2 border-t border-slate-100 flex flex-wrap gap-2">${tagsHtml}</div>` : ''}
         `;
@@ -213,7 +212,7 @@ function renderKeys() {
             btn.onclick = () => {
                 navigator.clipboard.writeText(btn.dataset.value);
                 const originalText = btn.innerHTML;
-                btn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" /></svg>`;
+                btn.innerHTML = `<span role="img" aria-label="Copiado">✅</span>`;
                 setTimeout(() => btn.innerHTML = originalText, 1500);
             };
         });
@@ -229,8 +228,8 @@ function createFieldHTML(label, value, isMono = false) {
                 <span class="font-medium text-slate-800">${label}:</span>
                 <span class="${isMono ? 'font-mono' : ''} text-slate-700 break-all ml-1">${escapeHtml(value)}</span>
             </div>
-            <button class="copy-btn p-1 text-slate-500 hover:text-blue-600 flex-shrink-0" title="Copy ${label}" data-value="${escapeHtml(value)}">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
+            <button class="copy-btn p-1 text-xl hover:opacity-75 transition-opacity flex-shrink-0" title="Copiar ${label}" data-value="${escapeHtml(value)}">
+                <span role="img" aria-label="Copiar">📋</span>
             </button>
         </div>`;
 }
@@ -238,15 +237,15 @@ function createFieldHTML(label, value, isMono = false) {
 // --- CORE LOGIC ---
 
 async function loadDbListAndRender() {
-    showStatus('Loading database list...');
+    showStatus('Cargando lista de bases de datos...');
     try {
         const { files } = await GDriveService.listDbFiles();
         activeDbFiles = files || [];
         renderDbList();
-        showStatus(`Found ${activeDbFiles.length} database(s).`);
+        showStatus(`Se encontraron ${activeDbFiles.length} base(s) de datos.`);
         return activeDbFiles;
     } catch (e) {
-        showStatus(`Error listing files: ${e.message}`, 'error');
+        showStatus(`Error al listar archivos: ${e.message}`, 'error');
         return [];
     }
 }
@@ -255,10 +254,10 @@ async function handleCreateDb(event) {
     event.preventDefault();
     const name = DOMElements.newDbNameInput.value.trim();
     const mKey = DOMElements.createMasterKeyInput.value;
-    if (!name || !mKey) return alert('New DB name and master key are required.');
+    if (!name || !mKey) return alert('El nombre de la nueva BD y la clave maestra son requeridos.');
 
     setLoading(true, DOMElements.createDbBtn);
-    showStatus(`Creating '${name}.db'...`);
+    showStatus(`Creando '${name}.db'...`);
     try {
         const newDbData = { keys: [] };
         const encryptedContent = CryptoService.encrypt(JSON.stringify(newDbData), mKey);
@@ -270,12 +269,12 @@ async function handleCreateDb(event) {
         currentDbName = `${name}.db`;
         localStorage.setItem('lastOpenedDbId', dbFileId);
         
-        showStatus(`Database '${currentDbName}' created and opened.`, 'ok');
+        showStatus(`Base de datos '${currentDbName}' creada y abierta.`, 'ok');
         DOMElements.createDbForm.reset();
         await loadDbListAndRender();
         renderKeys();
     } catch (e) {
-        showStatus(`Error creating file: ${e.message}`, 'error');
+        showStatus(`Error al crear archivo: ${e.message}`, 'error');
     } finally {
         setLoading(false, DOMElements.createDbBtn);
     }
@@ -286,14 +285,14 @@ async function handleOpenDb(event) {
     if (!openingFile) return;
     const { id, name } = openingFile;
     const mKey = DOMElements.modalMasterKeyInput.value;
-    if (!mKey) return alert('Master key is required.');
+    if (!mKey) return alert('La clave maestra es requerida.');
     
     setLoading(true, DOMElements.modalUnlockBtn);
-    showStatus(`Opening '${name}'...`);
+    showStatus(`Abriendo '${name}'...`);
     try {
         const encryptedContent = await GDriveService.getFileContent(id);
         const decryptedJson = CryptoService.decrypt(encryptedContent, mKey);
-        if (!decryptedJson) throw new Error("Decryption failed. Master key may be incorrect.");
+        if (!decryptedJson) throw new Error("El descifrado falló. La clave maestra podría ser incorrecta.");
 
         dbData = JSON.parse(decryptedJson);
         if (!Array.isArray(dbData.keys)) dbData.keys = [];
@@ -306,11 +305,11 @@ async function handleOpenDb(event) {
         DOMElements.openDbModal.classList.add('hidden');
         DOMElements.modalMasterKeyInput.value = '';
         openingFile = null;
-        showStatus(`Successfully opened '${name}'.`, 'ok');
+        showStatus(`'${name}' abierta correctamente.`, 'ok');
         renderDbList();
         renderKeys();
     } catch (e) {
-        showStatus(`Failed to open DB. Check master key.`, 'error');
+        showStatus(`No se pudo abrir la BD. Revisa la clave maestra.`, 'error');
     } finally {
         setLoading(false, DOMElements.modalUnlockBtn);
     }
@@ -318,14 +317,14 @@ async function handleOpenDb(event) {
 
 async function saveDb() {
     if (!dbFileId || !masterKey) return;
-    showStatus('Saving to Google Drive...');
+    showStatus('Guardando en Google Drive...');
     try {
         const encryptedContent = CryptoService.encrypt(JSON.stringify(dbData), masterKey);
         await GDriveService.updateFileContent(dbFileId, encryptedContent);
-        showStatus('Saved to Drive successfully.', 'ok');
+        showStatus('Guardado en Drive correctamente.', 'ok');
         await loadDbListAndRender();
     } catch (e) {
-        showStatus(`Error saving to Drive: ${e.message}`, 'error');
+        showStatus(`Error al guardar en Drive: ${e.message}`, 'error');
     }
 }
 
@@ -333,7 +332,7 @@ function handleSaveKey(event) {
     event.preventDefault();
     if (!dbData) return;
     const name = DOMElements.keyNameInput.value.trim();
-    if (!name) return alert('Key name is required.');
+    if (!name) return alert('El nombre de la clave es requerido.');
     
     const keyData = {
         name,
@@ -357,7 +356,7 @@ function handleSaveKey(event) {
 }
 
 function handleDeleteKey(keyId) {
-    if (!dbData || !confirm('Are you sure you want to delete this key?')) return;
+    if (!dbData || !confirm('¿Estás seguro de que quieres eliminar esta clave?')) return;
     dbData.keys = dbData.keys.filter(k => k.id !== keyId);
     saveDb();
     renderKeys();
@@ -366,7 +365,7 @@ function handleDeleteKey(keyId) {
 function resetKeyForm() {
     DOMElements.keyForm.reset();
     DOMElements.keyIdInput.value = '';
-    DOMElements.keyFormTitle.textContent = 'Add New Key';
+    DOMElements.keyFormTitle.textContent = 'Añadir Nueva Clave';
     DOMElements.cancelEditBtn.classList.add('hidden');
 }
 
@@ -382,12 +381,12 @@ function populateEditForm(keyId) {
         DOMElements.keyNoteInput.value = key.note || '';
         DOMElements.keyTagsInput.value = (key.tags || []).join(', ');
         
-        DOMElements.keyFormTitle.textContent = `Editing '${key.name}'`;
+        DOMElements.keyFormTitle.textContent = `Editando '${key.name}'`;
         DOMElements.cancelEditBtn.classList.remove('hidden');
         DOMElements.keyFormContainer.scrollIntoView({ behavior: 'smooth' });
         DOMElements.keyNameInput.focus();
     } catch (e) {
-        showStatus('Error preparing key for editing.', 'error');
+        showStatus('Error al preparar la clave para edición.', 'error');
     }
 }
 
@@ -396,9 +395,9 @@ function populateEditForm(keyId) {
 function resetSessionTimer() {
     if (sessionTimer) clearTimeout(sessionTimer);
     const expiresAt = new Date(Date.now() + SESSION_TIMEOUT);
-    DOMElements.sessionTimerInfo.textContent = `Session expires at ${expiresAt.toLocaleTimeString()}`;
+    DOMElements.sessionTimerInfo.textContent = `La sesión expira a las ${expiresAt.toLocaleTimeString()}`;
     sessionTimer = setTimeout(() => {
-        alert('Session expired due to inactivity.');
+        alert('La sesión expiró por inactividad.');
         window.location.reload();
     }, SESSION_TIMEOUT);
 }
@@ -424,26 +423,45 @@ async function onSignedIn() {
 }
 
 function handleGsiResponse(resp) {
-    if (resp.error) return showStatus(`Token error: ${resp.error}`, 'error');
+    if (resp.error) return showStatus(`Error de token: ${resp.error}`, 'error');
     accessToken = resp.access_token;
-    showStatus('Authenticated successfully. Fetching data...', 'ok');
+    showStatus('Autenticación correcta. Obteniendo datos...', 'ok');
     onSignedIn();
 }
 
 function handleSignOut() {
     if (accessToken) {
-        fetch(`https://oauth2.googleapis.com/revoke?token=${accessToken}`, {
-            method: 'POST',
-            headers: { 'Content-type': 'application/x-www-form-urlencoded' }
-        }).finally(() => window.location.reload());
+        google.accounts.oauth2.revoke(accessToken, () => {
+            window.location.reload();
+        });
     } else {
         window.location.reload();
     }
 }
 
 // --- INITIALIZATION ---
+// Called when the Google Identity Services script is loaded.
+function handleGsiLoad() {
+    try {
+        tokenClient = google.accounts.oauth2.initTokenClient({
+            client_id: CLIENT_ID,
+            scope: SCOPES,
+            callback: handleGsiResponse,
+        });
+    } catch (error) {
+        showStatus('No se pudo inicializar el inicio de sesión de Google.', 'error');
+    }
+}
+window.handleGsiLoad = handleGsiLoad;
+
 window.onload = () => {
-    DOMElements.signInBtn.onclick = () => tokenClient.requestAccessToken({ prompt: 'consent' });
+    DOMElements.signInBtn.onclick = () => {
+        if (tokenClient) {
+            tokenClient.requestAccessToken({ prompt: 'consent' });
+        } else {
+            showStatus('El inicio de sesión de Google aún no está listo. Espera un momento y vuelve a intentarlo.', 'error');
+        }
+    };
     DOMElements.signOutBtn.onclick = handleSignOut;
     DOMElements.createDbForm.onsubmit = handleCreateDb;
     DOMElements.keyForm.onsubmit = handleSaveKey;
@@ -460,14 +478,4 @@ window.onload = () => {
         DOMElements.keyFormContainer.scrollIntoView({ behavior: 'smooth' });
         DOMElements.keyNameInput.focus();
     };
-
-    try {
-        tokenClient = google.accounts.oauth2.initTokenClient({
-            client_id: CLIENT_ID,
-            scope: SCOPES,
-            callback: handleGsiResponse,
-        });
-    } catch (error) {
-        showStatus('Could not initialize Google Sign-In.', 'error');
-    }
 };
