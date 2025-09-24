@@ -13,7 +13,7 @@
 </head>
 <body class="h-full flex flex-col text-slate-800 dark:text-slate-200 overflow-hidden">
 
-  <header class="bg-slate-800 text-white shadow-lg sticky top-0 z-30 dark:bg-slate-900/70 dark:backdrop-blur-sm dark:border-b dark:border-slate-700">
+  <header class="bg-slate-800 text-white shadow-lg sticky top-0 z-30 dark:bg-slate-900/70 dark:backdrop-blur-sm dark:border-b dark:border-slate-700 flex-shrink-0">
     <div class="container mx-auto px-4 py-3 flex items-center justify-between gap-3">
       <div class="flex items-center gap-3">
         <button id="menu-btn" class="p-1 rounded-md hover:bg-slate-700 transition-colors hidden">
@@ -26,12 +26,15 @@
             <h1 class="text-xl font-bold tracking-tight">Llavero Personal</h1>
         </div>
       </div>
-       <button id="signout-btn" class="hidden flex items-center justify-center gap-2 bg-slate-600 hover:bg-slate-700 text-white text-sm py-2 px-4 rounded-md transition-colors w-full sm:w-auto dark:bg-slate-700 dark:hover:bg-slate-600">
-          <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-          </svg>
-          Cerrar Sesión
-        </button>
+       <div class="flex items-center gap-4">
+        <span id="session-timer-info" class="hidden text-sm text-slate-400 dark:text-slate-500 whitespace-nowrap"></span>
+         <button id="signout-btn" class="hidden flex items-center justify-center gap-2 bg-slate-600 hover:bg-slate-700 text-white text-sm py-2 px-4 rounded-md transition-colors w-full sm:w-auto dark:bg-slate-700 dark:hover:bg-slate-600">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+            </svg>
+            Cerrar Sesión
+          </button>
+       </div>
     </div>
   </header>
 
@@ -61,7 +64,6 @@
        <div id="no-db-open-message" class="bg-white dark:bg-slate-800 p-8 rounded-xl shadow-sm text-center text-slate-500 dark:text-slate-400 h-full flex flex-col justify-center items-center">
           <h3 class="text-lg font-semibold mb-2">Ningún Llavero Abierto</h3>
           <p>Por favor, usa el menú ☰ para crear un nuevo llavero o abrir uno existente.</p>
-          <span id="session-timer-info" class="text-sm text-slate-500 dark:text-slate-400 mt-4"></span>
         </div>
         
         <div id="views-container" class="hidden w-full h-full overflow-hidden relative">
@@ -157,6 +159,10 @@
     </div>
   </main>
   
+  <footer class="flex-shrink-0 bg-slate-800 text-center py-2 dark:bg-slate-900/70 dark:border-t dark:border-slate-700">
+      <p class="text-xs text-slate-400 dark:text-slate-500">A solution by Ale Fernández - 2025</p>
+  </footer>
+
   <!-- Side Menu -->
   <div id="menu-overlay" class="fixed inset-0 bg-black/60 z-30 hidden transition-opacity duration-300 ease-in-out opacity-0"></div>
   <div id="side-menu" class="fixed top-0 left-0 h-full w-80 max-w-[90%] bg-slate-100 dark:bg-slate-900 shadow-xl z-40 transform -translate-x-full transition-transform duration-300 ease-in-out p-4 flex flex-col">
