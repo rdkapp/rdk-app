@@ -740,6 +740,10 @@ document.addEventListener('DOMContentLoaded', () => {
         editTagIdInput: document.getElementById('edit-tag-id'),
         editTagNameInput: document.getElementById('edit-tag-name-input'),
         toastContainer: document.getElementById('toast-container'),
+        functionalityBtn: document.getElementById('functionality-btn'),
+        aboutBtn: document.getElementById('about-btn'),
+        functionalityModal: document.getElementById('functionality-modal'),
+        aboutModal: document.getElementById('about-modal'),
     };
     
     if (tryRestoreSession()) {
@@ -791,6 +795,9 @@ document.addEventListener('DOMContentLoaded', () => {
     DOMElements.manageTagsBtn.onclick = openTagsModal;
     DOMElements.addTagForm.onsubmit = handleAddTag;
     DOMElements.editTagForm.onsubmit = handleUpdateTag;
+    
+    DOMElements.functionalityBtn.onclick = () => { DOMElements.functionalityModal.classList.remove('hidden'); toggleMenu(true); };
+    DOMElements.aboutBtn.onclick = () => { DOMElements.aboutModal.classList.remove('hidden'); toggleMenu(true); };
 
     document.querySelectorAll('[data-toggle-password]').forEach(btn => {
         const input = document.getElementById(btn.dataset.togglePassword);
