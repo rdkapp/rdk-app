@@ -12,6 +12,8 @@ const ICONS = {
     eyeOff: `<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243l-4.243-4.243zM8 10.5a1.5 1.5 0 113 0 1.5 1.5 0 01-3 0z" /><path stroke-linecap="round" stroke-linejoin="round" d="M4.75 4.75l14.5 14.5" /></svg>`,
     copy: `<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>`,
     check: `<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-green-500" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd" /></svg>`,
+    keychainIcon: `<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-slate-500 dark:text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>`,
+    keyIcon: `<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-slate-500 dark:text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H5v-2H3v-2H1v-4a6 6 0 016-6h4a6 6 0 016 6z" /></svg>`,
 };
 
 // --- GLOBAL STATE ---
@@ -128,7 +130,7 @@ function toggleMenu(forceClose = false) {
     if (forceClose || isOpen) {
         DOMElements.sideMenu.classList.add('-translate-x-full');
         DOMElements.menuOverlay.classList.add('opacity-0');
-        DOMElements.menuOverlay.classList.add('hidden');
+        setTimeout(() => DOMElements.menuOverlay.classList.add('hidden'), 300);
     } else {
         DOMElements.sideMenu.classList.remove('-translate-x-full');
         DOMElements.menuOverlay.classList.remove('hidden');
@@ -191,17 +193,20 @@ function renderKeys() {
     if (!dbData) {
         DOMElements.viewsContainer.classList.add('hidden');
         DOMElements.noDbOpenMessage.classList.remove('hidden');
-        DOMElements.addNewKeyMenuBtn.disabled = true;
+        DOMElements.addNewKeyHeaderBtn.disabled = true;
         return;
     }
 
     DOMElements.viewsContainer.classList.remove('hidden');
     DOMElements.noDbOpenMessage.classList.add('hidden');
-    DOMElements.addNewKeyMenuBtn.disabled = false;
-    DOMElements.activeDbName.textContent = currentDbName;
-
+    DOMElements.addNewKeyHeaderBtn.disabled = false;
+    
     const decryptedAndFilteredKeys = getDecryptedAndFilteredKeys();
-    DOMElements.keyCount.textContent = decryptedAndFilteredKeys.length;
+    const nameWithoutExt = currentDbName.replace(/\.db$/, '');
+    
+    DOMElements.keychainTitleName.innerHTML = `${ICONS.keychainIcon} Llavero: <span class="text-blue-600 dark:text-blue-400 font-semibold">"${escapeHtml(nameWithoutExt)}"</span>`;
+    DOMElements.keychainTitleCount.innerHTML = `${ICONS.keyIcon} Cantidad de llaves: <span class="font-semibold">${decryptedAndFilteredKeys.length}</span>`;
+
     DOMElements.emptyDbMessage.classList.toggle('hidden', dbData.keys.length > 0);
     DOMElements.noResultsMessage.classList.toggle('hidden', decryptedAndFilteredKeys.length > 0 || dbData.keys.length === 0 || !DOMElements.searchInput.value);
 
@@ -377,9 +382,9 @@ async function handleRenameDb(event) {
     try {
         await GDriveService.renameFile(dbFileId, newName);
         currentDbName = newName;
-        DOMElements.activeDbName.textContent = currentDbName;
         DOMElements.renameDbModal.classList.add('hidden');
         showStatus(`Llavero renombrado a '${newName}'.`, 'ok');
+        renderKeys(); // Re-render to show new name immediately
         await loadDbListAndRender();
     } catch(e) { showStatus(`Error al renombrar: ${e.message}`, 'error'); }
     finally { setLoading(false, DOMElements.renameConfirmBtn); }
@@ -474,11 +479,10 @@ document.addEventListener('DOMContentLoaded', () => {
         keyTagsInput: document.getElementById('key-tags-input'),
         cancelEditBtn: document.getElementById('cancel-edit-btn'),
         searchInput: document.getElementById('search-input'),
-        activeDbName: document.getElementById('active-db-name'),
-        keyCount: document.getElementById('key-count'),
+        keychainTitleName: document.getElementById('keychain-title-name'),
+        keychainTitleCount: document.getElementById('keychain-title-count'),
         noDbOpenMessage: document.getElementById('no-db-open-message'),
         viewsContainer: document.getElementById('views-container'),
-        keysPanel: document.getElementById('keys-panel'),
         emptyDbMessage: document.getElementById('empty-db-message'),
         noResultsMessage: document.getElementById('no-results-message'),
         openDbModal: document.getElementById('open-db-modal'),
@@ -494,7 +498,7 @@ document.addEventListener('DOMContentLoaded', () => {
         sideMenu: document.getElementById('side-menu'),
         menuOverlay: document.getElementById('menu-overlay'),
         closeMenuBtn: document.getElementById('close-menu-btn'),
-        addNewKeyMenuBtn: document.getElementById('add-new-key-menu-btn'),
+        addNewKeyHeaderBtn: document.getElementById('add-new-key-header-btn'),
         dbManagementBtn: document.getElementById('db-management-btn'),
         dbManagementDropdown: document.getElementById('db-management-dropdown'),
         renameDbBtn: document.getElementById('rename-db-btn'),
@@ -520,7 +524,7 @@ document.addEventListener('DOMContentLoaded', () => {
     DOMElements.menuBtn.onclick = () => toggleMenu();
     DOMElements.closeMenuBtn.onclick = () => toggleMenu(true);
     DOMElements.menuOverlay.onclick = () => toggleMenu(true);
-    DOMElements.addNewKeyMenuBtn.onclick = () => showKeyFormView();
+    DOMElements.addNewKeyHeaderBtn.onclick = () => showKeyFormView();
     DOMElements.dbManagementBtn.onclick = () => DOMElements.dbManagementDropdown.classList.toggle('hidden');
     
     DOMElements.openDbBtn.onclick = () => {
