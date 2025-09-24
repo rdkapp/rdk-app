@@ -1,13 +1,12 @@
-
 body {
   font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans', sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
 }
 
 /* Spinner Animation for loading states */
 .spinner {
-  border: 3px solid rgba(0, 0, 0, 0.1);
+  border: 3px solid rgba(255, 255, 255, 0.3);
   border-radius: 50%;
-  border-top-color: #3498db; /* Un color azul para que contraste con fondos claros y oscuros */
+  border-top-color: #fff;
   width: 20px;
   height: 20px;
   animation: spin 1s linear infinite;
@@ -17,4 +16,20 @@ body {
   to {
     transform: rotate(360deg);
   }
+}
+
+/* Accordion styles for key list view */
+.key-item .key-item-body {
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height 0.3s ease-out;
+}
+
+.key-item.expanded .key-item-body {
+  max-height: 500px; /* Adjust as needed, should be larger than any possible content height */
+  transition: max-height 0.4s ease-in;
+}
+
+.key-item.expanded .key-item-chevron {
+  transform: rotate(180deg);
 }
