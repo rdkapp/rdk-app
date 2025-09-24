@@ -705,8 +705,12 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    // This function will be called by the GSI script once it's loaded and ready.
-    const handleGsiClientLoad = () => {
+    // Dynamically load the GSI script and initialize on load.
+    const gsiScript = document.createElement('script');
+    gsiScript.src = 'https://accounts.google.com/gsi/client';
+    gsiScript.async = true;
+    gsiScript.defer = true;
+    gsiScript.onload = () => {
         try {
             if (!google || !google.accounts || !google.accounts.oauth2) {
                 throw new Error("La biblioteca de Google no se cargó correctamente.");
@@ -729,15 +733,6 @@ document.addEventListener('DOMContentLoaded', () => {
             showStatus(error.message || 'No se pudo inicializar el inicio de sesión de Google.', 'error');
         }
     };
-
-    // Attach the handler to the window object so the GSI script can call it.
-    window.handleGsiClientLoad = handleGsiClientLoad;
-
-    // Dynamically load the GSI script with the 'onload' callback parameter.
-    const gsiScript = document.createElement('script');
-    gsiScript.src = 'https://accounts.google.com/gsi/client?onload=handleGsiClientLoad';
-    gsiScript.async = true;
-    gsiScript.defer = true;
     gsiScript.onerror = () => showStatus('Error al cargar el script de Google.', 'error');
     document.body.appendChild(gsiScript);
 });
