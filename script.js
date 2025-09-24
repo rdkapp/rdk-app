@@ -13,48 +13,14 @@ let sessionTimer = null;
 let isLoading = false;
 let currentDbName = '';
 let activeDbFiles = [];
-let gsiReady = false;
-let domReady = false;
+// Initialization flags to solve race condition
+let gsiScriptReady = false;
+let domContentLoaded = false;
+
 
 // --- DOM ELEMENTS ---
-const DOMElements = {
-    loginView: document.getElementById('login-view'),
-    appView: document.getElementById('app-view'),
-    statusMessage: document.getElementById('status-message'),
-    signInBtn: document.getElementById('signin-btn'),
-    signOutBtn: document.getElementById('signout-btn'),
-    sessionTimerInfo: document.getElementById('session-timer-info'),
-    dbList: document.getElementById('db-list'),
-    keyList: document.getElementById('key-list'),
-    createDbForm: document.getElementById('create-db-form'),
-    newDbNameInput: document.getElementById('new-db-name-input'),
-    createMasterKeyInput: document.getElementById('create-master-key-input'),
-    createDbBtn: document.getElementById('create-db-btn'),
-    keyFormContainer: document.getElementById('key-form-container'),
-    keyForm: document.getElementById('key-form'),
-    keyFormTitle: document.getElementById('key-form-title'),
-    keyIdInput: document.getElementById('key-id-input'),
-    keyNameInput: document.getElementById('key-name-input'),
-    keyUserInput: document.getElementById('key-user-input'),
-    keyPassInput: document.getElementById('key-pass-input'),
-    keyNoteInput: document.getElementById('key-note-input'),
-    keyTagsInput: document.getElementById('key-tags-input'),
-    cancelEditBtn: document.getElementById('cancel-edit-btn'),
-    searchInput: document.getElementById('search-input'),
-    activeDbName: document.getElementById('active-db-name'),
-    keyCount: document.getElementById('key-count'),
-    noDbOpenMessage: document.getElementById('no-db-open-message'),
-    keysPanel: document.getElementById('keys-panel'),
-    emptyDbMessage: document.getElementById('empty-db-message'),
-    noResultsMessage: document.getElementById('no-results-message'),
-    openDbModal: document.getElementById('open-db-modal'),
-    openDbForm: document.getElementById('open-db-form'),
-    modalDbName: document.getElementById('modal-db-name'),
-    modalMasterKeyInput: document.getElementById('modal-master-key-input'),
-    modalCancelBtn: document.getElementById('modal-cancel-btn'),
-    modalUnlockBtn: document.getElementById('modal-unlock-btn'),
-    addKeyBtn: document.getElementById('add-key-btn'),
-};
+// Declared here, but assigned inside the DOMContentLoaded listener
+let DOMElements;
 
 let openingFile = null;
 
@@ -62,12 +28,14 @@ let openingFile = null;
 
 function showStatus(message, type = 'info') {
     console.log(`[STATUS] ${type}: ${message}`);
-    DOMElements.statusMessage.innerHTML = `<strong>Estado:</strong> ${message}`;
-    DOMElements.statusMessage.className = 'p-3 rounded-md text-sm my-4 ';
-    switch (type) {
-        case 'ok': DOMElements.statusMessage.classList.add('bg-green-100', 'text-green-800'); break;
-        case 'error': DOMElements.statusMessage.classList.add('bg-red-100', 'text-red-800'); break;
-        default: DOMElements.statusMessage.classList.add('text-slate-500');
+    if (DOMElements && DOMElements.statusMessage) {
+        DOMElements.statusMessage.innerHTML = `<strong>Estado:</strong> ${message}`;
+        DOMElements.statusMessage.className = 'p-3 rounded-md text-sm my-4 ';
+        switch (type) {
+            case 'ok': DOMElements.statusMessage.classList.add('bg-green-100', 'text-green-800'); break;
+            case 'error': DOMElements.statusMessage.classList.add('bg-red-100', 'text-red-800'); break;
+            default: DOMElements.statusMessage.classList.add('text-slate-500');
+        }
     }
 }
 
@@ -446,11 +414,12 @@ function handleSignOut() {
 function tryInitializeApp() {
     // This function acts as a gatekeeper. It will only run the initialization
     // logic once both the DOM and the GSI script are ready.
-    if (!gsiReady || !domReady) {
+    if (!gsiScriptReady || !domContentLoaded) {
         return; // Wait for the other event to fire.
     }
-
+    
     // Both are ready, proceed with initialization.
+    console.log("Both DOM and GSI Script are ready. Initializing app.");
     try {
         tokenClient = google.accounts.oauth2.initTokenClient({
             client_id: CLIENT_ID,
@@ -458,7 +427,8 @@ function tryInitializeApp() {
             callback: handleGsiResponse,
         });
 
-        // Now it's safe to assign the click handler.
+        // Now it's safe to assign the click handler and enable the button.
+        DOMElements.signInBtn.disabled = false;
         DOMElements.signInBtn.onclick = () => {
             if (tokenClient) {
                 tokenClient.requestAccessToken({ prompt: 'consent' });
@@ -475,15 +445,55 @@ function tryInitializeApp() {
 }
 
 // Called by the `onload` attribute of the GSI script tag in index.html
-function handleGsiLoad() {
-    gsiReady = true;
+// Must be a global function.
+window.handleGsiLoad = function() {
+    gsiScriptReady = true;
     tryInitializeApp();
 }
-window.handleGsiLoad = handleGsiLoad;
 
-// Called when the DOM is fully loaded.
-window.onload = () => {
-    domReady = true;
+// Called when the DOM is fully loaded and parsed.
+document.addEventListener('DOMContentLoaded', () => {
+    // Assign all DOM elements now that they are available
+    DOMElements = {
+        loginView: document.getElementById('login-view'),
+        appView: document.getElementById('app-view'),
+        statusMessage: document.getElementById('status-message'),
+        signInBtn: document.getElementById('signin-btn'),
+        signOutBtn: document.getElementById('signout-btn'),
+        sessionTimerInfo: document.getElementById('session-timer-info'),
+        dbList: document.getElementById('db-list'),
+        keyList: document.getElementById('key-list'),
+        createDbForm: document.getElementById('create-db-form'),
+        newDbNameInput: document.getElementById('new-db-name-input'),
+        createMasterKeyInput: document.getElementById('create-master-key-input'),
+        createDbBtn: document.getElementById('create-db-btn'),
+        keyFormContainer: document.getElementById('key-form-container'),
+        keyForm: document.getElementById('key-form'),
+        keyFormTitle: document.getElementById('key-form-title'),
+        keyIdInput: document.getElementById('key-id-input'),
+        keyNameInput: document.getElementById('key-name-input'),
+        keyUserInput: document.getElementById('key-user-input'),
+        keyPassInput: document.getElementById('key-pass-input'),
+        keyNoteInput: document.getElementById('key-note-input'),
+        keyTagsInput: document.getElementById('key-tags-input'),
+        cancelEditBtn: document.getElementById('cancel-edit-btn'),
+        searchInput: document.getElementById('search-input'),
+        activeDbName: document.getElementById('active-db-name'),
+        keyCount: document.getElementById('key-count'),
+        noDbOpenMessage: document.getElementById('no-db-open-message'),
+        keysPanel: document.getElementById('keys-panel'),
+        emptyDbMessage: document.getElementById('empty-db-message'),
+        noResultsMessage: document.getElementById('no-results-message'),
+        openDbModal: document.getElementById('open-db-modal'),
+        openDbForm: document.getElementById('open-db-form'),
+        modalDbName: document.getElementById('modal-db-name'),
+        modalMasterKeyInput: document.getElementById('modal-master-key-input'),
+        modalCancelBtn: document.getElementById('modal-cancel-btn'),
+        modalUnlockBtn: document.getElementById('modal-unlock-btn'),
+        addKeyBtn: document.getElementById('add-key-btn'),
+    };
+    
+    domContentLoaded = true;
 
     // Set up all other event listeners
     DOMElements.signOutBtn.onclick = handleSignOut;
@@ -505,4 +515,4 @@ window.onload = () => {
 
     // Attempt to initialize the app
     tryInitializeApp();
-};
+});
