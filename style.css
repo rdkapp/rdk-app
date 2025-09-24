@@ -5,9 +5,9 @@ body {
 
 /* Spinner Animation for loading states */
 .spinner {
-  border: 3px solid rgba(255, 255, 255, 0.3);
+  border: 3px solid rgba(0, 0, 0, 0.1);
   border-radius: 50%;
-  border-top-color: #fff;
+  border-top-color: #3498db; /* Un color azul para que contraste con fondos claros y oscuros */
   width: 20px;
   height: 20px;
   animation: spin 1s linear infinite;
