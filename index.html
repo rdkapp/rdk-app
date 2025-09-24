@@ -15,19 +15,23 @@
 
   <header class="bg-slate-800 text-white shadow-lg sticky top-0 z-30 dark:bg-slate-900/70 dark:backdrop-blur-sm dark:border-b dark:border-slate-700 flex-shrink-0">
     <div class="container mx-auto px-4 py-3 flex items-center justify-between gap-3">
-      <div class="flex items-center gap-3">
-        <button id="menu-btn" class="p-1 rounded-md hover:bg-slate-700 transition-colors hidden">
+      <div class="flex items-center gap-3 min-w-0 flex-shrink">
+        <button id="menu-btn" class="p-1 rounded-md hover:bg-slate-700 transition-colors hidden flex-shrink-0">
            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16" /></svg>
         </button>
-        <div class="flex items-center gap-3">
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <div class="flex items-center gap-3 min-w-0">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
               <path stroke-linecap="round" stroke-linejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
             </svg>
-            <h1 class="text-xl font-bold tracking-tight">Llavero Personal</h1>
+            <h1 class="text-lg sm:text-xl font-bold tracking-tight truncate">Llavero Personal</h1>
         </div>
       </div>
-       <div class="flex items-center gap-2 sm:gap-4">
-        <span id="session-timer-info" class="hidden text-xs sm:text-sm text-slate-400 dark:text-slate-500 whitespace-nowrap text-right"></span>
+       <div class="flex items-center gap-2 sm:gap-4 flex-shrink-0">
+        <span id="session-timer-info" class="hidden text-xs sm:text-sm text-slate-400 dark:text-slate-500 text-right">
+            <span class="hidden sm:inline whitespace-nowrap">La sesión expira a las </span>
+            <span class="sm:hidden">Expira </span>
+            <span id="session-timer-time" class="whitespace-nowrap font-medium text-slate-300"></span>
+        </span>
          <button id="signout-btn" class="hidden flex-shrink-0 flex items-center justify-center gap-2 bg-slate-600 hover:bg-slate-700 text-white text-sm p-2 sm:py-2 sm:px-4 rounded-full sm:rounded-md transition-colors" title="Cerrar Sesión">
             <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
               <path stroke-linecap="round" stroke-linejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
