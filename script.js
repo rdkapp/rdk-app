@@ -19,7 +19,7 @@ const ICONS = {
 // --- GLOBAL STATE ---
 let accessToken = null;
 let tokenClient = null;
-let dbData = null; // { keys: [] }
+let dbData = null; // { keys: [], tags: [] }
 let dbFileId = null;
 let masterKey = '';
 let sessionTimer = null;
@@ -148,6 +148,7 @@ function showKeyListView() {
 
 function showKeyFormView(isEditing = false) {
     if (!isEditing) resetKeyForm();
+    populateTagSelect();
     toggleMenu(true);
     DOMElements.keyListView.classList.add('-translate-x-full');
     DOMElements.keyListView.classList.remove('translate-x-0');
@@ -178,13 +179,16 @@ function renderDbList() {
 function getDecryptedAndFilteredKeys() {
     if (!dbData?.keys) return [];
     const filter = DOMElements.searchInput.value.toLowerCase();
+    const tagMap = new Map(dbData.tags.map(t => [t.id, t.name]));
+
     return dbData.keys.map(k => {
         try {
             return { ...k, d_user: CryptoService.decrypt(k.user, masterKey), d_pass: CryptoService.decrypt(k.pass, masterKey) };
         } catch (e) { console.error(`Failed to decrypt key ID ${k.id}`, e); return null; }
     }).filter(Boolean).filter(k => {
         if (!filter) return true;
-        return [k.name, k.d_user, k.note, ...(k.tags || [])].join(' ').toLowerCase().includes(filter);
+        const tag_name = k.tagId ? tagMap.get(k.tagId) || '' : '';
+        return [k.name, k.d_user, k.note, tag_name].join(' ').toLowerCase().includes(filter);
     }).sort((a, b) => a.name.localeCompare(b.name));
 }
 
@@ -194,12 +198,14 @@ function renderKeys() {
         DOMElements.viewsContainer.classList.add('hidden');
         DOMElements.noDbOpenMessage.classList.remove('hidden');
         DOMElements.addNewKeyHeaderBtn.disabled = true;
+        DOMElements.manageTagsBtn.disabled = true;
         return;
     }
 
     DOMElements.viewsContainer.classList.remove('hidden');
     DOMElements.noDbOpenMessage.classList.add('hidden');
     DOMElements.addNewKeyHeaderBtn.disabled = false;
+    DOMElements.manageTagsBtn.disabled = false;
     
     const decryptedAndFilteredKeys = getDecryptedAndFilteredKeys();
     const nameWithoutExt = currentDbName.replace(/\.db$/, '');
@@ -219,17 +225,22 @@ function renderKeys() {
 function createKeyListItem(dKey) {
     const item = document.createElement('div');
     item.className = 'key-item bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden';
-    const tagsHtml = (dKey.tags || []).map(tag => `<span class="text-xs bg-sky-100 text-sky-800 px-2 py-1 rounded-full dark:bg-sky-900/70 dark:text-sky-300">${escapeHtml(tag)}</span>`).join('');
+    
+    const tag = dbData.tags.find(t => t.id === dKey.tagId);
+    const tagHtml = tag ? `<span class="text-xs bg-sky-100 text-sky-800 px-2 py-1 rounded-full dark:bg-sky-900/70 dark:text-sky-300 ml-2 flex-shrink-0">${escapeHtml(tag.name)}</span>` : '';
+
     item.innerHTML = `
         <button class="key-item-header w-full flex justify-between items-center text-left p-3 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors">
-            <span class="font-bold text-slate-800 dark:text-slate-100 break-all">${escapeHtml(dKey.name)}</span>
+            <div class="flex items-center min-w-0">
+                <span class="font-bold text-slate-800 dark:text-slate-100 truncate">${escapeHtml(dKey.name)}</span>
+                ${tagHtml}
+            </div>
             ${ICONS.chevronDown}
         </button>
         <div class="key-item-body"><div class="p-3 border-t border-slate-100 dark:border-slate-700 space-y-2 text-sm">
             ${createRevealingFieldHTML('Usuario', dKey.d_user)}
             ${createRevealingFieldHTML('Contraseña', dKey.d_pass, true)}
             ${dKey.note ? `<div class="pt-2 text-slate-600 dark:text-slate-300"><strong class="font-medium text-slate-800 dark:text-slate-200">Nota:</strong><p class="whitespace-pre-wrap break-words p-2 bg-slate-50 dark:bg-slate-700/50 rounded mt-1">${escapeHtml(dKey.note)}</p></div>` : ''}
-            ${tagsHtml ? `<div class="pt-2 border-t border-slate-100 dark:border-slate-700 flex flex-wrap gap-2">${tagsHtml}</div>` : ''}
             <div class="flex gap-2 pt-2 border-t border-slate-100 dark:border-slate-700">
                 <button class="edit-btn text-sm flex items-center gap-1.5 text-blue-600 dark:text-blue-400 hover:underline">${ICONS.edit} Editar</button>
                 <button class="delete-btn text-sm flex items-center gap-1.5 text-red-600 dark:text-red-400 hover:underline">${ICONS.delete} Eliminar</button>
@@ -293,7 +304,7 @@ async function handleCreateDb(event) {
     setLoading(true, DOMElements.createDbBtn);
     showStatus(`Creando '${name}.db'...`);
     try {
-        const newDbData = { keys: [] };
+        const newDbData = { keys: [], tags: [] };
         const encryptedContent = CryptoService.encrypt(JSON.stringify(newDbData), mKey);
         const created = await GDriveService.createFile(`${name}.db`, encryptedContent);
         dbData = newDbData; masterKey = mKey; dbFileId = created.id; currentDbName = `${name}.db`;
@@ -318,8 +329,20 @@ async function handleOpenDb(event) {
         const encryptedContent = await GDriveService.getFileContent(id);
         const decryptedJson = CryptoService.decrypt(encryptedContent, mKey);
         if (!decryptedJson) throw new Error("Descifrado falló. Clave maestra incorrecta o archivo corrupto.");
+        
         let parsedData = JSON.parse(decryptedJson);
-        dbData = (parsedData && Array.isArray(parsedData.keys)) ? parsedData : { keys: [] };
+        // --- Backward Compatibility ---
+        if (Array.isArray(parsedData)) { // Very old format was just an array of keys
+            parsedData = { keys: parsedData, tags: [] };
+        }
+        if (!parsedData.tags) {
+            parsedData.tags = [];
+        }
+        parsedData.tags.forEach(t => { if(!t.id) t.id = `tag_${Date.now()}_${Math.random()}`; });
+
+        dbData = (parsedData && Array.isArray(parsedData.keys)) ? parsedData : { keys: [], tags: [] };
+        // --- End Compatibility ---
+
         masterKey = mKey; dbFileId = id; currentDbName = name;
         DOMElements.openDbModal.classList.add('hidden');
         DOMElements.modalMasterKeyInput.value = '';
@@ -330,6 +353,7 @@ async function handleOpenDb(event) {
         toggleMenu(true);
     } catch (e) { showStatus(e.message, 'error'); } finally { setLoading(false, DOMElements.modalUnlockBtn); }
 }
+
 
 async function saveDb() {
     if (!dbFileId || !masterKey) return;
@@ -351,7 +375,7 @@ function handleSaveKey(event) {
         user: CryptoService.encrypt(DOMElements.keyUserInput.value, masterKey),
         pass: CryptoService.encrypt(DOMElements.keyPassInput.value, masterKey),
         note: DOMElements.keyNoteInput.value,
-        tags: DOMElements.keyTagsInput.value.split(',').map(t => t.trim()).filter(Boolean),
+        tagId: DOMElements.keyTagSelect.value || null,
     };
     const existingId = DOMElements.keyIdInput.value;
     if (existingId) {
@@ -419,11 +443,101 @@ function populateEditForm(keyId) {
         DOMElements.keyUserInput.value = CryptoService.decrypt(key.user, masterKey);
         DOMElements.keyPassInput.value = CryptoService.decrypt(key.pass, masterKey);
         DOMElements.keyNoteInput.value = key.note || '';
-        DOMElements.keyTagsInput.value = (key.tags || []).join(', ');
         DOMElements.keyFormTitle.textContent = `Editando '${key.name}'`;
         DOMElements.cancelEditBtn.classList.remove('hidden');
         showKeyFormView(true);
+        DOMElements.keyTagSelect.value = key.tagId || '';
     } catch (e) { showStatus('Error al preparar la llave para edición.', 'error'); }
+}
+
+
+// --- TAG MANAGEMENT ---
+
+function openTagsModal() {
+    DOMElements.tagsModal.classList.remove('hidden');
+    renderTagsInModal();
+    toggleMenu(true);
+}
+
+function renderTagsInModal() {
+    DOMElements.tagsList.innerHTML = '';
+    if (!dbData || dbData.tags.length === 0) {
+        DOMElements.tagsList.innerHTML = '<p class="text-slate-500 text-sm">No hay etiquetas. Añade una nueva abajo.</p>';
+        return;
+    }
+    dbData.tags.sort((a,b) => a.name.localeCompare(b.name)).forEach(tag => {
+        const div = document.createElement('div');
+        div.className = 'flex justify-between items-center p-2 bg-slate-50 dark:bg-slate-800 rounded';
+        div.innerHTML = `
+            <span class="text-slate-800 dark:text-slate-200">${escapeHtml(tag.name)}</span>
+            <div class="flex gap-2">
+                <button class="edit-tag-btn text-blue-600 dark:text-blue-400 hover:underline text-sm">Editar</button>
+                <button class="delete-tag-btn text-red-600 dark:text-red-400 hover:underline text-sm">Eliminar</button>
+            </div>
+        `;
+        div.querySelector('.edit-tag-btn').onclick = () => openEditTagModal(tag.id, tag.name);
+        div.querySelector('.delete-tag-btn').onclick = () => handleDeleteTag(tag.id);
+        DOMElements.tagsList.appendChild(div);
+    });
+}
+
+function handleAddTag(e) {
+    e.preventDefault();
+    const newTagName = DOMElements.addTagInput.value.trim();
+    if (!newTagName || !dbData) return;
+    if (dbData.tags.some(t => t.name.toLowerCase() === newTagName.toLowerCase())) {
+        return alert('Esa etiqueta ya existe.');
+    }
+    dbData.tags.push({ id: `tag_${Date.now()}_${Math.random()}`, name: newTagName });
+    DOMElements.addTagInput.value = '';
+    saveDb();
+    renderTagsInModal();
+}
+
+function openEditTagModal(tagId, tagName) {
+    DOMElements.editTagIdInput.value = tagId;
+    DOMElements.editTagNameInput.value = tagName;
+    DOMElements.editTagModal.classList.remove('hidden');
+}
+
+function handleUpdateTag(e) {
+    e.preventDefault();
+    const tagId = DOMElements.editTagIdInput.value;
+    const newTagName = DOMElements.editTagNameInput.value.trim();
+    if (!tagId || !newTagName || !dbData) return;
+
+    if (dbData.tags.some(t => t.name.toLowerCase() === newTagName.toLowerCase() && t.id !== tagId)) {
+        return alert('Ya existe otra etiqueta con ese nombre.');
+    }
+    const tag = dbData.tags.find(t => t.id === tagId);
+    if (tag) {
+        tag.name = newTagName;
+        saveDb();
+        renderTagsInModal();
+        renderKeys();
+        DOMElements.editTagModal.classList.add('hidden');
+    }
+}
+
+function handleDeleteTag(tagId) {
+    if (!dbData || !confirm('¿Seguro que quieres eliminar esta etiqueta? Se quitará de todas las llaves asociadas.')) return;
+    dbData.tags = dbData.tags.filter(t => t.id !== tagId);
+    dbData.keys.forEach(k => { if (k.tagId === tagId) k.tagId = null; });
+    saveDb();
+    renderTagsInModal();
+    renderKeys();
+}
+
+function populateTagSelect() {
+    const select = DOMElements.keyTagSelect;
+    select.innerHTML = '<option value="">Sin etiqueta</option>';
+    if (!dbData) return;
+    dbData.tags.sort((a,b) => a.name.localeCompare(b.name)).forEach(tag => {
+        const option = document.createElement('option');
+        option.value = tag.id;
+        option.textContent = tag.name;
+        select.appendChild(option);
+    });
 }
 
 // --- AUTH & SESSION ---
@@ -431,9 +545,10 @@ function populateEditForm(keyId) {
 function resetSessionTimer() {
     clearTimeout(sessionTimer);
     const expiresAt = new Date(Date.now() + SESSION_TIMEOUT);
-    if (DOMElements.sessionTimerTime) {
-        DOMElements.sessionTimerTime.textContent = expiresAt.toLocaleTimeString();
-    }
+    const timeString = expiresAt.toLocaleTimeString();
+    if (DOMElements.sessionTimerTimeDesktop) DOMElements.sessionTimerTimeDesktop.textContent = timeString;
+    if (DOMElements.sessionTimerTimeMobile) DOMElements.sessionTimerTimeMobile.textContent = timeString;
+
     sessionTimer = setTimeout(() => { alert('La sesión expiró por inactividad.'); window.location.reload(); }, SESSION_TIMEOUT);
 }
 
@@ -441,8 +556,11 @@ async function onSignedIn() {
     DOMElements.loginView.classList.add('hidden');
     DOMElements.appView.classList.remove('hidden');
     DOMElements.menuBtn.classList.remove('hidden');
-    DOMElements.signOutBtn.classList.remove('hidden');
-    DOMElements.sessionTimerInfo.classList.remove('hidden');
+    
+    // Show session controls based on context
+    DOMElements.desktopSessionControls.classList.remove('hidden');
+    DOMElements.mobileSessionControls.classList.remove('hidden');
+
     document.body.addEventListener('click', resetSessionTimer, { passive: true });
     document.body.addEventListener('input', resetSessionTimer, { passive: true });
     resetSessionTimer();
@@ -463,9 +581,12 @@ document.addEventListener('DOMContentLoaded', () => {
         appView: document.getElementById('app-view'),
         statusMessage: document.getElementById('status-message'),
         signInBtn: document.getElementById('signin-btn'),
-        signOutBtn: document.getElementById('signout-btn'),
-        sessionTimerInfo: document.getElementById('session-timer-info'),
-        sessionTimerTime: document.getElementById('session-timer-time'),
+        desktopSessionControls: document.getElementById('desktop-session-controls'),
+        mobileSessionControls: document.getElementById('mobile-session-controls'),
+        sessionTimerTimeDesktop: document.getElementById('session-timer-time-desktop'),
+        sessionTimerTimeMobile: document.getElementById('session-timer-time-mobile'),
+        signOutBtnDesktop: document.getElementById('signout-btn-desktop'),
+        signOutBtnMobile: document.getElementById('signout-btn-mobile'),
         dbSelect: document.getElementById('db-select'),
         openDbBtn: document.getElementById('open-db-btn'),
         keyList: document.getElementById('key-list'),
@@ -480,7 +601,7 @@ document.addEventListener('DOMContentLoaded', () => {
         keyUserInput: document.getElementById('key-user-input'),
         keyPassInput: document.getElementById('key-pass-input'),
         keyNoteInput: document.getElementById('key-note-input'),
-        keyTagsInput: document.getElementById('key-tags-input'),
+        keyTagSelect: document.getElementById('key-tag-select'),
         cancelEditBtn: document.getElementById('cancel-edit-btn'),
         searchInput: document.getElementById('search-input'),
         keychainTitleName: document.getElementById('keychain-title-name'),
@@ -493,7 +614,6 @@ document.addEventListener('DOMContentLoaded', () => {
         openDbForm: document.getElementById('open-db-form'),
         modalDbName: document.getElementById('modal-db-name'),
         modalMasterKeyInput: document.getElementById('modal-master-key-input'),
-        modalCancelBtn: document.getElementById('modal-cancel-btn'),
         modalUnlockBtn: document.getElementById('modal-unlock-btn'),
         backToListBtn: document.getElementById('back-to-list-btn'),
         keyListView: document.getElementById('key-list-view'),
@@ -510,16 +630,24 @@ document.addEventListener('DOMContentLoaded', () => {
         renameDbModal: document.getElementById('rename-db-modal'),
         renameDbForm: document.getElementById('rename-db-form'),
         renameDbInput: document.getElementById('rename-db-input'),
-        renameCancelBtn: document.getElementById('rename-cancel-btn'),
         renameConfirmBtn: document.getElementById('rename-confirm-btn'),
         deleteDbModal: document.getElementById('delete-db-modal'),
         deleteDbName: document.getElementById('delete-db-name'),
-        deleteCancelBtn: document.getElementById('delete-cancel-btn'),
         deleteConfirmBtn: document.getElementById('delete-confirm-btn'),
+        manageTagsBtn: document.getElementById('manage-tags-btn'),
+        tagsModal: document.getElementById('tags-modal'),
+        tagsList: document.getElementById('tags-list'),
+        addTagForm: document.getElementById('add-tag-form'),
+        addTagInput: document.getElementById('add-tag-input'),
+        editTagModal: document.getElementById('edit-tag-modal'),
+        editTagForm: document.getElementById('edit-tag-form'),
+        editTagIdInput: document.getElementById('edit-tag-id'),
+        editTagNameInput: document.getElementById('edit-tag-name-input'),
     };
     
     // --- EVENT LISTENERS ---
-    DOMElements.signOutBtn.onclick = handleSignOut;
+    DOMElements.signOutBtnDesktop.onclick = handleSignOut;
+    DOMElements.signOutBtnMobile.onclick = handleSignOut;
     DOMElements.createDbForm.onsubmit = handleCreateDb;
     DOMElements.keyForm.onsubmit = handleSaveKey;
     DOMElements.cancelEditBtn.onclick = showKeyListView;
@@ -540,7 +668,10 @@ document.addEventListener('DOMContentLoaded', () => {
         DOMElements.modalMasterKeyInput.focus();
     };
     DOMElements.openDbForm.onsubmit = handleOpenDb;
-    DOMElements.modalCancelBtn.onclick = () => DOMElements.openDbModal.classList.add('hidden');
+    
+    document.querySelectorAll('.modal-cancel-btn').forEach(btn => {
+        btn.onclick = () => btn.closest('.modal-container').classList.add('hidden');
+    });
 
     DOMElements.renameDbBtn.onclick = () => {
         DOMElements.renameDbInput.value = currentDbName.replace('.db', '');
@@ -548,7 +679,6 @@ document.addEventListener('DOMContentLoaded', () => {
         DOMElements.dbManagementDropdown.classList.add('hidden');
         DOMElements.renameDbInput.focus();
     };
-    DOMElements.renameCancelBtn.onclick = () => DOMElements.renameDbModal.classList.add('hidden');
     DOMElements.renameDbForm.onsubmit = handleRenameDb;
 
     DOMElements.deleteDbBtn.onclick = () => {
@@ -556,8 +686,11 @@ document.addEventListener('DOMContentLoaded', () => {
         DOMElements.deleteDbModal.classList.remove('hidden');
         DOMElements.dbManagementDropdown.classList.add('hidden');
     };
-    DOMElements.deleteCancelBtn.onclick = () => DOMElements.deleteDbModal.classList.add('hidden');
     DOMElements.deleteConfirmBtn.onclick = handleDeleteDb;
+
+    DOMElements.manageTagsBtn.onclick = openTagsModal;
+    DOMElements.addTagForm.onsubmit = handleAddTag;
+    DOMElements.editTagForm.onsubmit = handleUpdateTag;
 
     document.querySelectorAll('[data-toggle-password]').forEach(btn => {
         const input = document.getElementById(btn.dataset.togglePassword);
