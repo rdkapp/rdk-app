@@ -13,6 +13,8 @@ let sessionTimer = null;
 let isLoading = false;
 let currentDbName = '';
 let activeDbFiles = [];
+let gsiReady = false;
+let domReady = false;
 
 // --- DOM ELEMENTS ---
 const DOMElements = {
@@ -440,8 +442,15 @@ function handleSignOut() {
 }
 
 // --- INITIALIZATION ---
-// Called when the Google Identity Services script is loaded.
-function handleGsiLoad() {
+
+function tryInitializeApp() {
+    // This function acts as a gatekeeper. It will only run the initialization
+    // logic once both the DOM and the GSI script are ready.
+    if (!gsiReady || !domReady) {
+        return; // Wait for the other event to fire.
+    }
+
+    // Both are ready, proceed with initialization.
     try {
         tokenClient = google.accounts.oauth2.initTokenClient({
             client_id: CLIENT_ID,
@@ -449,24 +458,34 @@ function handleGsiLoad() {
             callback: handleGsiResponse,
         });
 
-        // FIX: Assign click handler here to prevent race condition.
-        // This ensures tokenClient is ready when the button is clicked.
+        // Now it's safe to assign the click handler.
         DOMElements.signInBtn.onclick = () => {
             if (tokenClient) {
                 tokenClient.requestAccessToken({ prompt: 'consent' });
             } else {
-                showStatus('El inicio de sesión de Google aún no está listo. Espera un momento y vuelve a intentarlo.', 'error');
+                showStatus('El cliente de Google no está listo. Por favor, recarga la página.', 'error');
             }
         };
+        showStatus('Listo para iniciar sesión.', 'ok');
 
     } catch (error) {
         showStatus('No se pudo inicializar el inicio de sesión de Google.', 'error');
+        console.error("GSI Initialization Error:", error);
     }
+}
+
+// Called by the `onload` attribute of the GSI script tag in index.html
+function handleGsiLoad() {
+    gsiReady = true;
+    tryInitializeApp();
 }
 window.handleGsiLoad = handleGsiLoad;
 
+// Called when the DOM is fully loaded.
 window.onload = () => {
-    // signInBtn.onclick is now set in handleGsiLoad to avoid race conditions.
+    domReady = true;
+
+    // Set up all other event listeners
     DOMElements.signOutBtn.onclick = handleSignOut;
     DOMElements.createDbForm.onsubmit = handleCreateDb;
     DOMElements.keyForm.onsubmit = handleSaveKey;
@@ -483,4 +502,7 @@ window.onload = () => {
         DOMElements.keyFormContainer.scrollIntoView({ behavior: 'smooth' });
         DOMElements.keyNameInput.focus();
     };
+
+    // Attempt to initialize the app
+    tryInitializeApp();
 };
