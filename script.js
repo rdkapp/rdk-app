@@ -548,7 +548,7 @@ function resetSessionTimer() {
     const timeString = expiresAt.toLocaleTimeString();
     if (DOMElements.sessionTimerTimeMobile) DOMElements.sessionTimerTimeMobile.textContent = timeString;
 
-    sessionTimer = setTimeout(() => { alert('La sesión expiró por inactividad.'); window.location.reload(); }, SESSION_TIMEOUT);
+    sessionTimer = setTimeout(() => { alert('La sesión expiró por inactividad.'); handleSignOut(); }, SESSION_TIMEOUT);
 }
 
 async function onSignedIn() {
@@ -563,9 +563,45 @@ async function onSignedIn() {
     await loadDbListAndRender();
 }
 
+function resetAppStateToLogin() {
+    // UI Resets
+    DOMElements.appView.classList.add('hidden');
+    DOMElements.loginView.classList.remove('hidden');
+    DOMElements.menuBtn.classList.add('hidden');
+    DOMElements.viewsContainer.classList.add('hidden');
+    DOMElements.noDbOpenMessage.classList.remove('hidden');
+
+    // State Resets
+    accessToken = null;
+    dbData = null;
+    dbFileId = null;
+    masterKey = '';
+    currentDbName = '';
+    activeDbFiles = [];
+    
+    // Clear Timer
+    clearTimeout(sessionTimer);
+
+    // UI Content Resets
+    DOMElements.keyList.innerHTML = '';
+    DOMElements.dbSelect.innerHTML = '';
+    DOMElements.keychainTitleName.innerHTML = '';
+    DOMElements.keychainTitleCount.innerHTML = '';
+    
+    // Re-enable sign-in button and set status
+    DOMElements.signInBtn.disabled = false;
+    showStatus('Listo para iniciar sesión.', 'ok');
+}
+
 function handleSignOut() {
-    if (accessToken) google.accounts.oauth2.revoke(accessToken, () => window.location.reload());
-    else window.location.reload();
+    if (accessToken) {
+        google.accounts.oauth2.revoke(accessToken, () => {
+            console.log('Token revoked.');
+            resetAppStateToLogin();
+        });
+    } else {
+        resetAppStateToLogin();
+    }
 }
 
 // --- INITIALIZATION ---
