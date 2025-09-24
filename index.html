@@ -1,149 +1,105 @@
 
-<!doctype html>
-<html lang="en" class="h-full bg-slate-100">
+<!DOCTYPE html>
+<html lang="es">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Personal Keychain</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Llavero Personal</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="stylesheet" href="style.css">
-  <!-- Google Identity Services -->
-  <script src="https://accounts.google.com/gsi/client" async defer></script>
-  <!-- CryptoJS for AES -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
 </head>
-<body class="h-full flex flex-col">
+<body class="bg-slate-100 text-slate-800">
 
-  <header class="bg-slate-800 text-white shadow-lg sticky top-0 z-20">
-    <div class="container mx-auto px-4 py-3 flex items-center gap-3">
-      <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-sky-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-        <path stroke-linecap="round" stroke-linejoin="round" d="M15 7h2a2 2 0 012 2v6a2 2 0 01-2 2h-2m-6 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-10V5a2 2 0 00-2-2H9a2 2 0 00-2 2v2m7 0a2 2 0 012 2m-2-2a2 2 0 00-2-2m2 2a2 2 0 01-2 2m-2-2a2 2 0 002-2" />
-      </svg>
-      <h1 class="text-xl font-bold tracking-tight">Personal Keychain</h1>
-    </div>
-  </header>
+  <div id="app" class="max-w-3xl mx-auto p-4">
+    <header class="text-center my-6">
+      <h1 class="text-4xl font-bold text-slate-700">🔑 Llavero Personal</h1>
+      <p class="text-slate-500 mt-2">Tu gestor de contraseñas seguro en Google Drive.</p>
+    </header>
 
-  <main class="container mx-auto p-4 flex-grow">
-    <!-- Login View -->
-    <div id="login-view" class="max-w-md mx-auto mt-10 text-center">
-      <div class="bg-white p-8 rounded-xl shadow-lg">
-        <h2 class="text-2xl font-bold text-slate-700 mb-2">Welcome</h2>
-        <p class="text-slate-500 mb-6">Sign in with your Google account to access your secure keychain.</p>
-        <button id="signin-btn" class="w-full flex items-center justify-center gap-3 bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg transition-colors shadow-md">
-          <svg class="w-5 h-5" viewBox="0 0 48 48" fill="currentColor">
-            <path fill="#FFC107" d="M43.611,20.083H42V20H24v8h11.303c-1.649,4.657-6.08,8-11.303,8c-6.627,0-12-5.373-12-12s5.373-12,12-12c3.059,0,5.842,1.154,7.961,3.039l5.657-5.657C34.046,6.053,29.268,4,24,4C12.955,4,4,12.955,4,24s8.955,20,20,20s20-8.955,20-20C44,22.659,43.862,21.35,43.611,20.083z"></path><path fill="#FF3D00" d="M6.306,14.691l6.571,4.819C14.655,15.108,18.961,12,24,12c3.059,0,5.842,1.154,7.961,3.039l5.657-5.657C34.046,6.053,29.268,4,24,4C16.318,4,9.656,8.337,6.306,14.691z"></path><path fill="#4CAF50" d="M24,44c5.166,0,9.86-1.977,13.409-5.192l-6.19-5.238C29.211,35.091,26.715,36,24,36c-5.202,0-9.619-3.317-11.283-7.946l-6.522,5.025C9.505,39.556,16.227,44,24,44z"></path><path fill="#1976D2" d="M43.611,20.083H24v8h11.303c-0.792,2.237-2.231,4.166-4.087,5.571l6.19,5.238C44.434,36.333,48,29.882,48,24c0-2.115-0.342-4.158-0.943-6.102L43.611,20.083z"></path>
-          </svg>
-          Sign In with Google
-        </button>
-        <div id="status-message" class="p-3 rounded-md text-sm my-4 text-slate-500">
-          <strong>Status:</strong> Waiting for action...
-        </div>
-        <div class="text-xs text-slate-400 mt-6">
-          This app requests permission to view and manage files it creates in your Google Drive.
-        </div>
-      </div>
+    <div id="statusMsg" class="p-3 my-4 rounded-lg text-center transition-opacity duration-300 opacity-0"></div>
+
+    <!-- Bloque de Inicio de Sesión -->
+    <div id="loginBlock" class="bg-white p-8 rounded-xl shadow-md text-center">
+      <h2 class="text-2xl font-semibold mb-4">Bienvenido</h2>
+      <p class="text-slate-600 mb-6">Para continuar, inicia sesión con tu cuenta de Google.</p>
+      <button id="btnSignIn" disabled class="bg-blue-600 text-white font-bold py-3 px-6 rounded-lg w-full flex items-center justify-center gap-3 hover:bg-blue-700 transition-all disabled:bg-slate-300 disabled:cursor-wait">
+        <svg class="w-6 h-6" viewBox="0 0 48 48"><path fill="#FFC107" d="M43.611 20.083H42V20H24v8h11.303c-1.649 4.657-6.08 8-11.303 8c-6.627 0-12-5.373-12-12s5.373-12 12-12c3.059 0 5.842 1.154 7.961 3.039l5.657-5.657C34.046 6.053 29.268 4 24 4C12.955 4 4 12.955 4 24s8.955 20 20 20s20-8.955 20-20c0-1.341-.138-2.65-.389-3.917z"></path><path fill="#FF3D00" d="m6.306 14.691l6.571 4.819C14.655 15.108 18.961 12 24 12c3.059 0 5.842 1.154 7.961 3.039l5.657-5.657C34.046 6.053 29.268 4 24 4C16.318 4 9.656 8.337 6.306 14.691z"></path><path fill="#4CAF50" d="M24 44c5.166 0 9.86-1.977 13.409-5.192l-6.19-5.238A11.91 11.91 0 0 1 24 36c-5.202 0-9.619-3.317-11.283-7.946l-6.522 5.025C9.505 39.556 16.227 44 24 44z"></path><path fill="#1976D2" d="M43.611 20.083H42V20H24v8h11.303c-.792 2.237-2.231 4.166-4.087 5.571l6.19 5.238C42.012 35.244 44 30.028 44 24c0-1.341-.138-2.65-.389-3.917z"></path></svg>
+        <span id="btnSignInText">Iniciar Sesión con Google</span>
+        <div id="btnSignInSpinner" class="spinner hidden"></div>
+      </button>
+      <p class="text-xs text-slate-400 mt-4">La aplicación solicitará permiso para acceder a los archivos que ella misma cree en tu Google Drive.</p>
     </div>
 
-    <!-- Main App View -->
-    <div id="app-view" class="hidden h-full">
-      <div class="flex flex-col sm:flex-row justify-between sm:items-center gap-2 mb-4">
-        <span id="session-timer-info" class="text-sm text-slate-500"></span>
-        <button id="signout-btn" class="flex items-center justify-center gap-2 bg-slate-600 hover:bg-slate-700 text-white text-sm py-2 px-4 rounded-md transition-colors w-full sm:w-auto">
-          <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-          </svg>
-          Sign Out
-        </button>
-      </div>
-      
-      <div class="grid grid-cols-1 lg:grid-cols-5 gap-6">
-        <!-- Left Column -->
-        <div class="lg:col-span-2 space-y-6">
-          <div class="bg-white p-5 rounded-xl shadow-sm">
-            <h3 class="font-bold text-lg text-slate-800 border-b pb-2 mb-4">Databases</h3>
-            <div id="db-list" class="space-y-2 max-h-60 overflow-y-auto pr-2 mb-6"></div>
-            <form id="create-db-form" class="space-y-3">
-              <label for="new-db-name-input" class="block text-sm font-medium text-slate-700">Create New Database</label>
-              <input id="new-db-name-input" type="text" placeholder="e.g., 'personal'" class="w-full p-2 border border-slate-300 rounded-md" required />
-              <input id="create-master-key-input" type="password" placeholder="Master Key for New DB" class="w-full p-2 border border-slate-300 rounded-md" required />
-              <button type="submit" id="create-db-btn" class="w-full flex justify-center bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-md transition-colors disabled:bg-slate-400">
-                Create & Open
-              </button>
-            </form>
+    <!-- Panel Principal -->
+    <div id="mainPanel" class="hidden">
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+        
+        <!-- Columna Izquierda: BD y Acciones -->
+        <div class="md:col-span-1 space-y-6">
+          <!-- Lista de Bases de Datos -->
+          <div class="bg-white p-4 rounded-xl shadow-md">
+            <h3 class="font-bold mb-3 border-b pb-2">Bases de Datos Disponibles</h3>
+            <div id="dbList" class="space-y-2 max-h-48 overflow-y-auto"></div>
           </div>
-          <div id="key-form-container" class="bg-white p-5 rounded-xl shadow-sm hidden">
-            <h3 id="key-form-title" class="font-bold text-lg text-slate-800 border-b pb-2 mb-4">Add New Key</h3>
-            <form id="key-form" class="space-y-4">
-              <input type="hidden" id="key-id-input">
-              <div>
-                <label for="key-name-input" class="block text-sm font-medium text-slate-700">Name</label>
-                <input id="key-name-input" placeholder="e.g., 'Google Account'" required class="mt-1 w-full p-2 border border-slate-300 rounded-md" />
-              </div>
-              <div>
-                <label for="key-user-input" class="block text-sm font-medium text-slate-700">Username / Email</label>
-                <input id="key-user-input" placeholder="user@example.com" class="mt-1 w-full p-2 border border-slate-300 rounded-md" />
-              </div>
-              <div>
-                <label for="key-pass-input" class="block text-sm font-medium text-slate-700">Password</label>
-                <input id="key-pass-input" type="text" placeholder="Your secure password" class="mt-1 w-full p-2 border border-slate-300 rounded-md font-mono" />
-              </div>
-              <div>
-                <label for="key-note-input" class="block text-sm font-medium text-slate-700">Note</label>
-                <textarea id="key-note-input" placeholder="Any additional info" rows="3" class="mt-1 w-full p-2 border border-slate-300 rounded-md"></textarea>
-              </div>
-              <div>
-                <label for="key-tags-input" class="block text-sm font-medium text-slate-700">Tags</label>
-                <input id="key-tags-input" placeholder="work, social, finance" class="mt-1 w-full p-2 border border-slate-300 rounded-md" />
-                <p class="text-xs text-slate-500 mt-1">Separate tags with a comma.</p>
-              </div>
-              <div class="flex gap-2 pt-2">
-                <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-md">Save Key</button>
-                <button type="button" id="cancel-edit-btn" class="w-full bg-slate-200 hover:bg-slate-300 text-slate-800 py-2 px-4 rounded-md hidden">Cancel</button>
-              </div>
-            </form>
+
+          <!-- Crear Nueva BD -->
+          <div class="bg-white p-4 rounded-xl shadow-md">
+            <h3 class="font-bold mb-3 border-b pb-2">Crear Nueva Base de Datos</h3>
+            <div class="space-y-3">
+              <input id="newDbName" type="text" placeholder="Nombre (ej: personal)" class="w-full p-2 border rounded-md bg-slate-50 focus:ring-2 focus:ring-blue-500 outline-none">
+              <button id="createDbBtn" class="w-full bg-green-600 text-white font-semibold py-2 px-4 rounded-md hover:bg-green-700 transition">Crear BD</button>
+            </div>
           </div>
+          
+          <button id="logoutBtn" class="w-full bg-slate-500 text-white font-semibold py-2 px-4 rounded-md hover:bg-slate-600 transition">Cerrar Sesión</button>
         </div>
-        <!-- Right Column -->
-        <div class="lg:col-span-3">
-          <div id="keys-panel" class="hidden">
-            <div class="bg-white p-4 rounded-xl shadow-sm mb-4 sticky top-[60px] z-10">
-              <h3 class="font-bold text-xl text-slate-800 mb-2">
-                Keys in <span id="active-db-name" class="text-blue-600"></span> (<span id="key-count">0</span>)
-              </h3>
-              <input type="search" id="search-input" placeholder="Search by name, user, note, or tag..." class="w-full p-2 border border-slate-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
-            </div>
-            <div id="key-list" class="space-y-4"></div>
-            <div id="empty-db-message" class="bg-white p-8 rounded-xl shadow-sm text-center text-slate-500 hidden mt-4">
-              <p>This database is empty. Add a new key to get started.</p>
-            </div>
-             <div id="no-results-message" class="bg-white p-8 rounded-xl shadow-sm text-center text-slate-500 hidden mt-4">
-              <p>No keys match your search.</p>
+
+        <!-- Columna Derecha: Llaves y Formulario -->
+        <div class="md:col-span-2 space-y-6">
+          <div class="bg-white p-4 rounded-xl shadow-md">
+            <input id="searchKey" type="text" placeholder="🔍 Buscar por nombre o nota..." class="w-full p-2 border rounded-md bg-slate-50 focus:ring-2 focus:ring-blue-500 outline-none mb-4" disabled>
+            <div id="keyList" class="space-y-3">
+              <p class="text-center text-slate-500 p-4">Abre o crea una base de datos para ver tus llaves.</p>
             </div>
           </div>
-          <div id="no-db-open-message" class="bg-white p-8 rounded-xl shadow-sm text-center text-slate-500">
-            <h3 class="text-lg font-semibold mb-2">No Database Open</h3>
-            <p>Please create a new database or open an existing one from the list.</p>
+
+          <div id="keyFormContainer" class="bg-white p-4 rounded-xl shadow-md hidden">
+            <h3 id="formTitle" class="font-bold text-lg mb-3 border-b pb-2">Agregar Nueva Llave</h3>
+            <div id="keyForm" class="space-y-3">
+              <input type="hidden" id="keyId">
+              <input id="keyName" type="text" placeholder="Nombre (ej: Correo GMail)" class="w-full p-2 border rounded-md bg-slate-50">
+              <input id="keyUser" type="text" placeholder="Usuario / Email" class="w-full p-2 border rounded-md bg-slate-50">
+              <input id="keyPass" type="text" placeholder="Contraseña" class="w-full p-2 border rounded-md bg-slate-50">
+              <textarea id="keyNote" placeholder="Nota (ej: preguntas de seguridad)" class="w-full p-2 border rounded-md bg-slate-50" rows="2"></textarea>
+              <input id="keyTags" type="text" placeholder="Etiquetas (separadas por comas)" class="w-full p-2 border rounded-md bg-slate-50">
+              <div class="flex gap-3">
+                <button id="saveKeyBtn" class="flex-1 bg-blue-600 text-white font-semibold py-2 px-4 rounded-md hover:bg-blue-700 transition">Guardar</button>
+                <button id="cancelEditBtn" type="button" class="flex-1 bg-slate-200 text-slate-700 font-semibold py-2 px-4 rounded-md hover:bg-slate-300 transition">Cancelar</button>
+              </div>
+            </div>
           </div>
         </div>
       </div>
-    </div>
-  </main>
-
-  <!-- Open DB Modal -->
-  <div id="open-db-modal" class="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4 hidden">
-    <div class="bg-white rounded-lg shadow-xl p-6 w-full max-w-sm" role="dialog" aria-modal="true">
-      <h3 class="text-lg font-bold mb-2">Open '<span id="modal-db-name"></span>'</h3>
-      <p class="text-sm text-slate-600 mb-4">Enter the master key to decrypt this database.</p>
-      <form id="open-db-form" class="space-y-4">
-        <input id="modal-master-key-input" type="password" placeholder="Master Key" class="w-full p-2 border border-slate-300 rounded-md" autoFocus required />
-        <div class="flex gap-2">
-          <button type="button" id="modal-cancel-btn" class="w-full bg-slate-200 hover:bg-slate-300 text-slate-800 py-2 px-4 rounded-md">Cancel</button>
-          <button type="submit" id="modal-unlock-btn" class="w-full flex justify-center bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-md disabled:bg-slate-400">
-            Unlock
-          </button>
-        </div>
-      </form>
     </div>
   </div>
+
+  <!-- Modal para Clave Maestra -->
+  <div id="masterKeyModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 hidden">
+    <div class="bg-white rounded-xl shadow-2xl p-6 w-full max-w-sm">
+      <h3 class="text-xl font-bold mb-4">Desbloquear Base de Datos</h3>
+      <p class="mb-4">Ingresa la clave maestra para <strong id="dbNameToUnlock"></strong>:</p>
+      <input id="masterKeyInput" type="password" class="w-full p-2 border rounded-md mb-4 focus:ring-2 focus:ring-blue-500 outline-none">
+      <div class="flex gap-3">
+        <button id="unlockDbBtn" class="flex-1 bg-blue-600 text-white font-semibold py-2 px-4 rounded-md hover:bg-blue-700">Desbloquear</button>
+        <button id="cancelUnlockBtn" type="button" class="flex-1 bg-slate-200 text-slate-700 font-semibold py-2 px-4 rounded-md hover:bg-slate-300">Cancelar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Scripts -->
+  <script src="https://accounts.google.com/gsi/client" async defer onload="onGsiLoaded()"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.2.0/crypto-js.min.js"></script>
+  <script src="script.js"></script>
+
 </body>
 </html>
