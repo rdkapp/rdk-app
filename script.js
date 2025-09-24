@@ -271,6 +271,8 @@ function renderKeys() {
         DOMElements.noDbOpenMessage.classList.remove('hidden');
         DOMElements.addNewKeyHeaderBtn.disabled = true;
         DOMElements.manageTagsBtn.disabled = true;
+        DOMElements.keychainTitleName.innerHTML = '';
+        DOMElements.keychainTitleCount.innerHTML = '';
         return;
     }
 
@@ -733,10 +735,19 @@ function populateTagFilterSelect() {
 
 // --- BIOMETRIC AUTHENTICATION (WEBAUTHN) ---
 
-function checkBiometricSupport() {
-    isBiometricSupported = (navigator.credentials && window.PublicKeyCredential && /Mobi/i.test(navigator.userAgent));
+async function checkBiometricSupport() {
+    if (window.PublicKeyCredential && typeof PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable === 'function') {
+        try {
+            isBiometricSupported = await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable();
+        } catch (e) {
+            console.error("Error checking biometric support:", e);
+            isBiometricSupported = false;
+        }
+    } else {
+        isBiometricSupported = false;
+    }
     DOMElements.manageBiometricsBtn.disabled = !isBiometricSupported;
-    console.log(`Biometric support: ${isBiometricSupported}`);
+    console.log(`Biometric support (isUserVerifyingPlatformAuthenticatorAvailable): ${isBiometricSupported}`);
 }
 
 function getBiometricData() {
@@ -814,8 +825,8 @@ async function setupBiometrics() {
 
 function promptToSetupBiometrics() {
     const bioData = getBiometricData();
-    if (isBiometricSupported && !bioData[dbFileId]) {
-        showToast('¿Quieres desbloquear este llavero con tu huella la próxima vez?', 'info', 10000, [
+    if (isBiometricSupported && dbFileId && !bioData[dbFileId]) {
+        showToast('¿Quieres desbloquear este llavero con tu huella/rostro la próxima vez?', 'info', 10000, [
             { label: 'Sí, configurar', callback: setupBiometrics },
         ]);
     }
@@ -982,23 +993,39 @@ async function onSignedIn(sessionTimeoutOverride) {
 
 function handleSignOut() {
     showToast('Cerrando sesión...', 'info');
+    const tokenToRevoke = accessToken;
+
+    // 1. Clear sensitive state immediately
+    accessToken = null;
+    dbData = null;
+    dbFileId = null;
+    masterKey = '';
+    currentDbName = '';
+    clearTimeout(sessionTimer);
     sessionStorage.removeItem('keychainSession');
-    // We don't clear localStorage (biometric data) on sign out
+
+    // 2. Reset UI to logged-out state immediately
+    DOMElements.appView.classList.add('hidden');
+    DOMElements.loginView.classList.remove('hidden');
+    DOMElements.menuBtn.classList.add('hidden');
+    renderKeys(); // Clears the key list and titles
+    toggleMenu(true); // Ensure side menu is closed
+
+    // 3. Revoke token and force a full reload after a short delay
     setTimeout(() => {
-        if (accessToken) {
-            google.accounts.oauth2.revoke(accessToken, () => {
-                console.log('Token revoked.');
-                window.location.reload();
+        if (tokenToRevoke && window.google && google.accounts && google.accounts.oauth2) {
+            google.accounts.oauth2.revoke(tokenToRevoke, () => {
+                console.log('Token de Google revocado.');
             });
-        } else {
-            window.location.reload();
         }
-    }, 1500);
+        // Always reload to ensure a completely clean state
+        window.location.reload();
+    }, 1000);
 }
 
 // --- INITIALIZATION ---
 
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
     DOMElements = {
         loginView: document.getElementById('login-view'),
         appView: document.getElementById('app-view'),
@@ -1191,7 +1218,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // --- CHECK BIOMETRIC SUPPORT ---
-    checkBiometricSupport();
+    await checkBiometricSupport();
 
     // --- SESSION & LOGIN FLOW ---
     if (tryRestoreSession()) {
