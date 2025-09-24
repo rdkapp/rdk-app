@@ -740,10 +740,6 @@ document.addEventListener('DOMContentLoaded', () => {
         editTagIdInput: document.getElementById('edit-tag-id'),
         editTagNameInput: document.getElementById('edit-tag-name-input'),
         toastContainer: document.getElementById('toast-container'),
-        functionalityBtn: document.getElementById('functionality-btn'),
-        aboutBtn: document.getElementById('about-btn'),
-        functionalityModal: document.getElementById('functionality-modal'),
-        aboutModal: document.getElementById('about-modal'),
     };
     
     if (tryRestoreSession()) {
@@ -795,9 +791,6 @@ document.addEventListener('DOMContentLoaded', () => {
     DOMElements.manageTagsBtn.onclick = openTagsModal;
     DOMElements.addTagForm.onsubmit = handleAddTag;
     DOMElements.editTagForm.onsubmit = handleUpdateTag;
-    
-    DOMElements.functionalityBtn.onclick = () => { DOMElements.functionalityModal.classList.remove('hidden'); toggleMenu(true); };
-    DOMElements.aboutBtn.onclick = () => { DOMElements.aboutModal.classList.remove('hidden'); toggleMenu(true); };
 
     document.querySelectorAll('[data-toggle-password]').forEach(btn => {
         const input = document.getElementById(btn.dataset.togglePassword);
@@ -810,6 +803,25 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!DOMElements.dbManagementBtn.contains(e.target) && !DOMElements.dbManagementDropdown.contains(e.target)) {
             DOMElements.dbManagementDropdown.classList.add('hidden');
         }
+    });
+
+    // Accordion Logic
+    const accordionHeaders = document.querySelectorAll('#menu-accordion .accordion-header');
+    accordionHeaders.forEach(header => {
+        header.addEventListener('click', () => {
+            const accordionItem = header.parentElement;
+            const isExpanded = accordionItem.classList.contains('expanded');
+            
+            // Close all other items
+            document.querySelectorAll('#menu-accordion .accordion-item').forEach(item => {
+                item.classList.remove('expanded');
+            });
+            
+            // If it wasn't already open, open it
+            if (!isExpanded) {
+                accordionItem.classList.add('expanded');
+            }
+        });
     });
 
     const initializeGoogleSignIn = () => {
