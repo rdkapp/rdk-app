@@ -1,0 +1,5 @@
+{
+  "name": "Llavero RDK",
+  "description": "Llavero RDK: A secure personal keychain application that stores encrypted data in your Google Drive. Manage your passwords, notes, and other sensitive information with ease.",
+  "requestFramePermissions": []
+}
