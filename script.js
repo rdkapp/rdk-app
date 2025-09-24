@@ -841,11 +841,7 @@ document.addEventListener('DOMContentLoaded', () => {
         toastContainer: document.getElementById('toast-container'),
     };
     
-    if (tryRestoreSession()) {
-        return; // Session restored, skip login flow
-    }
-    
-    // --- EVENT LISTENERS ---
+    // --- EVENT LISTENERS (ATTACHED UNCONDITIONALLY) ---
     DOMElements.signOutBtnMobile.onclick = handleSignOut;
     DOMElements.createDbForm.onsubmit = handleCreateDb;
     DOMElements.keyForm.onsubmit = handleSaveKey;
@@ -939,47 +935,51 @@ document.addEventListener('DOMContentLoaded', () => {
             const accordionItem = header.parentElement;
             const isExpanded = accordionItem.classList.contains('expanded');
             
-            // Close all other items
             document.querySelectorAll('#menu-accordion .accordion-item').forEach(item => {
                 item.classList.remove('expanded');
             });
             
-            // If it wasn't already open, open it
             if (!isExpanded) {
                 accordionItem.classList.add('expanded');
             }
         });
     });
 
-    const initializeGoogleSignIn = () => {
-        try {
-            if (!window.google || !google.accounts || !google.accounts.oauth2) {
-                throw new Error("La biblioteca de Google no se cargó correctamente.");
-            }
-            tokenClient = google.accounts.oauth2.initTokenClient({
-                client_id: CLIENT_ID,
-                scope: SCOPES,
-                callback: (resp) => {
-                    if (resp.error) return showStatus(`Error de token: ${resp.error}`, 'error');
-                    accessToken = resp.access_token;
-                    showStatus('Autenticado.', 'ok');
-                    onSignedIn();
+    // --- SESSION & LOGIN FLOW ---
+    if (tryRestoreSession()) {
+        // Session restored, UI is active, and listeners are attached. Nothing more to do.
+    } else {
+        // No session found, proceed with Google Sign-In initialization.
+        const initializeGoogleSignIn = () => {
+            try {
+                if (!window.google || !google.accounts || !google.accounts.oauth2) {
+                    throw new Error("La biblioteca de Google no se cargó correctamente.");
                 }
-            });
-            DOMElements.signInBtn.disabled = false;
-            DOMElements.signInBtn.onclick = () => tokenClient.requestAccessToken();
-            showStatus('Listo para iniciar sesión.', 'ok');
-        } catch (error) {
-            console.error("Error al inicializar GSI:", error);
-            showStatus(error.message || 'No se pudo inicializar el inicio de sesión de Google.', 'error');
-        }
-    };
-    
-    const gsiScript = document.createElement('script');
-    gsiScript.src = 'https://accounts.google.com/gsi/client';
-    gsiScript.async = true;
-    gsiScript.defer = true;
-    gsiScript.onload = initializeGoogleSignIn;
-    gsiScript.onerror = () => showStatus('Error al cargar el script de Google.', 'error');
-    document.body.appendChild(gsiScript);
+                tokenClient = google.accounts.oauth2.initTokenClient({
+                    client_id: CLIENT_ID,
+                    scope: SCOPES,
+                    callback: (resp) => {
+                        if (resp.error) return showStatus(`Error de token: ${resp.error}`, 'error');
+                        accessToken = resp.access_token;
+                        showStatus('Autenticado.', 'ok');
+                        onSignedIn();
+                    }
+                });
+                DOMElements.signInBtn.disabled = false;
+                DOMElements.signInBtn.onclick = () => tokenClient.requestAccessToken();
+                showStatus('Listo para iniciar sesión.', 'ok');
+            } catch (error) {
+                console.error("Error al inicializar GSI:", error);
+                showStatus(error.message || 'No se pudo inicializar el inicio de sesión de Google.', 'error');
+            }
+        };
+        
+        const gsiScript = document.createElement('script');
+        gsiScript.src = 'https://accounts.google.com/gsi/client';
+        gsiScript.async = true;
+        gsiScript.defer = true;
+        gsiScript.onload = initializeGoogleSignIn;
+        gsiScript.onerror = () => showStatus('Error al cargar el script de Google.', 'error');
+        document.body.appendChild(gsiScript);
+    }
 });
