@@ -346,6 +346,7 @@ async function handleCreateDb(event) {
         const created = await GDriveService.createFile(`${name}.db`, encryptedContent);
         dbData = newDbData; masterKey = mKey; dbFileId = created.id; currentDbName = `${name}.db`;
         showStatus(`Llavero '${currentDbName}' creado y abierto.`, 'ok');
+        saveSessionState();
         DOMElements.createDbForm.reset();
         await loadDbListAndRender();
         renderKeys();
@@ -381,6 +382,7 @@ async function handleOpenDb(event) {
         // --- End Compatibility ---
 
         masterKey = mKey; dbFileId = id; currentDbName = name;
+        saveSessionState();
         DOMElements.openDbModal.classList.add('hidden');
         DOMElements.modalMasterKeyInput.value = '';
         openingFile = null;
@@ -398,6 +400,7 @@ async function saveDb() {
     try {
         const encryptedContent = CryptoService.encrypt(JSON.stringify(dbData), masterKey);
         await GDriveService.updateFileContent(dbFileId, encryptedContent);
+        saveSessionState();
         showToast('Guardado en Drive correctamente.');
     } catch (e) { showStatus(`Error al guardar: ${e.message}`, 'error'); }
 }
@@ -447,6 +450,7 @@ async function handleRenameDb(event) {
         showStatus(`Llavero renombrado a '${newName}'.`, 'ok');
         renderKeys(); // Re-render to show new name immediately
         await loadDbListAndRender();
+        saveSessionState();
     } catch(e) { showStatus(`Error al renombrar: ${e.message}`, 'error'); }
     finally { setLoading(false, DOMElements.renameConfirmBtn); }
 }
@@ -458,6 +462,7 @@ async function handleDeleteDb() {
         DOMElements.deleteDbModal.classList.add('hidden');
         showStatus(`Llavero '${currentDbName}' eliminado.`, 'ok');
         dbData = null; dbFileId = null; masterKey = ''; currentDbName = '';
+        sessionStorage.removeItem('keychainSession');
         renderKeys();
         await loadDbListAndRender();
     } catch(e) { showStatus(`Error al eliminar: ${e.message}`, 'error'); }
@@ -580,29 +585,81 @@ function populateTagSelect() {
 
 // --- AUTH & SESSION ---
 
-function resetSessionTimer() {
+function saveSessionState() {
+    if (!accessToken || !dbFileId || !masterKey) return;
+    const sessionState = {
+        accessToken,
+        dbFileId,
+        masterKey,
+        currentDbName,
+        dbData,
+        expiresAt: Date.now() + SESSION_TIMEOUT,
+    };
+    sessionStorage.setItem('keychainSession', JSON.stringify(sessionState));
+}
+
+function tryRestoreSession() {
+    const savedSession = sessionStorage.getItem('keychainSession');
+    if (!savedSession) return false;
+
+    try {
+        const sessionState = JSON.parse(savedSession);
+        if (sessionState.expiresAt < Date.now()) {
+            sessionStorage.removeItem('keychainSession');
+            return false;
+        }
+
+        accessToken = sessionState.accessToken;
+        dbFileId = sessionState.dbFileId;
+        masterKey = sessionState.masterKey;
+        currentDbName = sessionState.currentDbName;
+        dbData = sessionState.dbData;
+
+        const timeRemaining = sessionState.expiresAt - Date.now();
+        onSignedIn(timeRemaining);
+        return true;
+    } catch (e) {
+        console.error("Fallo al restaurar la sesión:", e);
+        sessionStorage.removeItem('keychainSession');
+        return false;
+    }
+}
+
+
+function resetSessionTimer(timeout = SESSION_TIMEOUT) {
     clearTimeout(sessionTimer);
-    const expiresAt = new Date(Date.now() + SESSION_TIMEOUT);
+    const expiresAt = new Date(Date.now() + timeout);
     const timeString = expiresAt.toLocaleTimeString();
     if (DOMElements.sessionTimerTimeMobile) DOMElements.sessionTimerTimeMobile.textContent = timeString;
 
-    sessionTimer = setTimeout(() => { alert('La sesión expiró por inactividad.'); handleSignOut(); }, SESSION_TIMEOUT);
+    const savedSession = sessionStorage.getItem('keychainSession');
+    if (savedSession) {
+        try {
+            const sessionState = JSON.parse(savedSession);
+            sessionState.expiresAt = Date.now() + SESSION_TIMEOUT;
+            sessionStorage.setItem('keychainSession', JSON.stringify(sessionState));
+        } catch(e) { console.error("No se pudo actualizar la expiración de la sesión", e); }
+    }
+
+    sessionTimer = setTimeout(() => { alert('La sesión expiró por inactividad.'); handleSignOut(); }, timeout);
 }
 
-async function onSignedIn() {
+async function onSignedIn(sessionTimeoutOverride) {
     DOMElements.loginView.classList.add('hidden');
     DOMElements.appView.classList.remove('hidden');
     DOMElements.menuBtn.classList.remove('hidden');
 
-    document.body.addEventListener('click', resetSessionTimer, { passive: true });
-    document.body.addEventListener('input', resetSessionTimer, { passive: true });
-    resetSessionTimer();
+    document.body.addEventListener('click', () => resetSessionTimer(), { passive: true });
+    document.body.addEventListener('input', () => resetSessionTimer(), { passive: true });
+    
+    resetSessionTimer(sessionTimeoutOverride || SESSION_TIMEOUT);
     renderKeys();
     await loadDbListAndRender();
 }
 
 function handleSignOut() {
     showToast('Cerrando sesión...', 'info');
+    sessionStorage.removeItem('keychainSession');
     setTimeout(() => {
         if (accessToken) {
             google.accounts.oauth2.revoke(accessToken, () => {
@@ -684,6 +741,10 @@ document.addEventListener('DOMContentLoaded', () => {
         editTagNameInput: document.getElementById('edit-tag-name-input'),
         toastContainer: document.getElementById('toast-container'),
     };
+    
+    if (tryRestoreSession()) {
+        return; // Session restored, skip login flow
+    }
     
     // --- EVENT LISTENERS ---
     DOMElements.signOutBtnMobile.onclick = handleSignOut;
