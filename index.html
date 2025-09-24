@@ -1,9 +1,9 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="es">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Llavero Minimal - Debuggable</title>
+<title>Llavero - GIS (GitHub Pages)</title>
 <style>
   body{font-family:Arial,Helvetica,sans-serif;margin:0;background:#f6f8fb;color:#222}
   header{background:#2b7bf6;color:#fff;padding:14px;text-align:center;font-weight:700}
@@ -23,24 +23,21 @@
 </style>
 </head>
 <body>
-<header>Llavero - Versión Minimal (debuggable)</header>
+<header>Llavero (GitHub Pages)</header>
 <div class="wrap">
-
-  <!-- Mensajes de estado -->
   <div id="statusMsg" class="hint">Estado: esperando acción...</div>
 
-  <!-- Login -->
   <div id="loginBlock">
-    <button id="googleSignInBtn">Iniciar sesión con Google</button>
-    <div class="hint">Necesitas autorizar a la app para usar tu Google Drive (solo guarda archivos creados por esta app).</div>
+    <button id="btnSign">Iniciar sesión con Google</button>
+    <div class="hint">La app pedirá permiso para usar archivos creados por esta app en tu Drive.</div>
   </div>
 
-  <!-- Panel principal (visible tras login) -->
   <div id="mainPanel" class="hidden">
     <div style="display:flex;gap:8px;align-items:center">
-      <input id="newDbName" placeholder="Nombre nuevo archivo (sin extensión)" />
+      <input id="newDbName" placeholder="Nombre nuevo archivo (sin .db)" />
       <button id="createDbBtn" style="width:120px">Crear</button>
     </div>
+
     <input id="masterKey" type="password" placeholder="Clave maestra (para cifrar / desbloquear)" />
     <div id="dbList" style="margin-top:10px"></div>
 
@@ -64,210 +61,219 @@
   </div>
 
   <hr/>
-
-  <div class="small hint">Consejos de debugging: abre la consola (F12) y recarga si algo falla. Verifica Client ID, origenes y Drive API.</div>
+  <div class="small hint">
+    Recomendaciones: 
+    <ul>
+      <li>Servir desde <code>https://&lt;tu-usuario&gt;.github.io</code> (no funciona con file://).</li>
+      <li>En Google Cloud: habilitar <b>Drive API</b>, configurar OAuth consent y autorizar origenes JS (ej. https://&lt;tu-usuario&gt;.github.io).</li>
+    </ul>
+    Abrí la consola del navegador (F12) si algo falla y pegá los errores aquí si querés que los revise.
+  </div>
 </div>
 
-<!-- libs -->
-<script src="https://apis.google.com/js/api.js"></script>
+<!-- Google Identity Services -->
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<!-- CryptoJS para AES -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
 
 <script>
-/* ---------- CONFIG ---------- */
-const CLIENT_ID = '576080826935-2mtnj52ndc8plnsjodjevt3e2gsh4m3a.apps.googleusercontent.com'; // <-- reemplazar aquí
+/* -------- CONFIG (tu Client ID) -------- */
+const CLIENT_ID = '576080826935-2mtnj52ndc8plnsjodjevt3e2gsh4m3a.apps.googleusercontent.com';
 const SCOPES = 'https://www.googleapis.com/auth/drive.file';
-const DISCOVERY_DOCS = ["https://www.googleapis.com/discovery/v1/apis/drive/v3/rest"];
-/* ---------------------------- */
+/* -------------------------------------- */
 
+let accessToken = null;
+let tokenClient = null;
 let dbData = null;
 let dbFileId = null;
 let masterKey = '';
 let sessionTimer = null;
 
-// UI refs
 const statusMsg = id('statusMsg');
-const loginBlock = id('loginBlock');
-const mainPanel = id('mainPanel');
-const dbListDiv = id('dbList');
+const btnSign = id('btnSign');
 const createDbBtn = id('createDbBtn');
-const googleSignInBtn = id('googleSignInBtn');
 const logoutBtn = id('logoutBtn');
 
 function id(i){ return document.getElementById(i); }
-
-/* --- UTIL --- */
-function showStatus(msg, kind='info'){
-  statusMsg.className = kind==='error' ? 'error' : (kind==='ok' ? 'ok' : 'hint');
-  statusMsg.textContent = 'Estado: ' + msg;
+function showStatus(msg, kind = 'info'){
+  id('statusMsg').className = kind === 'error' ? 'error' : (kind === 'ok' ? 'ok' : 'hint');
+  id('statusMsg').textContent = 'Estado: ' + msg;
   console.log('[STATUS]', msg);
 }
 
-/* --- GAPI init with robust error handling --- */
-function start(){
+window.onload = () => {
   if(!CLIENT_ID || CLIENT_ID.includes('YOUR_')) {
-    showStatus('Poner tu Client ID en la constante CLIENT_ID del archivo HTML.', 'error');
-    console.error('Falta CLIENT_ID. Reemplaza YOUR_GOOGLE_CLIENT_ID por tu client id.');
-    googleSignInBtn.disabled = true;
+    showStatus('Coloca tu CLIENT_ID en el archivo HTML.', 'error');
+    btnSign.disabled = true;
     return;
   }
 
-  gapi.load('client:auth2', async () => {
-    try {
-      // use gapi.client.init to initialize client & load discovery docs
-      await gapi.client.init({
-        discoveryDocs: DISCOVERY_DOCS,
-        clientId: CLIENT_ID,
-        scope: SCOPES
-      });
-      showStatus('gapi inicializado. Listo para iniciar sesión.');
-      googleSignInBtn.onclick = handleSignIn;
-    } catch(err){
-      showStatus('Error inicializando gapi: ' + (err.message || err), 'error');
-      console.error('gapi.client.init error', err);
-      googleSignInBtn.onclick = ()=> alert('Error en inicialización. Ver consola.');
+  tokenClient = google.accounts.oauth2.initTokenClient({
+    client_id: CLIENT_ID,
+    scope: SCOPES,
+    callback: (resp) => {
+      if(resp.error) {
+        showStatus('Error al obtener token: ' + resp.error, 'error');
+        console.error('token error', resp);
+        return;
+      }
+      accessToken = resp.access_token;
+      showStatus('Autenticado. Token obtenido.', 'ok');
+      onSignedIn();
     }
   });
-}
 
-// Sign-in
-async function handleSignIn(){
-  showStatus('Solicitando permiso de Google...');
-  try {
-    const authInstance = gapi.auth2.getAuthInstance();
-    const user = await authInstance.signIn();
-    showStatus('Usuario autenticado. Cargando Drive...');
-    // cargar drive client (discovery ya cargado en init, pero aseguramos)
-    await gapi.client.load('drive', 'v3');
-    // mostrar UI principal
-    loginBlock.classList.add('hidden');
-    mainPanel.classList.remove('hidden');
-    showStatus('Listo. Cargando lista de archivos .db');
-    loadDbList();
-    resetSessionTimer();
-  } catch(err) {
-    showStatus('Login cancelado o error: ' + (err.error || err.message || err), 'error');
-    console.error('signIn error', err);
-  }
-}
-
-logoutBtn.onclick = ()=>{
-  const auth = gapi.auth2.getAuthInstance();
-  if(auth) auth.signOut().then(()=> location.reload());
+  btnSign.onclick = () => {
+    showStatus('Solicitando permisos a Google...');
+    try {
+      tokenClient.requestAccessToken({prompt: 'consent'});
+    } catch(e) {
+      showStatus('Error al solicitar token: ' + (e.message || e), 'error');
+      console.error(e);
+    }
+  };
 };
 
-// Load list of .db files (we use application/octet-stream mime)
+async function onSignedIn(){
+  id('loginBlock').classList.add('hidden');
+  id('mainPanel').classList.remove('hidden');
+  id('createDbBtn').onclick = createDb;
+  logoutBtn.onclick = signOut;
+  id('searchKey').addEventListener('input', e => renderKeys(e.target.value));
+  id('saveKeyBtn').onclick = saveKey;
+  resetSessionTimer();
+  await loadDbList();
+}
+
+function signOut(){
+  if(accessToken){
+    fetch('https://oauth2.googleapis.com/revoke?token=' + accessToken, { method: 'POST', headers: {'Content-type':'application/x-www-form-urlencoded'} })
+      .then(()=>{ accessToken = null; location.reload(); })
+      .catch(()=> location.reload());
+  } else location.reload();
+}
+
+async function driveListDbFiles(){
+  const q = "mimeType='application/octet-stream' and trashed=false";
+  const url = `https://www.googleapis.com/drive/v3/files?pageSize=50&fields=files(id,name,modifiedTime)&q=${encodeURIComponent(q)}&orderBy=modifiedTime desc`;
+  const res = await fetch(url, { headers: { Authorization: 'Bearer ' + accessToken }});
+  if(!res.ok) throw await res.json();
+  return await res.json();
+}
+async function driveGetFileContent(fileId){
+  const url = `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`;
+  const res = await fetch(url, { headers: { Authorization: 'Bearer ' + accessToken }});
+  if(!res.ok) throw await res.json();
+  return await res.text();
+}
+async function driveCreateFile(name, blob){
+  const metadata = { name, mimeType: 'application/octet-stream' };
+  const form = new FormData();
+  form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
+  form.append('file', blob);
+  const url = 'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id';
+  const res = await fetch(url, { method:'POST', headers:{ Authorization: 'Bearer ' + accessToken }, body: form });
+  if(!res.ok) throw await res.json();
+  return await res.json();
+}
+async function driveUpdateFileContent(fileId, blob){
+  const url = `https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media`;
+  const res = await fetch(url, { method:'PATCH', headers:{ Authorization: 'Bearer ' + accessToken, 'Content-Type':'application/octet-stream' }, body: blob });
+  if(!res.ok) throw await res.json();
+  return await res.json();
+}
+
 async function loadDbList(){
   try {
-    const res = await gapi.client.drive.files.list({
-      q: "mimeType='application/octet-stream' and trashed=false",
-      fields: "files(id,name,modifiedTime)",
-      orderBy: "modifiedTime desc",
-      pageSize: 50
-    });
-    const files = res.result.files || [];
-    dbListDiv.innerHTML = files.length ? '' : '<div class="hint">No se encontraron archivos .db en tu Drive (crealos abajo)</div>';
+    const json = await driveListDbFiles();
+    const files = json.files || [];
+    const list = id('dbList');
+    list.innerHTML = '';
+    if(files.length === 0) list.innerHTML = '<div class="hint">No hay archivos .db (creá uno abajo)</div>';
     files.forEach(f=>{
       const btn = document.createElement('button');
       btn.className = 'db-btn';
-      btn.textContent = f.name + ' • ' + new Date(f.modifiedTime).toLocaleString();
-      btn.onclick = ()=> openDbPrompt(f.id,f.name);
-      dbListDiv.appendChild(btn);
+      btn.textContent = `${f.name} • ${new Date(f.modifiedTime).toLocaleString()}`;
+      btn.onclick = () => openDbPrompt(f.id, f.name);
+      list.appendChild(btn);
     });
-    showStatus('Lista de archivos cargada. ' + files.length + ' encontrado(s).');
-  } catch(err){
-    showStatus('Error al listar archivos: ' + (err.message || err), 'error');
-    console.error('list files error', err);
+    showStatus('Lista de .db cargada (' + files.length + ').');
+  } catch(e){
+    showStatus('Error listando archivos: ' + (e.error || e.message || JSON.stringify(e)), 'error');
+    console.error('list error', e);
   }
 }
 
-/* --- Create DB --- */
-createDbBtn.onclick = async ()=>{
-  const name = id('newDbName').value.trim();
+async function createDb(){
+  const nameBase = id('newDbName').value.trim();
   const key = id('masterKey').value;
-  if(!name || !key) return alert('Nombre y clave maestra obligatorios.');
+  if(!nameBase || !key) return alert('Nombre y clave maestra obligatorios.');
   masterKey = key;
   dbData = { keys: [] };
   try {
     const encrypted = CryptoJS.AES.encrypt(JSON.stringify(dbData), masterKey).toString();
     const blob = new Blob([encrypted], { type: 'application/octet-stream' });
-    const metadata = { name: name + '.db', mimeType: 'application/octet-stream' };
-
-    // Use multipart upload via gapi.client.request
-    const form = new FormData();
-    form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
-    form.append('file', blob);
-
-    const res = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id', {
-      method: 'POST',
-      headers: { Authorization: 'Bearer ' + gapi.auth2.getAuthInstance().currentUser.get().getAuthResponse().access_token },
-      body: form
-    });
-    const json = await res.json();
-    if(json.id){
-      dbFileId = json.id;
-      showStatus('Archivo creado correctamente: ' + metadata.name, 'ok');
-      loadDbList();
-      renderKeys();
-      resetSessionTimer();
-    } else throw json;
-  } catch(err){
-    showStatus('Error creando archivo: ' + (err.message || JSON.stringify(err)), 'error');
-    console.error('create file error', err);
+    const created = await driveCreateFile(nameBase + '.db', blob);
+    dbFileId = created.id;
+    showStatus('Archivo creado: ' + nameBase + '.db', 'ok');
+    await loadDbList();
+    renderKeys();
+    resetSessionTimer();
+  } catch(e){
+    showStatus('Error creando archivo: ' + (e.error || e.message || JSON.stringify(e)), 'error');
+    console.error('create error', e);
   }
-};
+}
 
-/* --- Open DB (prompt for clave maestra) --- */
 async function openDbPrompt(fileId, fileName){
   const key = prompt('Ingrese clave maestra para ' + fileName);
   if(!key) return;
   masterKey = key;
   try {
-    const res = await gapi.client.drive.files.get({ fileId: fileId, alt: 'media' });
-    const body = res.body || res.result || res; // robust fallback
-    // res.body contiene el texto cifrado si la petición usa alt=media
+    const body = await driveGetFileContent(fileId);
     const decrypted = CryptoJS.AES.decrypt(body, masterKey).toString(CryptoJS.enc.Utf8);
     dbData = JSON.parse(decrypted);
     dbFileId = fileId;
-    showStatus('Archivo abierto correctamente: ' + fileName, 'ok');
+    showStatus('Archivo abierto: ' + fileName, 'ok');
     renderKeys();
     resetSessionTimer();
-  } catch(err){
-    showStatus('No se pudo abrir el archivo (clave incorrecta o error): ' + (err.message || err), 'error');
-    console.error('openDb error', err);
+  } catch(e){
+    showStatus('No se pudo abrir archivo (clave incorrecta o error): ' + (e.error || e.message || JSON.stringify(e)), 'error');
+    console.error('open error', e);
   }
 }
 
-/* --- Render keys list --- */
 function renderKeys(filter=''){
-  if(!dbData) { id('keyList').innerHTML = '<div class="hint">Abre o crea un .db primero.</div>'; return; }
-  const list = dbData.keys.filter(k => !filter || (k.name && k.name.toLowerCase().includes(filter.toLowerCase())) || (k.note && k.note.toLowerCase().includes(filter.toLowerCase())));
   const container = id('keyList');
   container.innerHTML = '';
-  list.forEach((k, idx) => {
-    let user='', pass='';
+  if(!dbData){ container.innerHTML = '<div class="hint">Abre o crea un .db primero.</div>'; return; }
+  const list = dbData.keys.filter(k => {
+    if(!filter) return true;
+    const f = filter.toLowerCase();
+    return (k.name && k.name.toLowerCase().includes(f)) || (k.note && k.note.toLowerCase().includes(f));
+  });
+  list.forEach((k, idx)=>{
+    let user = '(error)'; let pass = '(error)';
     try {
       user = CryptoJS.AES.decrypt(k.user, masterKey).toString(CryptoJS.enc.Utf8);
       pass = CryptoJS.AES.decrypt(k.pass, masterKey).toString(CryptoJS.enc.Utf8);
-    } catch(e){ user='(error desencriptando)'; pass='(error)'; }
-    const div = document.createElement('div'); div.className='key-item';
-    div.innerHTML = `<b>${escapeHtml(k.name||'')}</b>
+    } catch(e){ /* placeholders */ }
+    const div = document.createElement('div'); div.className = 'key-item';
+    div.innerHTML = `<b>${escapeHtml(k.name)}</b>
       <div class="small">Usuario: ${escapeHtml(user)}</div>
       <div class="small">Clave: ${escapeHtml(pass)}</div>
       <div class="small">Nota: ${escapeHtml(k.note||'')}</div>
       <div class="tags">${(k.tags||[]).map(t=>' <span class="tag">'+escapeHtml(t)+'</span>').join('')}</div>`;
-    const row = document.createElement('div'); row.className='row';
-    const editBtn = document.createElement('button'); editBtn.textContent='Editar';
-    const delBtn = document.createElement('button'); delBtn.textContent='Borrar';
-    editBtn.onclick = ()=> populateEdit(idx);
-    delBtn.onclick = ()=> { if(confirm('Borrar llave?')) { dbData.keys.splice(idx,1); saveDb(); renderKeys(id('searchKey').value); } };
+    const row = document.createElement('div'); row.className = 'row';
+    const editBtn = document.createElement('button'); editBtn.textContent = 'Editar'; editBtn.onclick = ()=> populateEdit(idx);
+    const delBtn = document.createElement('button'); delBtn.textContent = 'Borrar'; delBtn.onclick = ()=> { if(confirm('Borrar llave?')) { dbData.keys.splice(idx,1); saveDb(); renderKeys(id('searchKey').value); } };
     row.appendChild(editBtn); row.appendChild(delBtn);
     div.appendChild(row);
     container.appendChild(div);
   });
 }
 
-/* --- Save / Edit keys --- */
-id('saveKeyBtn').onclick = ()=>{
+function saveKey(){
   if(!dbData || !dbFileId) return alert('Abre o crea un .db primero.');
   const name = id('keyName').value.trim();
   const user = id('keyUser').value;
@@ -277,18 +283,18 @@ id('saveKeyBtn').onclick = ()=>{
   if(!name) return alert('Nombre de llave obligatorio.');
   const encUser = CryptoJS.AES.encrypt(user, masterKey).toString();
   const encPass = CryptoJS.AES.encrypt(pass, masterKey).toString();
-  // If editing existing (we detect by same name) replace first occurrence, else push
-  const existingIndex = dbData.keys.findIndex(k => k._editing === true);
-  if(existingIndex >= 0){
-    dbData.keys[existingIndex] = { name, user:encUser, pass:encPass, note, tags };
+
+  const editingIndex = dbData.keys.findIndex(k => k._editing === true);
+  if(editingIndex >= 0){
+    dbData.keys[editingIndex] = { name, user: encUser, pass: encPass, note, tags };
     cleanupEditingFlags();
   } else {
-    dbData.keys.push({ name, user:encUser, pass:encPass, note, tags });
+    dbData.keys.push({ name, user: encUser, pass: encPass, note, tags });
   }
   saveDb();
   clearForm();
   renderKeys(id('searchKey').value);
-};
+}
 
 function populateEdit(index){
   const k = dbData.keys[index];
@@ -300,68 +306,39 @@ function populateEdit(index){
     id('keyTags').value = (k.tags||[]).join(',');
     cleanupEditingFlags();
     dbData.keys[index]._editing = true;
-    showStatus('Editando elemento: ' + k.name);
+    showStatus('Editando: ' + k.name);
   } catch(e){
-    showStatus('Error al preparar edición: ' + (e.message||e), 'error');
+    showStatus('Error al preparar edición: ' + (e.message || e), 'error');
   }
 }
-
-function cleanupEditingFlags(){
-  (dbData.keys||[]).forEach(k => { if(k._editing) delete k._editing; });
-}
-
-id('logoutBtn').onclick = ()=> {
-  const auth = gapi.auth2.getAuthInstance();
-  if(auth) auth.signOut().then(()=> location.reload());
-};
-
-id('searchKey').addEventListener('input', e => renderKeys(e.target.value));
-
+function cleanupEditingFlags(){ (dbData.keys||[]).forEach(k=>{ if(k._editing) delete k._editing; }); }
 function clearForm(){ id('keyName').value=''; id('keyUser').value=''; id('keyPass').value=''; id('keyNote').value=''; id('keyTags').value=''; }
 
-/* --- Save DB to Drive (overwrite file) --- */
 async function saveDb(){
-  try{
-    const content = CryptoJS.AES.encrypt(JSON.stringify(dbData), masterKey).toString();
-    const blob = new Blob([content], { type: 'application/octet-stream' });
-
-    // Use resumable or multipart update. We'll do multipart update via fetch.
-    const accessToken = gapi.auth2.getAuthInstance().currentUser.get().getAuthResponse().access_token;
-
-    const metadata = { name: 'llavero.db' }; // name can remain as is, Drive ignores for update
-    // To update we use uploadType=media to replace content:
-    const res = await fetch(`https://www.googleapis.com/upload/drive/v3/files/${dbFileId}?uploadType=media`, {
-      method: 'PATCH',
-      headers: {
-        Authorization: 'Bearer ' + accessToken,
-        'Content-Type': 'application/octet-stream'
-      },
-      body: blob
-    });
-    if(!res.ok) throw await res.json();
+  try {
+    const encrypted = CryptoJS.AES.encrypt(JSON.stringify(dbData), masterKey).toString();
+    const blob = new Blob([encrypted], { type: 'application/octet-stream' });
+    await driveUpdateFileContent(dbFileId, blob);
     showStatus('Guardado en Drive correctamente.', 'ok');
-    loadDbList();
-  } catch(err){
-    showStatus('Error guardando DB: ' + (err.message || JSON.stringify(err)), 'error');
-    console.error('saveDb error', err);
+    await loadDbList();
+  } catch(e){
+    showStatus('Error guardando DB: ' + (e.error || e.message || JSON.stringify(e)), 'error');
+    console.error('save error', e);
   }
 }
 
-/* --- Session timer (5 min inactivity) --- */
 function resetSessionTimer(){
   if(sessionTimer) clearTimeout(sessionTimer);
   sessionTimer = setTimeout(()=>{ alert('Sesión expirada por inactividad.'); location.reload(); }, 5*60*1000);
-  // renew on interaction
   ['click','input','keydown','touchstart'].forEach(evt => document.addEventListener(evt, resetSessionTimer));
   const expiresAt = new Date(Date.now() + 5*60*1000);
   id('sessionInfo').textContent = 'Sesión expira a las ' + expiresAt.toLocaleTimeString();
 }
 
-/* --- Helpers --- */
 function escapeHtml(s){ if(!s) return ''; return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
-/* --- Start --- */
-start();
+id('createDbBtn').onclick = createDb;
+id('logoutBtn').onclick = signOut;
 </script>
 </body>
 </html>
