@@ -1,14 +1,13 @@
-
 <!doctype html>
-<html lang="en" class="h-full bg-slate-100">
+<html lang="es" class="h-full bg-slate-100">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Personal Keychain</title>
+  <title>Llavero Personal</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="stylesheet" href="style.css">
   <!-- Google Identity Services -->
-  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <script src="https://accounts.google.com/gsi/client" async defer onload="handleGsiLoad()"></script>
   <!-- CryptoJS for AES -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
 </head>
@@ -16,10 +15,8 @@
 
   <header class="bg-slate-800 text-white shadow-lg sticky top-0 z-20">
     <div class="container mx-auto px-4 py-3 flex items-center gap-3">
-      <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-sky-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-        <path stroke-linecap="round" stroke-linejoin="round" d="M15 7h2a2 2 0 012 2v6a2 2 0 01-2 2h-2m-6 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-10V5a2 2 0 00-2-2H9a2 2 0 00-2 2v2m7 0a2 2 0 012 2m-2-2a2 2 0 00-2-2m2 2a2 2 0 01-2 2m-2-2a2 2 0 002-2" />
-      </svg>
-      <h1 class="text-xl font-bold tracking-tight">Personal Keychain</h1>
+      <span role="img" aria-label="Icono de llave" class="text-2xl">🔑</span>
+      <h1 class="text-xl font-bold tracking-tight">Llavero Personal</h1>
     </div>
   </header>
 
@@ -27,19 +24,19 @@
     <!-- Login View -->
     <div id="login-view" class="max-w-md mx-auto mt-10 text-center">
       <div class="bg-white p-8 rounded-xl shadow-lg">
-        <h2 class="text-2xl font-bold text-slate-700 mb-2">Welcome</h2>
-        <p class="text-slate-500 mb-6">Sign in with your Google account to access your secure keychain.</p>
+        <h2 class="text-2xl font-bold text-slate-700 mb-2">Bienvenido</h2>
+        <p class="text-slate-500 mb-6">Inicia sesión con tu cuenta de Google para acceder a tu llavero seguro.</p>
         <button id="signin-btn" class="w-full flex items-center justify-center gap-3 bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg transition-colors shadow-md">
           <svg class="w-5 h-5" viewBox="0 0 48 48" fill="currentColor">
             <path fill="#FFC107" d="M43.611,20.083H42V20H24v8h11.303c-1.649,4.657-6.08,8-11.303,8c-6.627,0-12-5.373-12-12s5.373-12,12-12c3.059,0,5.842,1.154,7.961,3.039l5.657-5.657C34.046,6.053,29.268,4,24,4C12.955,4,4,12.955,4,24s8.955,20,20,20s20-8.955,20-20C44,22.659,43.862,21.35,43.611,20.083z"></path><path fill="#FF3D00" d="M6.306,14.691l6.571,4.819C14.655,15.108,18.961,12,24,12c3.059,0,5.842,1.154,7.961,3.039l5.657-5.657C34.046,6.053,29.268,4,24,4C16.318,4,9.656,8.337,6.306,14.691z"></path><path fill="#4CAF50" d="M24,44c5.166,0,9.86-1.977,13.409-5.192l-6.19-5.238C29.211,35.091,26.715,36,24,36c-5.202,0-9.619-3.317-11.283-7.946l-6.522,5.025C9.505,39.556,16.227,44,24,44z"></path><path fill="#1976D2" d="M43.611,20.083H24v8h11.303c-0.792,2.237-2.231,4.166-4.087,5.571l6.19,5.238C44.434,36.333,48,29.882,48,24c0-2.115-0.342-4.158-0.943-6.102L43.611,20.083z"></path>
           </svg>
-          Sign In with Google
+          Iniciar Sesión con Google
         </button>
         <div id="status-message" class="p-3 rounded-md text-sm my-4 text-slate-500">
-          <strong>Status:</strong> Waiting for action...
+          <strong>Estado:</strong> Esperando acción...
         </div>
         <div class="text-xs text-slate-400 mt-6">
-          This app requests permission to view and manage files it creates in your Google Drive.
+          Esta aplicación solicita permiso para ver y administrar los archivos que crea en tu Google Drive.
         </div>
       </div>
     </div>
@@ -49,10 +46,8 @@
       <div class="flex flex-col sm:flex-row justify-between sm:items-center gap-2 mb-4">
         <span id="session-timer-info" class="text-sm text-slate-500"></span>
         <button id="signout-btn" class="flex items-center justify-center gap-2 bg-slate-600 hover:bg-slate-700 text-white text-sm py-2 px-4 rounded-md transition-colors w-full sm:w-auto">
-          <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-          </svg>
-          Sign Out
+          <span role="img" aria-label="Cerrar sesión">🚪</span>
+          Cerrar Sesión
         </button>
       </div>
       
@@ -60,45 +55,45 @@
         <!-- Left Column -->
         <div class="lg:col-span-2 space-y-6">
           <div class="bg-white p-4 rounded-xl shadow-sm">
-            <h3 class="font-bold text-lg text-slate-800 border-b pb-2 mb-4">Databases</h3>
+            <h3 class="font-bold text-lg text-slate-800 border-b pb-2 mb-4">Bases de Datos</h3>
             <div id="db-list" class="space-y-2 max-h-80 overflow-y-auto pr-2 mb-6"></div>
             <form id="create-db-form" class="space-y-3">
-              <label for="new-db-name-input" class="block text-sm font-medium text-slate-700">Create New Database</label>
-              <input id="new-db-name-input" type="text" placeholder="e.g., 'personal'" class="w-full p-2 border border-slate-300 rounded-md" required />
-              <input id="create-master-key-input" type="password" placeholder="Master Key for New DB" class="w-full p-2 border border-slate-300 rounded-md" required />
+              <label for="new-db-name-input" class="block text-sm font-medium text-slate-700">Crear Nueva Base de Datos</label>
+              <input id="new-db-name-input" type="text" placeholder="ej: 'personal'" class="w-full p-2 border border-slate-300 rounded-md" required />
+              <input id="create-master-key-input" type="password" placeholder="Clave Maestra para nueva BD" class="w-full p-2 border border-slate-300 rounded-md" required />
               <button type="submit" id="create-db-btn" class="w-full flex justify-center bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-md transition-colors disabled:bg-slate-400">
-                Create & Open
+                Crear y Abrir
               </button>
             </form>
           </div>
           <div id="key-form-container" class="bg-white p-4 rounded-xl shadow-sm hidden">
-            <h3 id="key-form-title" class="font-bold text-lg text-slate-800 border-b pb-2 mb-4">Add New Key</h3>
+            <h3 id="key-form-title" class="font-bold text-lg text-slate-800 border-b pb-2 mb-4">Añadir Nueva Clave</h3>
             <form id="key-form" class="space-y-4">
               <input type="hidden" id="key-id-input">
               <div>
-                <label for="key-name-input" class="block text-sm font-medium text-slate-700">Name</label>
-                <input id="key-name-input" placeholder="e.g., 'Google Account'" required class="mt-1 w-full p-2 border border-slate-300 rounded-md" />
+                <label for="key-name-input" class="block text-sm font-medium text-slate-700">Nombre</label>
+                <input id="key-name-input" placeholder="ej: 'Cuenta de Google'" required class="mt-1 w-full p-2 border border-slate-300 rounded-md" />
               </div>
               <div>
-                <label for="key-user-input" class="block text-sm font-medium text-slate-700">Username / Email</label>
-                <input id="key-user-input" placeholder="user@example.com" class="mt-1 w-full p-2 border border-slate-300 rounded-md" />
+                <label for="key-user-input" class="block text-sm font-medium text-slate-700">Usuario / Correo</label>
+                <input id="key-user-input" placeholder="usuario@ejemplo.com" class="mt-1 w-full p-2 border border-slate-300 rounded-md" />
               </div>
               <div>
-                <label for="key-pass-input" class="block text-sm font-medium text-slate-700">Password</label>
-                <input id="key-pass-input" type="text" placeholder="Your secure password" class="mt-1 w-full p-2 border border-slate-300 rounded-md font-mono" />
+                <label for="key-pass-input" class="block text-sm font-medium text-slate-700">Contraseña</label>
+                <input id="key-pass-input" type="text" placeholder="Tu contraseña segura" class="mt-1 w-full p-2 border border-slate-300 rounded-md font-mono" />
               </div>
               <div>
-                <label for="key-note-input" class="block text-sm font-medium text-slate-700">Note</label>
-                <textarea id="key-note-input" placeholder="Any additional info" rows="3" class="mt-1 w-full p-2 border border-slate-300 rounded-md"></textarea>
+                <label for="key-note-input" class="block text-sm font-medium text-slate-700">Nota</label>
+                <textarea id="key-note-input" placeholder="Cualquier información adicional" rows="3" class="mt-1 w-full p-2 border border-slate-300 rounded-md"></textarea>
               </div>
               <div>
-                <label for="key-tags-input" class="block text-sm font-medium text-slate-700">Tags</label>
-                <input id="key-tags-input" placeholder="work, social, finance" class="mt-1 w-full p-2 border border-slate-300 rounded-md" />
-                <p class="text-xs text-slate-500 mt-1">Separate tags with a comma.</p>
+                <label for="key-tags-input" class="block text-sm font-medium text-slate-700">Etiquetas</label>
+                <input id="key-tags-input" placeholder="trabajo, social, finanzas" class="mt-1 w-full p-2 border border-slate-300 rounded-md" />
+                <p class="text-xs text-slate-500 mt-1">Separa las etiquetas con una coma.</p>
               </div>
               <div class="flex gap-2 pt-2">
-                <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-md">Save Key</button>
-                <button type="button" id="cancel-edit-btn" class="w-full bg-slate-200 hover:bg-slate-300 text-slate-800 py-2 px-4 rounded-md hidden">Cancel</button>
+                <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-md">Guardar Clave</button>
+                <button type="button" id="cancel-edit-btn" class="w-full bg-slate-200 hover:bg-slate-300 text-slate-800 py-2 px-4 rounded-md hidden">Cancelar</button>
               </div>
             </form>
           </div>
@@ -109,28 +104,26 @@
             <div class="bg-white p-4 rounded-xl shadow-sm mb-4 sticky top-[60px] z-10">
                 <div class="flex justify-between items-center mb-2 gap-2">
                     <h3 class="font-bold text-lg sm:text-xl text-slate-800 truncate">
-                        Keys in <span id="active-db-name" class="text-blue-600"></span> (<span id="key-count">0</span>)
+                        Claves en <span id="active-db-name" class="text-blue-600"></span> (<span id="key-count">0</span>)
                     </h3>
                     <button id="add-key-btn" class="lg:hidden flex-shrink-0 flex items-center justify-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-3 rounded-md transition-colors text-sm">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                            <path fill-rule="evenodd" d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H5a1 1 0 110-2h3V6a1 1 0 011-1z" clip-rule="evenodd" />
-                        </svg>
-                        <span class="hidden sm:inline">New Key</span>
+                        <span role="img" aria-label="Añadir nueva clave">➕</span>
+                        <span class="hidden sm:inline">Nueva Clave</span>
                     </button>
                 </div>
-                <input type="search" id="search-input" placeholder="Search by name, user, note, or tag..." class="w-full p-2 border border-slate-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
+                <input type="search" id="search-input" placeholder="Buscar por nombre, usuario, nota o etiqueta..." class="w-full p-2 border border-slate-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
             </div>
             <div id="key-list" class="space-y-4"></div>
             <div id="empty-db-message" class="bg-white p-8 rounded-xl shadow-sm text-center text-slate-500 hidden mt-4">
-              <p>This database is empty. Add a new key to get started.</p>
+              <p>Esta base de datos está vacía. Añade una nueva clave para empezar.</p>
             </div>
              <div id="no-results-message" class="bg-white p-8 rounded-xl shadow-sm text-center text-slate-500 hidden mt-4">
-              <p>No keys match your search.</p>
+              <p>Ninguna clave coincide con tu búsqueda.</p>
             </div>
           </div>
           <div id="no-db-open-message" class="bg-white p-8 rounded-xl shadow-sm text-center text-slate-500">
-            <h3 class="text-lg font-semibold mb-2">No Database Open</h3>
-            <p>Please create a new database or open an existing one from the list.</p>
+            <h3 class="text-lg font-semibold mb-2">Ninguna Base de Datos Abierta</h3>
+            <p>Por favor, crea una nueva base de datos o abre una existente de la lista.</p>
           </div>
         </div>
       </div>
@@ -140,14 +133,14 @@
   <!-- Open DB Modal -->
   <div id="open-db-modal" class="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4 hidden">
     <div class="bg-white rounded-lg shadow-xl p-6 w-full max-w-sm" role="dialog" aria-modal="true">
-      <h3 class="text-lg font-bold mb-2">Open '<span id="modal-db-name"></span>'</h3>
-      <p class="text-sm text-slate-600 mb-4">Enter the master key to decrypt this database.</p>
+      <h3 class="text-lg font-bold mb-2">Abrir '<span id="modal-db-name"></span>'</h3>
+      <p class="text-sm text-slate-600 mb-4">Ingresa la clave maestra para descifrar esta base de datos.</p>
       <form id="open-db-form" class="space-y-4">
-        <input id="modal-master-key-input" type="password" placeholder="Master Key" class="w-full p-2 border border-slate-300 rounded-md" autoFocus required />
+        <input id="modal-master-key-input" type="password" placeholder="Clave Maestra" class="w-full p-2 border border-slate-300 rounded-md" autoFocus required />
         <div class="flex gap-2">
-          <button type="button" id="modal-cancel-btn" class="w-full bg-slate-200 hover:bg-slate-300 text-slate-800 py-2 px-4 rounded-md">Cancel</button>
+          <button type="button" id="modal-cancel-btn" class="w-full bg-slate-200 hover:bg-slate-300 text-slate-800 py-2 px-4 rounded-md">Cancelar</button>
           <button type="submit" id="modal-unlock-btn" class="w-full flex justify-center bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-md disabled:bg-slate-400">
-            Unlock
+            Desbloquear
           </button>
         </div>
       </form>
