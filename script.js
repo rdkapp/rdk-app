@@ -16,6 +16,8 @@ const ICONS = {
     keyIcon: `<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-slate-500 dark:text-slate-400" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 5.25a3 3 0 013 3m3 0a6 6 0 01-7.029 5.912c-.563-.097-1.159.026-1.563.43L10.5 17.25H8.25v2.25H6v2.25H2.25v-2.818c0-.597.237-1.17.659-1.591l6.499-6.499c.404-.404.527-1 .43-1.563A6 6 0 1121.75 8.25z" /></svg>`,
     toastSuccess: `<svg class="w-6 h-6 mr-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>`,
     toastInfo: `<svg class="w-6 h-6 mr-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>`,
+    grid: `<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M5 3a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2V5a2 2 0 00-2-2H5zM5 11a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2v-2a2 2 0 00-2-2H5zM11 5a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V5zM11 13a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" /></svg>`,
+    list: `<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M3 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" clip-rule="evenodd" /></svg>`,
 };
 
 // --- GLOBAL STATE ---
@@ -28,6 +30,7 @@ let sessionTimer = null;
 let isLoading = false;
 let currentDbName = '';
 let activeDbFiles = [];
+let currentView = 'list';
 
 // --- DOM ELEMENTS ---
 let DOMElements;
@@ -206,16 +209,28 @@ function renderDbList() {
 
 function getFilteredKeys() {
     if (!dbData?.keys) return [];
-    const filter = DOMElements.searchInput.value.toLowerCase();
-    if (!filter) return [...dbData.keys].sort((a, b) => a.name.localeCompare(b.name));
-
+    
+    const searchFilter = DOMElements.searchInput.value.toLowerCase();
+    const tagFilter = DOMElements.tagFilterSelect.value;
     const tagMap = new Map(dbData.tags.map(t => [t.id, t.name.toLowerCase()]));
 
-    return dbData.keys.filter(k => {
-        const tag_name = k.tagId ? tagMap.get(k.tagId) || '' : '';
-        // Search is now limited to non-encrypted fields for security
-        return [k.name.toLowerCase(), k.note?.toLowerCase(), tag_name].join(' ').includes(filter);
-    }).sort((a, b) => a.name.localeCompare(b.name));
+    let filtered = dbData.keys;
+
+    // 1. Filter by tag
+    if (tagFilter !== 'all') {
+        filtered = filtered.filter(k => k.tagId === tagFilter);
+    }
+
+    // 2. Filter by search term
+    if (searchFilter) {
+        filtered = filtered.filter(k => {
+            const tagName = k.tagId ? tagMap.get(k.tagId) || '' : '';
+            // Search is now limited to non-encrypted fields for security
+            return [k.name.toLowerCase(), k.note?.toLowerCase(), tagName].join(' ').includes(searchFilter);
+        });
+    }
+
+    return filtered.sort((a, b) => a.name.localeCompare(b.name));
 }
 
 
@@ -233,6 +248,13 @@ function renderKeys() {
     DOMElements.noDbOpenMessage.classList.add('hidden');
     DOMElements.addNewKeyHeaderBtn.disabled = false;
     DOMElements.manageTagsBtn.disabled = false;
+
+    // Update view classes (list vs card)
+    if (currentView === 'list') {
+        DOMElements.keyList.className = 'space-y-3';
+    } else {
+        DOMElements.keyList.className = 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4';
+    }
     
     const filteredKeys = getFilteredKeys();
     const nameWithoutExt = currentDbName.replace(/\.db$/, '');
@@ -251,7 +273,7 @@ function renderKeys() {
 
 function createKeyListItem(key) {
     const item = document.createElement('div');
-    item.className = 'key-item bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden';
+    item.className = 'key-item bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden flex flex-col';
     
     const tag = dbData.tags.find(t => t.id === key.tagId);
     const tagHtml = tag ? `<span class="text-xs bg-sky-100 text-sky-800 px-2 py-1 rounded-full dark:bg-sky-900/70 dark:text-sky-300 ml-2 flex-shrink-0">${escapeHtml(tag.name)}</span>` : '';
@@ -267,6 +289,7 @@ function createKeyListItem(key) {
         <div class="key-item-body"><div class="p-3 border-t border-slate-100 dark:border-slate-700 space-y-2 text-sm">
             ${createRevealingFieldHTML('Usuario', key.user)}
             ${createRevealingFieldHTML('Contraseña', key.pass, true)}
+            ${createUrlLinkHTML('URL', key.url)}
             ${key.note ? `<div class="pt-2 text-slate-600 dark:text-slate-300"><strong class="font-medium text-slate-800 dark:text-slate-200">Nota:</strong><p class="whitespace-pre-wrap break-words p-2 bg-slate-50 dark:bg-slate-700/50 rounded mt-1">${escapeHtml(key.note)}</p></div>` : ''}
             <div class="flex gap-2 pt-2 border-t border-slate-100 dark:border-slate-700">
                 <button class="edit-btn text-sm flex items-center gap-1.5 text-blue-600 dark:text-blue-400 hover:underline">${ICONS.edit} Editar</button>
@@ -278,6 +301,31 @@ function createKeyListItem(key) {
     item.querySelector('.delete-btn').onclick = () => handleDeleteKey(key.id);
     attachRevealingFieldListeners(item);
     return item;
+}
+
+function createUrlLinkHTML(label, encryptedUrl) {
+    if (!encryptedUrl) return '';
+    
+    const decryptedUrl = CryptoService.decrypt(encryptedUrl, masterKey);
+    if (!decryptedUrl) return '';
+    
+    const urlContainer = document.createElement('div');
+    urlContainer.className = 'flex items-center justify-between gap-2 p-2 bg-slate-50 dark:bg-slate-700/50 rounded';
+    urlContainer.innerHTML = `
+        <div class="flex-grow min-w-0">
+            <span class="font-medium text-slate-800 dark:text-slate-200">${label}:</span>
+            <a href="#" class="text-blue-600 dark:text-blue-400 hover:underline break-all ml-1">${escapeHtml(decryptedUrl)}</a>
+        </div>`;
+    
+    const link = urlContainer.querySelector('a');
+    link.onclick = (e) => {
+        e.preventDefault();
+        if (confirm(`¿Quieres abrir esta URL en una nueva pestaña?\n\n${decryptedUrl}`)) {
+            window.open(decryptedUrl, '_blank', 'noopener,noreferrer');
+        }
+    };
+
+    return urlContainer.outerHTML;
 }
 
 function createRevealingFieldHTML(label, encryptedValue, isMono = false) {
@@ -350,6 +398,7 @@ async function handleCreateDb(event) {
         DOMElements.createDbForm.reset();
         await loadDbListAndRender();
         renderKeys();
+        populateTagFilterSelect();
         showKeyListView();
         toggleMenu(true);
     } catch (e) { showStatus(`Error al crear archivo: ${e.message}`, 'error'); } finally { setLoading(false, DOMElements.createDbBtn); }
@@ -388,6 +437,7 @@ async function handleOpenDb(event) {
         openingFile = null;
         showStatus(`'${name}' abierto correctamente.`, 'ok');
         renderKeys();
+        populateTagFilterSelect();
         showKeyListView();
         toggleMenu(true);
     } catch (e) { showStatus(e.message, 'error'); } finally { setLoading(false, DOMElements.modalUnlockBtn); }
@@ -414,6 +464,7 @@ function handleSaveKey(event) {
         name,
         user: CryptoService.encrypt(DOMElements.keyUserInput.value, masterKey),
         pass: CryptoService.encrypt(DOMElements.keyPassInput.value, masterKey),
+        url: CryptoService.encrypt(DOMElements.keyUrlInput.value, masterKey),
         note: DOMElements.keyNoteInput.value,
         tagId: DOMElements.keyTagSelect.value || null,
     };
@@ -464,6 +515,7 @@ async function handleDeleteDb() {
         dbData = null; dbFileId = null; masterKey = ''; currentDbName = '';
         sessionStorage.removeItem('keychainSession');
         renderKeys();
+        populateTagFilterSelect();
         await loadDbListAndRender();
     } catch(e) { showStatus(`Error al eliminar: ${e.message}`, 'error'); }
     finally { setLoading(false, DOMElements.deleteConfirmBtn); }
@@ -474,6 +526,7 @@ function resetKeyForm() {
     DOMElements.keyIdInput.value = '';
     DOMElements.keyFormTitle.textContent = 'Añadir llave nueva';
     DOMElements.cancelEditBtn.classList.add('hidden');
+    updatePasswordStrengthUI('');
 }
 
 function populateEditForm(keyId) {
@@ -485,14 +538,40 @@ function populateEditForm(keyId) {
         // Decrypt only when populating the edit form
         DOMElements.keyUserInput.value = CryptoService.decrypt(key.user, masterKey);
         DOMElements.keyPassInput.value = CryptoService.decrypt(key.pass, masterKey);
+        DOMElements.keyUrlInput.value = CryptoService.decrypt(key.url, masterKey);
         DOMElements.keyNoteInput.value = key.note || '';
         DOMElements.keyFormTitle.textContent = `Editando '${key.name}'`;
         DOMElements.cancelEditBtn.classList.remove('hidden');
         showKeyFormView(true);
         DOMElements.keyTagSelect.value = key.tagId || '';
+        updatePasswordStrengthUI(DOMElements.keyPassInput.value);
     } catch (e) { showStatus('Error al preparar la llave para edición.', 'error'); }
 }
 
+// --- PASSWORD STRENGTH ---
+function checkPasswordStrength(password) {
+    let score = 0;
+    if (!password) return { score: 0, strength: 'weak', emoji: '', className: '' };
+
+    if (password.length >= 8) score++;
+    if (/[a-z]/.test(password)) score++;
+    if (/[A-Z]/.test(password)) score++;
+    if (/[0-9]/.test(password)) score++;
+    if (/[^a-zA-Z0-9]/.test(password)) score++;
+
+    if (score < 3) return { score, strength: 'weak', emoji: '🔴', className: 'strength-weak' };
+    if (score < 5) return { score, strength: 'medium', emoji: '🟠', className: 'strength-medium' };
+    return { score, strength: 'strong', emoji: '🟢', className: 'strength-strong' };
+}
+
+function updatePasswordStrengthUI(password) {
+    const { emoji, className } = checkPasswordStrength(password);
+    DOMElements.passwordStrengthIndicator.textContent = emoji;
+    DOMElements.keyPassInput.classList.remove('strength-weak', 'strength-medium', 'strength-strong');
+    if (className) {
+        DOMElements.keyPassInput.classList.add(className);
+    }
+}
 
 // --- TAG MANAGEMENT ---
 
@@ -535,6 +614,7 @@ function handleAddTag(e) {
     DOMElements.addTagInput.value = '';
     saveDb();
     renderTagsInModal();
+    populateTagFilterSelect();
 }
 
 function openEditTagModal(tagId, tagName) {
@@ -558,6 +638,7 @@ function handleUpdateTag(e) {
         saveDb();
         renderTagsInModal();
         renderKeys();
+        populateTagFilterSelect();
         DOMElements.editTagModal.classList.add('hidden');
     }
 }
@@ -569,6 +650,7 @@ function handleDeleteTag(tagId) {
     saveDb();
     renderTagsInModal();
     renderKeys();
+    populateTagFilterSelect();
 }
 
 function populateTagSelect() {
@@ -576,6 +658,18 @@ function populateTagSelect() {
     select.innerHTML = '<option value="">Sin etiqueta</option>';
     if (!dbData) return;
     dbData.tags.sort((a,b) => a.name.localeCompare(b.name)).forEach(tag => {
+        const option = document.createElement('option');
+        option.value = tag.id;
+        option.textContent = tag.name;
+        select.appendChild(option);
+    });
+}
+
+function populateTagFilterSelect() {
+    const select = DOMElements.tagFilterSelect;
+    select.innerHTML = '<option value="all">Todas las etiquetas</option>';
+    if (!dbData) return;
+    dbData.tags.sort((a, b) => a.name.localeCompare(b.name)).forEach(tag => {
         const option = document.createElement('option');
         option.value = tag.id;
         option.textContent = tag.name;
@@ -617,6 +711,7 @@ function tryRestoreSession() {
 
         const timeRemaining = sessionState.expiresAt - Date.now();
         onSignedIn(timeRemaining);
+        populateTagFilterSelect();
         return true;
     } catch (e) {
         console.error("Fallo al restaurar la sesión:", e);
@@ -696,10 +791,14 @@ document.addEventListener('DOMContentLoaded', () => {
         keyNameInput: document.getElementById('key-name-input'),
         keyUserInput: document.getElementById('key-user-input'),
         keyPassInput: document.getElementById('key-pass-input'),
+        keyUrlInput: document.getElementById('key-url-input'),
         keyNoteInput: document.getElementById('key-note-input'),
         keyTagSelect: document.getElementById('key-tag-select'),
+        passwordStrengthIndicator: document.getElementById('password-strength-indicator'),
         cancelEditBtn: document.getElementById('cancel-edit-btn'),
         searchInput: document.getElementById('search-input'),
+        tagFilterSelect: document.getElementById('tag-filter-select'),
+        viewToggleBtn: document.getElementById('view-toggle-btn'),
         keychainTitleName: document.getElementById('keychain-title-name'),
         keychainTitleCount: document.getElementById('keychain-title-count'),
         noDbOpenMessage: document.getElementById('no-db-open-message'),
@@ -753,6 +852,7 @@ document.addEventListener('DOMContentLoaded', () => {
     DOMElements.cancelEditBtn.onclick = showKeyListView;
     DOMElements.backToListBtn.onclick = showKeyListView;
     DOMElements.searchInput.oninput = () => renderKeys();
+    DOMElements.tagFilterSelect.onchange = () => renderKeys();
     DOMElements.menuBtn.onclick = () => toggleMenu();
     DOMElements.closeMenuBtn.onclick = () => toggleMenu(true);
     DOMElements.menuOverlay.onclick = () => toggleMenu(true);
@@ -792,6 +892,33 @@ document.addEventListener('DOMContentLoaded', () => {
     DOMElements.addTagForm.onsubmit = handleAddTag;
     DOMElements.editTagForm.onsubmit = handleUpdateTag;
 
+    // View toggle logic
+    const toggleView = () => {
+        currentView = currentView === 'list' ? 'card' : 'list';
+        DOMElements.viewToggleBtn.innerHTML = currentView === 'list' ? ICONS.grid : ICONS.list;
+        renderKeys();
+    };
+    DOMElements.viewToggleBtn.innerHTML = ICONS.grid;
+    DOMElements.viewToggleBtn.onclick = toggleView;
+
+    // Show/hide view toggle button based on screen
+    const mediaQuery = window.matchMedia('(min-width: 768px)');
+    const handleViewToggleVisibility = () => {
+        DOMElements.viewToggleBtn.style.display = mediaQuery.matches ? 'flex' : 'none';
+    };
+    mediaQuery.addEventListener('change', handleViewToggleVisibility);
+    handleViewToggleVisibility();
+    
+    // User/Pass field visibility on focus/blur
+    [DOMElements.keyUserInput, DOMElements.keyPassInput].forEach(input => {
+        input.addEventListener('focus', () => { input.type = 'text'; });
+        input.addEventListener('blur', () => { input.type = 'password'; });
+    });
+
+    // Password strength indicator
+    DOMElements.keyPassInput.addEventListener('input', (e) => updatePasswordStrengthUI(e.target.value));
+
+    // Password show/hide button
     document.querySelectorAll('[data-toggle-password]').forEach(btn => {
         const input = document.getElementById(btn.dataset.togglePassword);
         btn.innerHTML = ICONS.eye;
