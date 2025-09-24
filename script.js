@@ -705,18 +705,39 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    const gsiScript = document.createElement('script');
-    gsiScript.src = 'https://accounts.google.com/gsi/client';
-    gsiScript.async = true;
-    gsiScript.defer = true;
-    gsiScript.onload = () => {
+    // This function will be called by the GSI script once it's loaded and ready.
+    const handleGsiClientLoad = () => {
         try {
-            tokenClient = google.accounts.oauth2.initTokenClient({ client_id: CLIENT_ID, scope: SCOPES, callback: (resp) => { if (resp.error) return showStatus(`Error de token: ${resp.error}`, 'error'); accessToken = resp.access_token; showStatus('Autenticado.', 'ok'); onSignedIn(); } });
+            if (!google || !google.accounts || !google.accounts.oauth2) {
+                throw new Error("La biblioteca de Google no se cargó correctamente.");
+            }
+            tokenClient = google.accounts.oauth2.initTokenClient({
+                client_id: CLIENT_ID,
+                scope: SCOPES,
+                callback: (resp) => {
+                    if (resp.error) return showStatus(`Error de token: ${resp.error}`, 'error');
+                    accessToken = resp.access_token;
+                    showStatus('Autenticado.', 'ok');
+                    onSignedIn();
+                }
+            });
             DOMElements.signInBtn.disabled = false;
             DOMElements.signInBtn.onclick = () => tokenClient.requestAccessToken({ prompt: 'consent' });
             showStatus('Listo para iniciar sesión.', 'ok');
-        } catch (error) { showStatus('No se pudo inicializar el inicio de sesión de Google.', 'error'); }
+        } catch (error) {
+            console.error("Error al inicializar GSI:", error);
+            showStatus(error.message || 'No se pudo inicializar el inicio de sesión de Google.', 'error');
+        }
     };
-    gsiScript.onerror = () => showStatus('Error al cargar script de Google.', 'error');
+
+    // Attach the handler to the window object so the GSI script can call it.
+    window.handleGsiClientLoad = handleGsiClientLoad;
+
+    // Dynamically load the GSI script with the 'onload' callback parameter.
+    const gsiScript = document.createElement('script');
+    gsiScript.src = 'https://accounts.google.com/gsi/client?onload=handleGsiClientLoad';
+    gsiScript.async = true;
+    gsiScript.defer = true;
+    gsiScript.onerror = () => showStatus('Error al cargar el script de Google.', 'error');
     document.body.appendChild(gsiScript);
 });
