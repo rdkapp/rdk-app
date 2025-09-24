@@ -431,7 +431,9 @@ function populateEditForm(keyId) {
 function resetSessionTimer() {
     clearTimeout(sessionTimer);
     const expiresAt = new Date(Date.now() + SESSION_TIMEOUT);
-    DOMElements.sessionTimerInfo.textContent = `La sesión expira a las ${expiresAt.toLocaleTimeString()}`;
+    if (DOMElements.sessionTimerTime) {
+        DOMElements.sessionTimerTime.textContent = expiresAt.toLocaleTimeString();
+    }
     sessionTimer = setTimeout(() => { alert('La sesión expiró por inactividad.'); window.location.reload(); }, SESSION_TIMEOUT);
 }
 
@@ -463,6 +465,7 @@ document.addEventListener('DOMContentLoaded', () => {
         signInBtn: document.getElementById('signin-btn'),
         signOutBtn: document.getElementById('signout-btn'),
         sessionTimerInfo: document.getElementById('session-timer-info'),
+        sessionTimerTime: document.getElementById('session-timer-time'),
         dbSelect: document.getElementById('db-select'),
         openDbBtn: document.getElementById('open-db-btn'),
         keyList: document.getElementById('key-list'),
