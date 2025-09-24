@@ -563,44 +563,14 @@ async function onSignedIn() {
     await loadDbListAndRender();
 }
 
-function resetAppStateToLogin() {
-    // UI Resets
-    DOMElements.appView.classList.add('hidden');
-    DOMElements.loginView.classList.remove('hidden');
-    DOMElements.menuBtn.classList.add('hidden');
-    DOMElements.viewsContainer.classList.add('hidden');
-    DOMElements.noDbOpenMessage.classList.remove('hidden');
-
-    // State Resets
-    accessToken = null;
-    dbData = null;
-    dbFileId = null;
-    masterKey = '';
-    currentDbName = '';
-    activeDbFiles = [];
-    
-    // Clear Timer
-    clearTimeout(sessionTimer);
-
-    // UI Content Resets
-    DOMElements.keyList.innerHTML = '';
-    DOMElements.dbSelect.innerHTML = '';
-    DOMElements.keychainTitleName.innerHTML = '';
-    DOMElements.keychainTitleCount.innerHTML = '';
-    
-    // Re-enable sign-in button and set status
-    DOMElements.signInBtn.disabled = false;
-    showStatus('Listo para iniciar sesión.', 'ok');
-}
-
 function handleSignOut() {
     if (accessToken) {
         google.accounts.oauth2.revoke(accessToken, () => {
             console.log('Token revoked.');
-            resetAppStateToLogin();
+            window.location.reload();
         });
     } else {
-        resetAppStateToLogin();
+        window.location.reload();
     }
 }
 
