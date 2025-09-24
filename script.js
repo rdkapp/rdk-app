@@ -3,6 +3,17 @@ const CLIENT_ID = '576080826935-2mtnj52ndc8plnsjodjevt3e2gsh4m3a.apps.googleuser
 const SCOPES = 'https://www.googleapis.com/auth/drive.file';
 const SESSION_TIMEOUT = 5 * 60 * 1000; // 5 minutes
 
+// --- SVG ICONS ---
+const ICONS = {
+    chevronDown: `<svg class="key-item-chevron w-5 h-5 text-slate-400 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" /></svg>`,
+    edit: `<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L15.232 5.232z" /></svg>`,
+    delete: `<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>`,
+    eye: `<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path stroke-linecap="round" stroke-linejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>`,
+    eyeOff: `<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243l-4.243-4.243zM8 10.5a1.5 1.5 0 113 0 1.5 1.5 0 01-3 0z" /><path stroke-linecap="round" stroke-linejoin="round" d="M4.75 4.75l14.5 14.5" /></svg>`,
+    copy: `<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>`,
+    check: `<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-green-500" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd" /></svg>`,
+};
+
 // --- GLOBAL STATE ---
 let accessToken = null;
 let tokenClient = null;
@@ -14,11 +25,6 @@ let isLoading = false;
 let currentDbName = '';
 let activeDbFiles = [];
 let keyViewMode = 'list'; // 'list' or 'card'
-
-// Initialization flags to solve race condition
-let gsiScriptReady = false;
-let domContentLoaded = false;
-
 
 // --- DOM ELEMENTS ---
 let DOMElements;
@@ -76,7 +82,7 @@ const GDriveService = {
     },
     async listDbFiles() {
         const q = "mimeType='application/octet-stream' and trashed=false and fileExtension='db'";
-        const url = `https://www.googleapis.com/drive/v3/files?pageSize=100&fields=files(id,name,modifiedTime)&q=${encodeURIComponent(q)}&orderBy=modifiedTime desc`;
+        const url = `https://www.googleapis.com/drive/v3/files?pageSize=100&fields=files(id,name,modifiedTime)&q=${encodeURIComponent(q)}`;
         const res = await this.authorizedFetch(url);
         return res.json();
     },
@@ -100,25 +106,53 @@ const GDriveService = {
     },
 };
 
-// --- RENDER FUNCTIONS ---
+// --- RENDER FUNCTIONS & VIEW MANAGEMENT ---
+
+function showKeyListView() {
+    DOMElements.keyListView.classList.remove('-translate-x-full');
+    DOMElements.keyListView.classList.add('translate-x-0');
+    DOMElements.keyFormView.classList.remove('translate-x-0');
+    DOMElements.keyFormView.classList.add('translate-x-full');
+    resetKeyForm();
+}
+
+function showKeyFormView(isEditing = false) {
+    if (!isEditing) {
+        resetKeyForm();
+    }
+    DOMElements.keyListView.classList.add('-translate-x-full');
+    DOMElements.keyListView.classList.remove('translate-x-0');
+    DOMElements.keyFormView.classList.add('translate-x-0');
+    DOMElements.keyFormView.classList.remove('translate-x-full');
+    DOMElements.keyNameInput.focus();
+}
 
 function renderDbList() {
-    DOMElements.dbList.innerHTML = '';
-    if (activeDbFiles.length === 0) {
-        DOMElements.dbList.innerHTML = '<p class="text-sm text-slate-500 text-center">No se encontraron llaveros.</p>';
+    const select = DOMElements.dbSelect;
+    select.innerHTML = '';
+    
+    // Sort files alphabetically by name
+    const sortedFiles = [...activeDbFiles].sort((a, b) => a.name.localeCompare(b.name));
+
+    if (sortedFiles.length === 0) {
+        const option = document.createElement('option');
+        option.textContent = 'No se encontraron llaveros';
+        option.disabled = true;
+        select.appendChild(option);
+        DOMElements.openDbBtn.disabled = true;
         return;
     }
-    activeDbFiles.forEach(file => {
-        const button = document.createElement('button');
-        button.className = `w-full text-left p-3 rounded-md border transition-colors text-sm ${dbFileId === file.id ? 'bg-blue-100 border-blue-400 font-semibold' : 'bg-slate-50 hover:bg-slate-100 border-slate-200'}`;
-        button.innerHTML = `<span class="block font-medium text-slate-700">${escapeHtml(file.name)}</span><span class="block text-xs text-slate-500">Modificado: ${new Date(file.modifiedTime).toLocaleString()}</span>`;
-        button.onclick = () => {
-            openingFile = file;
-            DOMElements.modalDbName.textContent = file.name;
-            DOMElements.openDbModal.classList.remove('hidden');
-            DOMElements.modalMasterKeyInput.focus();
-        };
-        DOMElements.dbList.appendChild(button);
+    
+    DOMElements.openDbBtn.disabled = false;
+    sortedFiles.forEach(file => {
+        const option = document.createElement('option');
+        option.value = file.id;
+        option.textContent = file.name;
+        option.dataset.name = file.name;
+        if (dbFileId === file.id) {
+            option.selected = true;
+        }
+        select.appendChild(option);
     });
 }
 
@@ -144,20 +178,12 @@ function renderKeys() {
     if (!dbData) {
         DOMElements.keysPanel.classList.add('hidden');
         DOMElements.noDbOpenMessage.classList.remove('hidden');
-        DOMElements.keyFormContainer.classList.add('hidden');
         return;
     }
 
     DOMElements.keysPanel.classList.remove('hidden');
     DOMElements.noDbOpenMessage.classList.add('hidden');
-    DOMElements.keyFormContainer.classList.remove('hidden');
     DOMElements.activeDbName.textContent = currentDbName;
-
-    // Update view toggle button styles
-    DOMElements.viewToggleList.classList.toggle('bg-blue-500', keyViewMode === 'list');
-    DOMElements.viewToggleList.classList.toggle('text-white', keyViewMode === 'list');
-    DOMElements.viewToggleCard.classList.toggle('bg-blue-500', keyViewMode === 'card');
-    DOMElements.viewToggleCard.classList.toggle('text-white', keyViewMode === 'card');
 
     const decryptedAndFilteredKeys = getDecryptedAndFilteredKeys();
 
@@ -166,7 +192,7 @@ function renderKeys() {
     DOMElements.noResultsMessage.classList.toggle('hidden', decryptedAndFilteredKeys.length > 0 || dbData.keys.length === 0);
 
     decryptedAndFilteredKeys.forEach(dKey => {
-        const item = keyViewMode === 'list' ? createKeyListItem(dKey) : createKeyCardItem(dKey);
+        const item = createKeyListItem(dKey); // Defaulting to list view
         DOMElements.keyList.appendChild(item);
     });
 }
@@ -180,7 +206,7 @@ function createKeyListItem(dKey) {
     item.innerHTML = `
         <button class="key-item-header w-full flex justify-between items-center text-left p-3 hover:bg-slate-50 transition-colors">
             <span class="font-bold text-slate-800 break-all">${escapeHtml(dKey.name)}</span>
-            <svg class="key-item-chevron w-5 h-5 text-slate-400 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" /></svg>
+            ${ICONS.chevronDown}
         </button>
         <div class="key-item-body">
             <div class="p-3 border-t border-slate-100 space-y-2 text-sm">
@@ -189,41 +215,14 @@ function createKeyListItem(dKey) {
                 ${dKey.note ? `<div class="pt-2 text-slate-600"><strong class="font-medium text-slate-800">Nota:</strong><p class="whitespace-pre-wrap break-words p-2 bg-slate-50 rounded mt-1">${escapeHtml(dKey.note)}</p></div>` : ''}
                 ${tagsHtml ? `<div class="pt-2 border-t border-slate-100 flex flex-wrap gap-2">${tagsHtml}</div>` : ''}
                 <div class="flex gap-2 pt-2 border-t border-slate-100">
-                    <button class="edit-btn text-sm flex items-center gap-1 text-blue-600 hover:underline">✏️ Editar</button>
-                    <button class="delete-btn text-sm flex items-center gap-1 text-red-600 hover:underline">🗑️ Eliminar</button>
+                    <button class="edit-btn text-sm flex items-center gap-1.5 text-blue-600 hover:underline">${ICONS.edit} Editar</button>
+                    <button class="delete-btn text-sm flex items-center gap-1.5 text-red-600 hover:underline">${ICONS.delete} Eliminar</button>
                 </div>
             </div>
         </div>
     `;
 
     item.querySelector('.key-item-header').onclick = () => item.classList.toggle('expanded');
-    item.querySelector('.edit-btn').onclick = () => populateEditForm(dKey.id);
-    item.querySelector('.delete-btn').onclick = () => handleDeleteKey(dKey.id);
-    attachRevealingFieldListeners(item);
-    return item;
-}
-
-function createKeyCardItem(dKey) {
-    const item = document.createElement('div');
-    item.className = 'bg-white p-3 rounded-lg border border-slate-200 shadow-sm space-y-2';
-    const tagsHtml = (dKey.tags || []).map(tag => `<span class="text-xs bg-sky-100 text-sky-800 px-2 py-1 rounded-full">${escapeHtml(tag)}</span>`).join('');
-
-    item.innerHTML = `
-        <div class="flex justify-between items-start">
-            <h3 class="font-bold text-lg text-slate-800 break-all">${escapeHtml(dKey.name)}</h3>
-            <div class="flex gap-2 flex-shrink-0 ml-2">
-                <button class="edit-btn p-1 text-xl hover:opacity-75 transition-opacity" title="Editar">✏️</button>
-                <button class="delete-btn p-1 text-xl hover:opacity-75 transition-opacity" title="Eliminar">🗑️</button>
-            </div>
-        </div>
-        <div class="space-y-2 text-sm">
-            ${createRevealingFieldHTML('Usuario', dKey.d_user)}
-            ${createRevealingFieldHTML('Contraseña', dKey.d_pass, true)}
-            ${dKey.note ? `<div class="pt-2 text-slate-600"><strong class="font-medium text-slate-800">Nota:</strong><p class="whitespace-pre-wrap break-words p-2 bg-slate-50 rounded mt-1">${escapeHtml(dKey.note)}</p></div>` : ''}
-        </div>
-        ${tagsHtml ? `<div class="pt-2 border-t border-slate-100 flex flex-wrap gap-2">${tagsHtml}</div>` : ''}
-    `;
-
     item.querySelector('.edit-btn').onclick = () => populateEditForm(dKey.id);
     item.querySelector('.delete-btn').onclick = () => handleDeleteKey(dKey.id);
     attachRevealingFieldListeners(item);
@@ -240,8 +239,8 @@ function createRevealingFieldHTML(label, value, isMono = false) {
                 <span class="value-span ${isMono ? 'font-mono' : ''} text-slate-700 break-all ml-1" data-value="${escapeHtml(value)}">${maskedValue}</span>
             </div>
             <div class="flex-shrink-0 flex items-center gap-2">
-                <button class="reveal-btn p-1 text-lg hover:opacity-75 transition-opacity" title="Mostrar/Ocultar">👁️</button>
-                <button class="copy-btn p-1 text-lg hover:opacity-75 transition-opacity" title="Copiar ${label}">📋</button>
+                <button class="reveal-btn p-1 text-slate-500 hover:text-slate-800 transition-colors" title="Mostrar/Ocultar">${ICONS.eye}</button>
+                <button class="copy-btn p-1 text-slate-500 hover:text-slate-800 transition-colors" title="Copiar ${label}">${ICONS.copy}</button>
             </div>
         </div>`;
 }
@@ -249,25 +248,27 @@ function createRevealingFieldHTML(label, value, isMono = false) {
 function attachRevealingFieldListeners(parentElement) {
     parentElement.querySelectorAll('.reveal-btn').forEach(btn => {
         btn.onclick = (e) => {
-            const container = e.currentTarget.closest('.flex');
+            const currentBtn = e.currentTarget;
+            const container = currentBtn.closest('div');
             const valueSpan = container.querySelector('.value-span');
             if (valueSpan.textContent === '••••••••') {
                 valueSpan.textContent = valueSpan.dataset.value;
-                e.currentTarget.classList.add('opacity-50');
+                currentBtn.innerHTML = ICONS.eyeOff;
             } else {
                 valueSpan.textContent = '••••••••';
-                e.currentTarget.classList.remove('opacity-50');
+                currentBtn.innerHTML = ICONS.eye;
             }
         };
     });
     parentElement.querySelectorAll('.copy-btn').forEach(btn => {
         btn.onclick = (e) => {
-            const container = e.currentTarget.closest('.flex');
+            const currentBtn = e.currentTarget;
+            const container = currentBtn.closest('div');
             const valueSpan = container.querySelector('.value-span');
             navigator.clipboard.writeText(valueSpan.dataset.value);
-            const originalText = btn.innerHTML;
-            btn.innerHTML = `✅`;
-            setTimeout(() => btn.innerHTML = originalText, 1500);
+            const originalIcon = currentBtn.innerHTML;
+            currentBtn.innerHTML = ICONS.check;
+            setTimeout(() => currentBtn.innerHTML = originalIcon, 1500);
         };
     });
 }
@@ -310,6 +311,7 @@ async function handleCreateDb(event) {
         DOMElements.createDbForm.reset();
         await loadDbListAndRender();
         renderKeys();
+        showKeyListView();
     } catch (e) {
         showStatus(`Error al crear archivo: ${e.message}`, 'error');
     } finally {
@@ -342,8 +344,9 @@ async function handleOpenDb(event) {
         DOMElements.modalMasterKeyInput.value = '';
         openingFile = null;
         showStatus(`'${name}' abierto correctamente.`, 'ok');
-        renderDbList();
+        renderDbList(); // Re-render to show selection
         renderKeys();
+        showKeyListView();
     } catch (e) {
         showStatus(`No se pudo abrir el llavero. Revisa la clave maestra.`, 'error');
     } finally {
@@ -387,8 +390,8 @@ function handleSaveKey(event) {
     }
     
     saveDb();
-    resetKeyForm();
     renderKeys();
+    showKeyListView();
 }
 
 function handleDeleteKey(keyId) {
@@ -419,8 +422,7 @@ function populateEditForm(keyId) {
         
         DOMElements.keyFormTitle.textContent = `Editando '${key.name}'`;
         DOMElements.cancelEditBtn.classList.remove('hidden');
-        DOMElements.keyFormContainer.scrollIntoView({ behavior: 'smooth' });
-        DOMElements.keyNameInput.focus();
+        showKeyFormView(true);
     } catch (e) {
         showStatus('Error al preparar la llave para edición.', 'error');
     }
@@ -444,9 +446,7 @@ async function onSignedIn() {
     document.body.addEventListener('click', resetSessionTimer, { passive: true });
     document.body.addEventListener('input', resetSessionTimer, { passive: true });
     resetSessionTimer();
-
     await loadDbListAndRender();
-    // Removed automatic prompt to open last DB. User must now select one.
 }
 
 function handleGsiResponse(resp) {
@@ -468,30 +468,6 @@ function handleSignOut() {
 
 // --- INITIALIZATION ---
 
-function tryInitializeApp() {
-    if (!gsiScriptReady || !domContentLoaded) return;
-    
-    try {
-        tokenClient = google.accounts.oauth2.initTokenClient({
-            client_id: CLIENT_ID,
-            scope: SCOPES,
-            callback: handleGsiResponse,
-        });
-        DOMElements.signInBtn.disabled = false;
-        DOMElements.signInBtn.onclick = () => {
-            if (tokenClient) tokenClient.requestAccessToken({ prompt: 'consent' });
-        };
-        showStatus('Listo para iniciar sesión.', 'ok');
-    } catch (error) {
-        showStatus('No se pudo inicializar el inicio de sesión de Google.', 'error');
-    }
-}
-
-window.handleGsiLoad = function() {
-    gsiScriptReady = true;
-    tryInitializeApp();
-}
-
 document.addEventListener('DOMContentLoaded', () => {
     DOMElements = {
         loginView: document.getElementById('login-view'),
@@ -500,7 +476,8 @@ document.addEventListener('DOMContentLoaded', () => {
         signInBtn: document.getElementById('signin-btn'),
         signOutBtn: document.getElementById('signout-btn'),
         sessionTimerInfo: document.getElementById('session-timer-info'),
-        dbList: document.getElementById('db-list'),
+        dbSelect: document.getElementById('db-select'),
+        openDbBtn: document.getElementById('open-db-btn'),
         keyList: document.getElementById('key-list'),
         createDbForm: document.getElementById('create-db-form'),
         newDbNameInput: document.getElementById('new-db-name-input'),
@@ -530,45 +507,75 @@ document.addEventListener('DOMContentLoaded', () => {
         modalCancelBtn: document.getElementById('modal-cancel-btn'),
         modalUnlockBtn: document.getElementById('modal-unlock-btn'),
         addFirstKeyBtn: document.getElementById('add-first-key-btn'),
-        viewToggleList: document.getElementById('view-toggle-list'),
-        viewToggleCard: document.getElementById('view-toggle-card'),
+        addNewKeyBtn: document.getElementById('add-new-key-btn'),
+        backToListBtn: document.getElementById('back-to-list-btn'),
+        keyListView: document.getElementById('key-list-view'),
+        keyFormView: document.getElementById('key-form-view'),
     };
     
-    domContentLoaded = true;
-    
+    // --- EVENT LISTENERS ---
     DOMElements.signOutBtn.onclick = handleSignOut;
     DOMElements.createDbForm.onsubmit = handleCreateDb;
     DOMElements.keyForm.onsubmit = handleSaveKey;
-    DOMElements.cancelEditBtn.onclick = resetKeyForm;
+    DOMElements.cancelEditBtn.onclick = showKeyListView;
+    DOMElements.backToListBtn.onclick = showKeyListView;
+    DOMElements.addNewKeyBtn.onclick = () => showKeyFormView();
+    DOMElements.addFirstKeyBtn.onclick = () => showKeyFormView();
     DOMElements.searchInput.oninput = () => renderKeys();
+    
+    DOMElements.openDbBtn.onclick = () => {
+        const selected = DOMElements.dbSelect.options[DOMElements.dbSelect.selectedIndex];
+        if (!selected || selected.disabled) return;
+        openingFile = { id: selected.value, name: selected.dataset.name };
+        DOMElements.modalDbName.textContent = openingFile.name;
+        DOMElements.openDbModal.classList.remove('hidden');
+        DOMElements.modalMasterKeyInput.focus();
+    };
+
     DOMElements.openDbForm.onsubmit = handleOpenDb;
     DOMElements.modalCancelBtn.onclick = () => {
         DOMElements.openDbModal.classList.add('hidden');
         DOMElements.modalMasterKeyInput.value = '';
         openingFile = null;
     };
-    DOMElements.addFirstKeyBtn.onclick = () => {
-        resetKeyForm();
-        DOMElements.keyFormContainer.scrollIntoView({ behavior: 'smooth' });
-        DOMElements.keyNameInput.focus();
-    };
-    DOMElements.viewToggleList.onclick = () => {
-        keyViewMode = 'list';
-        renderKeys();
-    };
-    DOMElements.viewToggleCard.onclick = () => {
-        keyViewMode = 'card';
-        renderKeys();
-    };
-
+    
     document.querySelectorAll('[data-toggle-password]').forEach(btn => {
+        const input = document.getElementById(btn.dataset.togglePassword);
+        btn.innerHTML = ICONS.eye; // Initial icon
         btn.onclick = () => {
-            const input = document.getElementById(btn.dataset.togglePassword);
             if (input) {
-                input.type = input.type === 'password' ? 'text' : 'password';
+                const isPassword = input.type === 'password';
+                input.type = isPassword ? 'text' : 'password';
+                btn.innerHTML = isPassword ? ICONS.eyeOff : ICONS.eye;
             }
         };
     });
 
-    tryInitializeApp();
+    // --- DYNAMIC SCRIPT LOADING FOR GOOGLE SIGN-IN ---
+    const gsiScript = document.createElement('script');
+    gsiScript.src = 'https://accounts.google.com/gsi/client';
+    gsiScript.async = true;
+    gsiScript.defer = true;
+    gsiScript.onload = () => {
+        // This function runs only after the GSI script is loaded and ready.
+        try {
+            tokenClient = google.accounts.oauth2.initTokenClient({
+                client_id: CLIENT_ID,
+                scope: SCOPES,
+                callback: handleGsiResponse,
+            });
+            DOMElements.signInBtn.disabled = false;
+            DOMElements.signInBtn.onclick = () => {
+                if (tokenClient) tokenClient.requestAccessToken({ prompt: 'consent' });
+            };
+            showStatus('Listo para iniciar sesión.', 'ok');
+        } catch (error) {
+            console.error("GSI initialization error:", error);
+            showStatus('No se pudo inicializar el inicio de sesión de Google.', 'error');
+        }
+    };
+    gsiScript.onerror = () => {
+        showStatus('Error al cargar el script de inicio de sesión de Google.', 'error');
+    };
+    document.body.appendChild(gsiScript);
 });
