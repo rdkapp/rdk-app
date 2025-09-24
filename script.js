@@ -448,6 +448,17 @@ function handleGsiLoad() {
             scope: SCOPES,
             callback: handleGsiResponse,
         });
+
+        // FIX: Assign click handler here to prevent race condition.
+        // This ensures tokenClient is ready when the button is clicked.
+        DOMElements.signInBtn.onclick = () => {
+            if (tokenClient) {
+                tokenClient.requestAccessToken({ prompt: 'consent' });
+            } else {
+                showStatus('El inicio de sesión de Google aún no está listo. Espera un momento y vuelve a intentarlo.', 'error');
+            }
+        };
+
     } catch (error) {
         showStatus('No se pudo inicializar el inicio de sesión de Google.', 'error');
     }
@@ -455,13 +466,7 @@ function handleGsiLoad() {
 window.handleGsiLoad = handleGsiLoad;
 
 window.onload = () => {
-    DOMElements.signInBtn.onclick = () => {
-        if (tokenClient) {
-            tokenClient.requestAccessToken({ prompt: 'consent' });
-        } else {
-            showStatus('El inicio de sesión de Google aún no está listo. Espera un momento y vuelve a intentarlo.', 'error');
-        }
-    };
+    // signInBtn.onclick is now set in handleGsiLoad to avoid race conditions.
     DOMElements.signOutBtn.onclick = handleSignOut;
     DOMElements.createDbForm.onsubmit = handleCreateDb;
     DOMElements.keyForm.onsubmit = handleSaveKey;
