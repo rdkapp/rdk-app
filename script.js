@@ -1095,6 +1095,8 @@ function gsiLoaded() {
         },
     });
     DOMElements.signinBtn.disabled = false;
+    // Attempt to get a token silently on page load
+    tokenClient.requestAccessToken({ prompt: 'none' });
 }
 
 function gisLoaded() {
