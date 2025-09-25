@@ -1161,14 +1161,23 @@ function handleSignOut(isTimeout = false) {
     masterKey = '';
     currentDbName = '';
     userProfile = null;
-    if (sessionTimer) clearInterval(sessionTimer);
+    
+    // Stop and clear the session timer
+    if (sessionTimer) {
+        clearInterval(sessionTimer);
+        sessionTimer = null;
+    }
     sessionStorage.clear();
 
     // Reset UI to login state
     DOMElements.loginView.classList.remove('hidden');
     DOMElements.appView.classList.add('hidden');
     DOMElements.menuBtn.classList.add('hidden');
+    
+    // Explicitly hide the timer header and clear its content
     DOMElements.sessionTimerHeader.style.display = 'none';
+    DOMElements.sessionTimerTimeHeader.textContent = '';
+
     renderUserProfile(); // This will clear the user info
     toggleMenu(true);
 
