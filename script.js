@@ -995,7 +995,7 @@ function renderBiometricsInModal() {
 function startSessionTimer(expiryTime) {
     if (sessionTimer) clearInterval(sessionTimer);
     
-    DOMElements.sessionTimerHeader.classList.remove('hidden');
+    DOMElements.sessionTimerHeader.style.display = 'flex';
 
     const updateTimer = () => {
         const remaining = expiryTime - Date.now();
@@ -1149,7 +1149,7 @@ function handleSignOut(isTimeout = false) {
     DOMElements.loginView.classList.remove('hidden');
     DOMElements.appView.classList.add('hidden');
     DOMElements.menuBtn.classList.add('hidden');
-    DOMElements.sessionTimerHeader.classList.add('hidden');
+    DOMElements.sessionTimerHeader.style.display = 'none';
     renderUserProfile(); // This will clear the user info
     toggleMenu(true);
 
@@ -1240,9 +1240,6 @@ document.addEventListener('DOMContentLoaded', () => {
         biometricsList: document.getElementById('biometrics-list'),
     };
     
-    // Explicitly set initial UI state to prevent seeing elements from a logged-in state
-    DOMElements.sessionTimerHeader.classList.add('hidden');
-
     gisLoaded();
     checkBiometricSupport();
 
