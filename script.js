@@ -585,6 +585,7 @@ async function handleDeleteDb() {
         showStatus(`Llavero '${currentDbName}' eliminado.`, 'ok');
         dbData = null; dbFileId = null; masterKey = ''; currentDbName = '';
         sessionStorage.removeItem('keychainSession');
+        sessionStorage.removeItem('accessToken');
         renderKeys();
         populateTagFilterSelect();
         await loadDbListAndRender();
@@ -1030,23 +1031,25 @@ function saveSessionState() {
     };
     sessionStorage.setItem('keychainSession', JSON.stringify(sessionData));
     sessionStorage.setItem('sessionExpiry', Date.now() + SESSION_TIMEOUT);
+    sessionStorage.setItem('accessToken', accessToken);
 }
 
-function restoreSessionState(token) {
+function restoreSessionState() {
     const sessionDataStr = sessionStorage.getItem('keychainSession');
     const expiry = sessionStorage.getItem('sessionExpiry');
+    const storedToken = sessionStorage.getItem('accessToken');
 
-    if (!sessionDataStr || !expiry || Date.now() > parseInt(expiry)) {
+    if (!sessionDataStr || !expiry || !storedToken || Date.now() > parseInt(expiry)) {
         sessionStorage.clear();
         return false;
     }
 
     try {
         const sessionData = JSON.parse(sessionDataStr);
-        const decryptedMasterKey = CryptoService.decrypt(sessionData.masterKey, token);
+        const decryptedMasterKey = CryptoService.decrypt(sessionData.masterKey, storedToken);
 
         if (decryptedMasterKey) {
-            accessToken = token;
+            accessToken = storedToken;
             dbFileId = sessionData.dbFileId;
             masterKey = decryptedMasterKey;
             dbData = sessionData.dbData;
@@ -1077,26 +1080,38 @@ function gsiLoaded() {
         scope: SCOPES,
         callback: async (tokenResponse) => {
             if (tokenResponse && tokenResponse.access_token) {
-                accessToken = tokenResponse.access_token;
-
-                if (!restoreSessionState(accessToken)) {
-                    DOMElements.loginView.classList.add('hidden');
-                    DOMElements.appView.classList.remove('hidden');
-                    DOMElements.menuBtn.classList.remove('hidden');
-                    startSessionTimer(Date.now() + SESSION_TIMEOUT);
+                const newAccessToken = tokenResponse.access_token;
+                
+                // If a session is already active (from restoreSessionState), 
+                // just update the token for future API calls and do nothing else.
+                if (accessToken) {
+                    accessToken = newAccessToken;
+                    console.log('Access token has been silently refreshed.');
+                    return;
                 }
+                
+                // Otherwise, this is a new login flow.
+                accessToken = newAccessToken;
+
+                DOMElements.loginView.classList.add('hidden');
+                DOMElements.appView.classList.remove('hidden');
+                DOMElements.menuBtn.classList.remove('hidden');
+                startSessionTimer(Date.now() + SESSION_TIMEOUT);
                 
                 await fetchUserProfile();
                 await loadDbListAndRender();
                 renderKeys();
                 renderUserProfile();
                 populateTagFilterSelect();
+            } else {
+                 // This can happen if the silent token request fails.
+                 console.log("Silent token request failed or user is not logged in.");
             }
         },
     });
-    DOMElements.signinBtn.disabled = false;
-    // Attempt to get a token silently on page load
+    // Attempt to get a token silently on page load, which will trigger the callback.
     tokenClient.requestAccessToken({ prompt: 'none' });
+    DOMElements.signinBtn.disabled = false;
 }
 
 function gisLoaded() {
@@ -1114,11 +1129,13 @@ function handleAuthClick() {
         google.accounts.oauth2.revoke(accessToken, () => { console.log('Token revoked.'); });
         accessToken = null;
     }
+    // We clear the global `accessToken` here to signal to the callback that this is a new, explicit login.
     tokenClient.requestAccessToken({ prompt: 'consent' });
 }
 
 async function fetchUserProfile() {
-    if (!accessToken || userProfile) return;
+    if (!accessToken) return;
+    // We allow refetching the profile picture in case it changed.
     try {
         const response = await GDriveService.authorizedFetch('https://www.googleapis.com/oauth2/v2/userinfo');
         const profile = await response.json();
@@ -1242,10 +1259,22 @@ document.addEventListener('DOMContentLoaded', () => {
         biometricsList: document.getElementById('biometrics-list'),
     };
     
+    // --- APP INITIALIZATION FLOW ---
+
+    // 1. Try to restore session from sessionStorage immediately.
+    if (restoreSessionState()) {
+        // If successful, populate the UI with restored data.
+        fetchUserProfile().then(renderUserProfile);
+        loadDbListAndRender(); // Fetch latest file list for the menu
+        renderKeys();
+        populateTagFilterSelect();
+    }
+    
+    // 2. Load Google Sign-In client. It will handle new logins or silently refresh the token for the restored session.
     gisLoaded();
     checkBiometricSupport();
 
-    // Event Listeners
+    // 3. Attach all event listeners for user interaction.
     DOMElements.signinBtn.addEventListener('click', handleAuthClick);
     DOMElements.signoutBtnMobile.addEventListener('click', () => handleSignOut());
     
@@ -1302,11 +1331,14 @@ document.addEventListener('DOMContentLoaded', () => {
         DOMElements.renameDbInput.value = currentDbName.replace(/\.db$/, '');
         DOMElements.renameDbModal.classList.remove('hidden');
     });
+    DOMElements.renameDbForm.addEventListener('submit', handleRenameDb);
     DOMElements.deleteDbBtn.addEventListener('click', () => {
         DOMElements.dbManagementDropdown.classList.add('hidden');
         DOMElements.deleteDbName.textContent = currentDbName;
         DOMElements.deleteDbModal.classList.remove('hidden');
     });
+    DOMElements.deleteConfirmBtn.addEventListener('click', handleDeleteDb);
+
 
     // --- Key Management ---
     DOMElements.keyForm.addEventListener('submit', handleSaveKey);
@@ -1377,7 +1409,4 @@ document.addEventListener('DOMContentLoaded', () => {
         currentView = savedView;
     }
     updateViewToggleBtn(currentView);
-
-    // Initial render
-    renderKeys();
 });
