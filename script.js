@@ -1240,6 +1240,9 @@ document.addEventListener('DOMContentLoaded', () => {
         biometricsList: document.getElementById('biometrics-list'),
     };
     
+    // Explicitly set initial UI state to prevent seeing elements from a logged-in state
+    DOMElements.sessionTimerHeader.classList.add('hidden');
+
     gisLoaded();
     checkBiometricSupport();
 
