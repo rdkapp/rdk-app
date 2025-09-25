@@ -274,7 +274,6 @@ function renderKeys() {
         DOMElements.manageTagsBtn.disabled = true;
         DOMElements.keychainTitleName.innerHTML = '';
         DOMElements.keychainTitleCount.innerHTML = '';
-        DOMElements.keychainUserInfo.innerHTML = '';
         return;
     }
 
@@ -863,10 +862,6 @@ async function setupBiometrics() {
 
 function promptToSetupBiometrics() {
     const bioData = getBiometricData();
-    // Prompt if supported, a db is open, and there are no credentials for this db ON THIS DEVICE
-    // (A simple check is to see if any existing credential can be used right now)
-    // For simplicity, we just check if the file has *any* credential. The user can add another from the menu.
-    // A better check: don't prompt if there's already one for this fileId.
     let credentialsForThisFile = bioData[dbFileId];
      if (credentialsForThisFile && !Array.isArray(credentialsForThisFile)) {
         credentialsForThisFile = [credentialsForThisFile];
@@ -974,7 +969,6 @@ function renderBiometricsInModal() {
          list.innerHTML = '<p class="text-slate-500 text-sm">No hay llaveros con desbloqueo biométrico activado.</p>';
     }
 
-
     list.querySelectorAll('.remove-bio-btn').forEach(btn => {
         btn.onclick = (e) => {
             const fileIdToRemoveFrom = e.target.dataset.fileId;
@@ -996,160 +990,194 @@ function renderBiometricsInModal() {
     });
 }
 
-// --- AUTH & SESSION ---
+// --- SESSION MANAGEMENT ---
 
-async function fetchUserProfile() {
-    if (!accessToken) return;
-    try {
-        const res = await GDriveService.authorizedFetch('https://www.googleapis.com/oauth2/v3/userinfo');
-        const profile = await res.json();
-        userProfile = {
-            email: profile.email,
-            picture: profile.picture
-        };
-    } catch (e) {
-        console.error("Error fetching user profile:", e);
-        showStatus('No se pudo obtener la información del perfil de usuario.', 'error');
+function startSessionTimer(expiryTime) {
+    if (sessionTimer) clearInterval(sessionTimer);
+    
+    DOMElements.sessionTimerHeader.classList.remove('hidden');
+
+    const updateTimer = () => {
+        const remaining = expiryTime - Date.now();
+        if (remaining <= 0) {
+            handleSignOut(true); // Sign out without confirmation
+            return;
+        }
+        const minutes = String(Math.floor((remaining / 1000) / 60)).padStart(2, '0');
+        const seconds = String(Math.floor((remaining / 1000) % 60)).padStart(2, '0');
+        DOMElements.sessionTimerTimeHeader.textContent = `${minutes}:${seconds}`;
+    };
+    updateTimer();
+    sessionTimer = setInterval(updateTimer, 1000);
+}
+
+function resetSessionTimer() {
+    if (sessionTimer) {
+        const newExpiry = Date.now() + SESSION_TIMEOUT;
+        sessionStorage.setItem('sessionExpiry', newExpiry);
+        startSessionTimer(newExpiry);
     }
 }
 
 function saveSessionState() {
-    if (!accessToken || !dbFileId || !masterKey) return;
-    const sessionState = {
-        accessToken,
-        userProfile,
+    if (!dbFileId || !masterKey || !accessToken) return;
+    const sessionData = {
         dbFileId,
-        masterKey,
-        currentDbName,
+        masterKey: CryptoService.encrypt(masterKey, accessToken), // Encrypt master key with access token for session
         dbData,
-        expiresAt: Date.now() + SESSION_TIMEOUT,
+        currentDbName,
+        userProfile
     };
-    sessionStorage.setItem('keychainSession', JSON.stringify(sessionState));
+    sessionStorage.setItem('keychainSession', JSON.stringify(sessionData));
+    sessionStorage.setItem('sessionExpiry', Date.now() + SESSION_TIMEOUT);
 }
 
-function tryRestoreSession() {
-    const savedSession = sessionStorage.getItem('keychainSession');
-    if (!savedSession) return false;
+function restoreSessionState(token) {
+    const sessionDataStr = sessionStorage.getItem('keychainSession');
+    const expiry = sessionStorage.getItem('sessionExpiry');
 
-    try {
-        const sessionState = JSON.parse(savedSession);
-        if (sessionState.expiresAt < Date.now()) {
-            sessionStorage.removeItem('keychainSession');
-            return false;
-        }
-
-        accessToken = sessionState.accessToken;
-        userProfile = sessionState.userProfile;
-        dbFileId = sessionState.dbFileId;
-        masterKey = sessionState.masterKey;
-        currentDbName = sessionState.currentDbName;
-        dbData = sessionState.dbData;
-
-        const timeRemaining = sessionState.expiresAt - Date.now();
-        onSignedIn(timeRemaining);
-        populateTagFilterSelect();
-        return true;
-    } catch (e) {
-        console.error("Fallo al restaurar la sesión:", e);
-        sessionStorage.removeItem('keychainSession');
+    if (!sessionDataStr || !expiry || Date.now() > parseInt(expiry)) {
+        sessionStorage.clear();
         return false;
     }
+
+    try {
+        const sessionData = JSON.parse(sessionDataStr);
+        const decryptedMasterKey = CryptoService.decrypt(sessionData.masterKey, token);
+
+        if (decryptedMasterKey) {
+            accessToken = token;
+            dbFileId = sessionData.dbFileId;
+            masterKey = decryptedMasterKey;
+            dbData = sessionData.dbData;
+            currentDbName = sessionData.currentDbName;
+            userProfile = sessionData.userProfile;
+
+            DOMElements.loginView.classList.add('hidden');
+            DOMElements.appView.classList.remove('hidden');
+            DOMElements.menuBtn.classList.remove('hidden');
+            
+            startSessionTimer(parseInt(expiry));
+            
+            showStatus(`Sesión restaurada para '${currentDbName}'.`, 'ok');
+            return true;
+        }
+    } catch (e) {
+        console.error("Failed to restore session:", e);
+    }
+    sessionStorage.clear();
+    return false;
+}
+
+// --- GOOGLE SIGN-IN ---
+
+function gsiLoaded() {
+    tokenClient = google.accounts.oauth2.initTokenClient({
+        client_id: CLIENT_ID,
+        scope: SCOPES,
+        callback: async (tokenResponse) => {
+            if (tokenResponse && tokenResponse.access_token) {
+                accessToken = tokenResponse.access_token;
+
+                if (!restoreSessionState(accessToken)) {
+                    DOMElements.loginView.classList.add('hidden');
+                    DOMElements.appView.classList.remove('hidden');
+                    DOMElements.menuBtn.classList.remove('hidden');
+                    startSessionTimer(Date.now() + SESSION_TIMEOUT);
+                }
+                
+                await fetchUserProfile();
+                await loadDbListAndRender();
+                renderKeys();
+                renderUserProfile();
+                populateTagFilterSelect();
+            }
+        },
+    });
+    DOMElements.signinBtn.disabled = false;
+}
+
+function gisLoaded() {
+    const script = document.createElement('script');
+    script.src = 'https://accounts.google.com/gsi/client';
+    script.async = true;
+    script.defer = true;
+    script.onload = gsiLoaded;
+    document.body.appendChild(script);
+}
+
+function handleAuthClick() {
+    resetSessionTimer();
+    if (accessToken) {
+        google.accounts.oauth2.revoke(accessToken, () => { console.log('Token revoked.'); });
+        accessToken = null;
+    }
+    tokenClient.requestAccessToken({ prompt: 'consent' });
+}
+
+async function fetchUserProfile() {
+    if (!accessToken || userProfile) return;
+    try {
+        const response = await GDriveService.authorizedFetch('https://www.googleapis.com/oauth2/v2/userinfo');
+        const profile = await response.json();
+        userProfile = { email: profile.email, picture: profile.picture };
+    } catch (e) {
+        console.error("Error fetching user profile:", e);
+        showStatus("No se pudo obtener la información del perfil.", "error");
+    }
 }
 
 
-function resetSessionTimer(timeout = SESSION_TIMEOUT) {
-    clearTimeout(sessionTimer);
-    const expiresAt = new Date(Date.now() + timeout);
-    const timeString = expiresAt.toLocaleTimeString();
-    if (DOMElements.sessionTimerTimeHeader) DOMElements.sessionTimerTimeHeader.textContent = timeString;
+function handleSignOut(isTimeout = false) {
+    if (!isTimeout && !confirm('¿Estás seguro de que quieres cerrar la sesión?')) return;
 
-    const savedSession = sessionStorage.getItem('keychainSession');
-    if (savedSession) {
-        try {
-            const sessionState = JSON.parse(savedSession);
-            sessionState.expiresAt = Date.now() + SESSION_TIMEOUT;
-            sessionStorage.setItem('keychainSession', JSON.stringify(sessionState));
-        } catch(e) { console.error("No se pudo actualizar la expiración de la sesión", e); }
+    if (accessToken) {
+        google.accounts.oauth2.revoke(accessToken, () => { console.log('Token revoked on sign out.'); });
     }
-
-    sessionTimer = setTimeout(() => { alert('La sesión expiró por inactividad.'); handleSignOut(); }, timeout);
-}
-
-async function onSignedIn(sessionTimeoutOverride) {
-    DOMElements.loginView.classList.add('hidden');
-    DOMElements.appView.classList.remove('hidden');
-    DOMElements.menuBtn.classList.remove('hidden');
-    DOMElements.sessionTimerHeader.classList.remove('hidden');
-
-    if (!userProfile) {
-        await fetchUserProfile();
-    }
-
-    document.body.addEventListener('click', () => resetSessionTimer(), { passive: true });
-    document.body.addEventListener('input', () => resetSessionTimer(), { passive: true });
     
-    resetSessionTimer(sessionTimeoutOverride || SESSION_TIMEOUT);
-    renderUserProfile();
-    renderKeys();
-    await loadDbListAndRender();
-}
-
-function handleSignOut() {
-    showToast('Cerrando sesión...', 'info');
-    const tokenToRevoke = accessToken;
-
-    // 1. Clear sensitive state immediately
+    // Clear state
     accessToken = null;
-    userProfile = null;
     dbData = null;
     dbFileId = null;
     masterKey = '';
     currentDbName = '';
-    clearTimeout(sessionTimer);
-    sessionStorage.removeItem('keychainSession');
+    userProfile = null;
+    if (sessionTimer) clearInterval(sessionTimer);
+    sessionStorage.clear();
 
-    // 2. Reset UI to logged-out state immediately
-    DOMElements.appView.classList.add('hidden');
+    // Reset UI to login state
     DOMElements.loginView.classList.remove('hidden');
+    DOMElements.appView.classList.add('hidden');
     DOMElements.menuBtn.classList.add('hidden');
     DOMElements.sessionTimerHeader.classList.add('hidden');
-    DOMElements.sessionTimerTimeHeader.textContent = '';
-    renderKeys(); // Clears the key list and titles
-    toggleMenu(true); // Ensure side menu is closed
+    renderUserProfile(); // This will clear the user info
+    toggleMenu(true);
 
-    // 3. Revoke token and force a full reload after a short delay
-    setTimeout(() => {
-        if (tokenToRevoke && window.google && google.accounts && google.accounts.oauth2) {
-            google.accounts.oauth2.revoke(tokenToRevoke, () => {
-                console.log('Token de Google revocado.');
-            });
-        }
-        // Always reload to ensure a completely clean state
-        window.location.reload();
-    }, 1000);
+    showStatus(isTimeout ? 'La sesión expiró por inactividad.' : 'Sesión cerrada.');
 }
 
 // --- INITIALIZATION ---
 
-document.addEventListener('DOMContentLoaded', async () => {
+document.addEventListener('DOMContentLoaded', () => {
+    // Cache all DOM elements
     DOMElements = {
+        signinBtn: document.getElementById('signin-btn'),
+        statusMessage: document.getElementById('status-message'),
         loginView: document.getElementById('login-view'),
         appView: document.getElementById('app-view'),
-        statusMessage: document.getElementById('status-message'),
-        signInBtn: document.getElementById('signin-btn'),
-        sessionTimerHeader: document.getElementById('session-timer-header'),
-        sessionTimerTimeHeader: document.getElementById('session-timer-time-header'),
-        mobileSessionControls: document.getElementById('mobile-session-controls'),
-        signOutBtnMobile: document.getElementById('signout-btn-mobile'),
+        menuBtn: document.getElementById('menu-btn'),
+        closeMenuBtn: document.getElementById('close-menu-btn'),
+        sideMenu: document.getElementById('side-menu'),
+        menuOverlay: document.getElementById('menu-overlay'),
+        signoutBtnMobile: document.getElementById('signout-btn-mobile'),
         dbSelect: document.getElementById('db-select'),
         openDbBtn: document.getElementById('open-db-btn'),
-        keyList: document.getElementById('key-list'),
         createDbForm: document.getElementById('create-db-form'),
         newDbNameInput: document.getElementById('new-db-name-input'),
         createMasterKeyInput: document.getElementById('create-master-key-input'),
         createDbBtn: document.getElementById('create-db-btn'),
+        keyList: document.getElementById('key-list'),
         keyForm: document.getElementById('key-form'),
-        keyFormTitle: document.getElementById('key-form-title'),
         keyIdInput: document.getElementById('key-id-input'),
         keyNameInput: document.getElementById('key-name-input'),
         keyUserInput: document.getElementById('key-user-input'),
@@ -1157,37 +1185,33 @@ document.addEventListener('DOMContentLoaded', async () => {
         keyUrlInput: document.getElementById('key-url-input'),
         keyNoteInput: document.getElementById('key-note-input'),
         keyTagSelect: document.getElementById('key-tag-select'),
-        passwordStrengthIndicator: document.getElementById('password-strength-indicator'),
+        keyFormTitle: document.getElementById('key-form-title'),
         cancelEditBtn: document.getElementById('cancel-edit-btn'),
-        searchInput: document.getElementById('search-input'),
-        tagFilterSelect: document.getElementById('tag-filter-select'),
-        viewToggleBtn: document.getElementById('view-toggle-btn'),
-        keychainTitleName: document.getElementById('keychain-title-name'),
-        keychainTitleCount: document.getElementById('keychain-title-count'),
-        keychainUserInfo: document.getElementById('keychain-user-info'),
-        noDbOpenMessage: document.getElementById('no-db-open-message'),
-        viewsContainer: document.getElementById('views-container'),
-        emptyDbMessage: document.getElementById('empty-db-message'),
-        noResultsMessage: document.getElementById('no-results-message'),
-        openDbModal: document.getElementById('open-db-modal'),
-        openDbForm: document.getElementById('open-db-form'),
-        modalDbName: document.getElementById('modal-db-name'),
-        modalMasterKeyInput: document.getElementById('modal-master-key-input'),
-        modalUnlockBtn: document.getElementById('modal-unlock-btn'),
-        modalBiometricBtn: document.getElementById('modal-biometric-btn'),
-        biometricDivider: document.getElementById('biometric-divider'),
+        addNewKeyHeaderBtn: document.getElementById('add-new-key-header-btn'),
         backToListBtn: document.getElementById('back-to-list-btn'),
         keyListView: document.getElementById('key-list-view'),
         keyFormView: document.getElementById('key-form-view'),
-        menuBtn: document.getElementById('menu-btn'),
-        sideMenu: document.getElementById('side-menu'),
-        menuOverlay: document.getElementById('menu-overlay'),
-        closeMenuBtn: document.getElementById('close-menu-btn'),
-        addNewKeyHeaderBtn: document.getElementById('add-new-key-header-btn'),
+        viewsContainer: document.getElementById('views-container'),
+        noDbOpenMessage: document.getElementById('no-db-open-message'),
+        emptyDbMessage: document.getElementById('empty-db-message'),
+        noResultsMessage: document.getElementById('no-results-message'),
+        keychainTitleName: document.getElementById('keychain-title-name'),
+        keychainTitleCount: document.getElementById('keychain-title-count'),
+        keychainUserInfo: document.getElementById('keychain-user-info'),
         dbManagementBtn: document.getElementById('db-management-btn'),
         dbManagementDropdown: document.getElementById('db-management-dropdown'),
         renameDbBtn: document.getElementById('rename-db-btn'),
         deleteDbBtn: document.getElementById('delete-db-btn'),
+        searchInput: document.getElementById('search-input'),
+        toastContainer: document.getElementById('toast-container'),
+        sessionTimerTimeHeader: document.getElementById('session-timer-time-header'),
+        sessionTimerHeader: document.getElementById('session-timer-header'),
+        // Modals
+        openDbModal: document.getElementById('open-db-modal'),
+        modalDbName: document.getElementById('modal-db-name'),
+        openDbForm: document.getElementById('open-db-form'),
+        modalMasterKeyInput: document.getElementById('modal-master-key-input'),
+        modalUnlockBtn: document.getElementById('modal-unlock-btn'),
         renameDbModal: document.getElementById('rename-db-modal'),
         renameDbForm: document.getElementById('rename-db-form'),
         renameDbInput: document.getElementById('rename-db-input'),
@@ -1195,179 +1219,163 @@ document.addEventListener('DOMContentLoaded', async () => {
         deleteDbModal: document.getElementById('delete-db-modal'),
         deleteDbName: document.getElementById('delete-db-name'),
         deleteConfirmBtn: document.getElementById('delete-confirm-btn'),
-        manageTagsBtn: document.getElementById('manage-tags-btn'),
         tagsModal: document.getElementById('tags-modal'),
         tagsList: document.getElementById('tags-list'),
         addTagForm: document.getElementById('add-tag-form'),
         addTagInput: document.getElementById('add-tag-input'),
+        manageTagsBtn: document.getElementById('manage-tags-btn'),
         editTagModal: document.getElementById('edit-tag-modal'),
         editTagForm: document.getElementById('edit-tag-form'),
         editTagIdInput: document.getElementById('edit-tag-id'),
         editTagNameInput: document.getElementById('edit-tag-name-input'),
+        tagFilterSelect: document.getElementById('tag-filter-select'),
+        passwordStrengthIndicator: document.getElementById('password-strength-indicator'),
+        // View toggle
+        viewToggleBtn: document.getElementById('view-toggle-btn'),
+        // Biometrics
+        modalBiometricBtn: document.getElementById('modal-biometric-btn'),
+        biometricDivider: document.getElementById('biometric-divider'),
         manageBiometricsBtn: document.getElementById('manage-biometrics-btn'),
         biometricsModal: document.getElementById('biometrics-modal'),
         biometricsList: document.getElementById('biometrics-list'),
-        toastContainer: document.getElementById('toast-container'),
     };
     
-    // --- EVENT LISTENERS (ATTACHED UNCONDITIONALLY) ---
-    DOMElements.signOutBtnMobile.onclick = handleSignOut;
-    DOMElements.createDbForm.onsubmit = handleCreateDb;
-    DOMElements.keyForm.onsubmit = handleSaveKey;
-    DOMElements.cancelEditBtn.onclick = showKeyListView;
-    DOMElements.backToListBtn.onclick = showKeyListView;
-    DOMElements.searchInput.oninput = () => renderKeys();
-    DOMElements.tagFilterSelect.onchange = () => renderKeys();
-    DOMElements.menuBtn.onclick = () => toggleMenu();
-    DOMElements.closeMenuBtn.onclick = () => toggleMenu(true);
-    DOMElements.menuOverlay.onclick = () => toggleMenu(true);
-    DOMElements.addNewKeyHeaderBtn.onclick = () => showKeyFormView();
-    DOMElements.dbManagementBtn.onclick = () => DOMElements.dbManagementDropdown.classList.toggle('hidden');
+    gisLoaded();
+    checkBiometricSupport();
+
+    // Event Listeners
+    DOMElements.signinBtn.addEventListener('click', handleAuthClick);
+    DOMElements.signoutBtnMobile.addEventListener('click', () => handleSignOut());
     
-    DOMElements.openDbBtn.onclick = () => {
-        const selected = DOMElements.dbSelect.options[DOMElements.dbSelect.selectedIndex];
-        if (!selected || selected.disabled) return;
-        openingFile = { id: selected.value, name: selected.dataset.name };
+    // --- Menu & Navigation ---
+    DOMElements.menuBtn.addEventListener('click', () => toggleMenu());
+    DOMElements.closeMenuBtn.addEventListener('click', () => toggleMenu(true));
+    DOMElements.menuOverlay.addEventListener('click', () => toggleMenu(true));
+    DOMElements.addNewKeyHeaderBtn.addEventListener('click', () => showKeyFormView());
+    DOMElements.backToListBtn.addEventListener('click', showKeyListView);
+    DOMElements.cancelEditBtn.addEventListener('click', showKeyListView);
+    document.body.addEventListener('click', resetSessionTimer);
+    document.body.addEventListener('keydown', resetSessionTimer);
+
+    // --- DB Actions ---
+    DOMElements.createDbForm.addEventListener('submit', handleCreateDb);
+    DOMElements.openDbBtn.addEventListener('click', () => {
+        const selectedOption = DOMElements.dbSelect.options[DOMElements.dbSelect.selectedIndex];
+        if (!selectedOption) return;
+        openingFile = { id: selectedOption.value, name: selectedOption.dataset.name };
         DOMElements.modalDbName.textContent = openingFile.name;
-        
-        // Check for biometric data
+        DOMElements.openDbModal.classList.remove('hidden');
+
+        // Biometric button visibility
         const bioData = getBiometricData();
         let credentialsForFile = bioData[openingFile.id];
         if (credentialsForFile && !Array.isArray(credentialsForFile)) { // Migration for old format
             credentialsForFile = [credentialsForFile];
         }
-        const hasBio = isBiometricSupported && credentialsForFile && credentialsForFile.length > 0;
 
-        DOMElements.modalBiometricBtn.classList.toggle('hidden', !hasBio);
-        DOMElements.biometricDivider.classList.toggle('hidden', !hasBio);
-        
-        DOMElements.openDbModal.classList.remove('hidden');
+        if (isBiometricSupported && credentialsForFile && credentialsForFile.length > 0) {
+            DOMElements.modalBiometricBtn.classList.remove('hidden');
+            DOMElements.biometricDivider.classList.remove('hidden');
+        } else {
+            DOMElements.modalBiometricBtn.classList.add('hidden');
+            DOMElements.biometricDivider.classList.add('hidden');
+        }
         DOMElements.modalMasterKeyInput.focus();
-    };
-    DOMElements.openDbForm.onsubmit = handleOpenDb;
-    DOMElements.modalBiometricBtn.onclick = handleBiometricUnlock;
-
-    
-    document.querySelectorAll('.modal-cancel-btn').forEach(btn => {
-        btn.onclick = () => btn.closest('.modal-container').classList.add('hidden');
     });
+    DOMElements.openDbForm.addEventListener('submit', handleOpenDb);
+    DOMElements.modalBiometricBtn.addEventListener('click', handleBiometricUnlock);
 
-    DOMElements.renameDbBtn.onclick = () => {
-        DOMElements.renameDbInput.value = currentDbName.replace('.db', '');
-        DOMElements.renameDbModal.classList.remove('hidden');
-        DOMElements.dbManagementDropdown.classList.add('hidden');
-        DOMElements.renameDbInput.focus();
-    };
-    DOMElements.renameDbForm.onsubmit = handleRenameDb;
-
-    DOMElements.deleteDbBtn.onclick = () => {
-        DOMElements.deleteDbName.textContent = currentDbName;
-        DOMElements.deleteDbModal.classList.remove('hidden');
-        DOMElements.dbManagementDropdown.classList.add('hidden');
-    };
-    DOMElements.deleteConfirmBtn.onclick = handleDeleteDb;
-
-    DOMElements.manageTagsBtn.onclick = openTagsModal;
-    DOMElements.addTagForm.onsubmit = handleAddTag;
-    DOMElements.editTagForm.onsubmit = handleUpdateTag;
-
-    DOMElements.manageBiometricsBtn.onclick = openBiometricsManager;
-
-    // View toggle logic
-    const toggleView = () => {
-        currentView = currentView === 'list' ? 'card' : 'list';
-        DOMElements.viewToggleBtn.innerHTML = currentView === 'list' ? ICONS.grid : ICONS.list;
-        renderKeys();
-    };
-    DOMElements.viewToggleBtn.innerHTML = ICONS.grid;
-    DOMElements.viewToggleBtn.onclick = toggleView;
-
-    // Show/hide view toggle button based on screen
-    const mediaQuery = window.matchMedia('(min-width: 768px)');
-    const handleViewToggleVisibility = () => {
-        DOMElements.viewToggleBtn.style.display = mediaQuery.matches ? 'flex' : 'none';
-    };
-    mediaQuery.addEventListener('change', handleViewToggleVisibility);
-    handleViewToggleVisibility();
-    
-    // User/Pass field visibility on focus/blur
-    [DOMElements.keyUserInput, DOMElements.keyPassInput].forEach(input => {
-        input.addEventListener('focus', () => { input.type = 'text'; });
-        input.addEventListener('blur', () => { input.type = 'password'; });
+    // --- DB Management Dropdown ---
+    DOMElements.dbManagementBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        DOMElements.dbManagementDropdown.classList.toggle('hidden');
     });
-
-    // Password strength indicator
-    DOMElements.keyPassInput.addEventListener('input', (e) => updatePasswordStrengthUI(e.target.value));
-
-    // Password show/hide button
-    document.querySelectorAll('[data-toggle-password]').forEach(btn => {
-        const input = document.getElementById(btn.dataset.togglePassword);
-        btn.innerHTML = ICONS.eye;
-        btn.onclick = () => { if(input) { const isPwd = input.type === 'password'; input.type = isPwd ? 'text' : 'password'; btn.innerHTML = isPwd ? ICONS.eyeOff : ICONS.eye; }};
-    });
-    
-    // Hide dropdown if clicked outside
     document.addEventListener('click', (e) => {
-        if (!DOMElements.dbManagementBtn.contains(e.target) && !DOMElements.dbManagementDropdown.contains(e.target)) {
+        if (!DOMElements.dbManagementBtn.contains(e.target)) {
             DOMElements.dbManagementDropdown.classList.add('hidden');
         }
     });
+    DOMElements.renameDbBtn.addEventListener('click', () => {
+        DOMElements.dbManagementDropdown.classList.add('hidden');
+        DOMElements.renameDbInput.value = currentDbName.replace(/\.db$/, '');
+        DOMElements.renameDbModal.classList.remove('hidden');
+    });
+    DOMElements.deleteDbBtn.addEventListener('click', () => {
+        DOMElements.dbManagementDropdown.classList.add('hidden');
+        DOMElements.deleteDbName.textContent = currentDbName;
+        DOMElements.deleteDbModal.classList.remove('hidden');
+    });
 
-    // Accordion Logic
-    const accordionHeaders = document.querySelectorAll('#menu-accordion .accordion-header');
-    accordionHeaders.forEach(header => {
-        header.addEventListener('click', () => {
-            const accordionItem = header.parentElement;
-            const isExpanded = accordionItem.classList.contains('expanded');
-            
-            document.querySelectorAll('#menu-accordion .accordion-item').forEach(item => {
-                item.classList.remove('expanded');
-            });
-            
-            if (!isExpanded) {
-                accordionItem.classList.add('expanded');
+    // --- Key Management ---
+    DOMElements.keyForm.addEventListener('submit', handleSaveKey);
+    DOMElements.searchInput.addEventListener('input', renderKeys);
+    DOMElements.tagFilterSelect.addEventListener('change', renderKeys);
+
+    // --- Modal Management ---
+    document.querySelectorAll('.modal-cancel-btn').forEach(btn => btn.onclick = (e) => {
+        e.target.closest('.modal-container').classList.add('hidden');
+        openingFile = null;
+    });
+
+    // --- Tag Management ---
+    DOMElements.manageTagsBtn.addEventListener('click', openTagsModal);
+    DOMElements.addTagForm.addEventListener('submit', handleAddTag);
+    DOMElements.editTagForm.addEventListener('submit', handleUpdateTag);
+
+    // --- Biometric Management ---
+    DOMElements.manageBiometricsBtn.addEventListener('click', openBiometricsManager);
+
+    // --- Accordion Logic (Side Menu) ---
+    document.querySelectorAll('#menu-accordion .accordion-header').forEach(button => {
+        button.addEventListener('click', () => {
+            const item = button.parentElement;
+            const content = button.nextElementSibling;
+            item.classList.toggle('expanded');
+        });
+    });
+
+    // --- Password visibility toggles ---
+    DOMElements.keyPassInput.addEventListener('input', e => updatePasswordStrengthUI(e.target.value));
+    
+    document.querySelectorAll('[data-toggle-password]').forEach(btn => {
+        const input = document.getElementById(btn.dataset.togglePassword);
+        btn.innerHTML = ICONS.eye; // Set initial icon
+        btn.addEventListener('click', () => {
+            if(input.type === 'password') {
+                input.type = 'text';
+                btn.innerHTML = ICONS.eyeOff;
+            } else {
+                input.type = 'password';
+                btn.innerHTML = ICONS.eye;
             }
         });
     });
 
-    // --- CHECK BIOMETRIC SUPPORT ---
-    await checkBiometricSupport();
-
-    // --- SESSION & LOGIN FLOW ---
-    if (tryRestoreSession()) {
-        // Session restored, UI is active, and listeners are attached. Nothing more to do.
-    } else {
-        // No session found, proceed with Google Sign-In initialization.
-        const initializeGoogleSignIn = () => {
-            try {
-                if (!window.google || !google.accounts || !google.accounts.oauth2) {
-                    throw new Error("La biblioteca de Google no se cargó correctamente.");
-                }
-                tokenClient = google.accounts.oauth2.initTokenClient({
-                    client_id: CLIENT_ID,
-                    scope: SCOPES,
-                    callback: (resp) => {
-                        if (resp.error) return showStatus(`Error de token: ${resp.error}`, 'error');
-                        accessToken = resp.access_token;
-                        showStatus('Autenticado.', 'ok');
-                        onSignedIn();
-                    }
-                });
-                DOMElements.signInBtn.disabled = false;
-                DOMElements.signInBtn.onclick = () => tokenClient.requestAccessToken();
-                showStatus('Listo para iniciar sesión.', 'ok');
-            } catch (error) {
-                console.error("Error al inicializar GSI:", error);
-                showStatus(error.message || 'No se pudo inicializar el inicio de sesión de Google.', 'error');
-            }
-        };
-        
-        const gsiScript = document.createElement('script');
-        gsiScript.src = 'https://accounts.google.com/gsi/client';
-        gsiScript.async = true;
-        gsiScript.defer = true;
-        gsiScript.onload = initializeGoogleSignIn;
-        gsiScript.onerror = () => showStatus('Error al cargar el script de Google.', 'error');
-        document.body.appendChild(gsiScript);
+    [DOMElements.keyUserInput, DOMElements.keyPassInput].forEach(input => {
+        input.addEventListener('focus', () => input.type = 'text');
+        input.addEventListener('blur', () => input.type = 'password');
+    });
+    
+    // --- View Toggle (List/Card) ---
+    function updateViewToggleBtn(view) {
+        DOMElements.viewToggleBtn.innerHTML = view === 'list' ? ICONS.grid : ICONS.list;
+        DOMElements.viewToggleBtn.title = view === 'list' ? 'Vista de tarjetas' : 'Vista de lista';
     }
+
+    DOMElements.viewToggleBtn.addEventListener('click', () => {
+        currentView = currentView === 'list' ? 'card' : 'list';
+        localStorage.setItem('rdk_view_preference', currentView);
+        updateViewToggleBtn(currentView);
+        renderKeys();
+    });
+
+    // Restore view preference
+    const savedView = localStorage.getItem('rdk_view_preference');
+    if (savedView === 'card' || savedView === 'list') {
+        currentView = savedView;
+    }
+    updateViewToggleBtn(currentView);
+
+    // Initial render
+    renderKeys();
 });
