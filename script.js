@@ -1,6 +1,6 @@
 // --- CONFIGURATION ---
 const CLIENT_ID = '576080826935-2mtnj52ndc8plnsjodjevt3e2gsh4m3a.apps.googleusercontent.com';
-const SCOPES = 'https://www.googleapis.com/auth/drive.file';
+const SCOPES = 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile';
 const SESSION_TIMEOUT = 5 * 60 * 1000; // 5 minutes
 const BIO_STORAGE_KEY = 'rdk_biometric_data';
 const BIO_ENCRYPTION_KEY = 'a-not-so-secret-key-for-local-encryption'; // Used only to obfuscate master key in localStorage
@@ -1063,7 +1063,6 @@ function resetSessionTimer(timeout = SESSION_TIMEOUT) {
     clearTimeout(sessionTimer);
     const expiresAt = new Date(Date.now() + timeout);
     const timeString = expiresAt.toLocaleTimeString();
-    if (DOMElements.sessionTimerTimeMobile) DOMElements.sessionTimerTimeMobile.textContent = timeString;
     if (DOMElements.sessionTimerTimeHeader) DOMElements.sessionTimerTimeHeader.textContent = timeString;
 
     const savedSession = sessionStorage.getItem('keychainSession');
@@ -1143,7 +1142,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         sessionTimerHeader: document.getElementById('session-timer-header'),
         sessionTimerTimeHeader: document.getElementById('session-timer-time-header'),
         mobileSessionControls: document.getElementById('mobile-session-controls'),
-        sessionTimerTimeMobile: document.getElementById('session-timer-time-mobile'),
         signOutBtnMobile: document.getElementById('signout-btn-mobile'),
         dbSelect: document.getElementById('db-select'),
         openDbBtn: document.getElementById('open-db-btn'),
