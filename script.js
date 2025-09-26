@@ -5,6 +5,7 @@ const SESSION_TIMEOUT = 5 * 60 * 1000; // 5 minutes
 const BIO_STORAGE_KEY = 'rdk_biometric_data';
 const BIO_ENCRYPTION_KEY = 'a-not-so-secret-key-for-local-encryption'; // Used only to obfuscate master key in localStorage
 const MAX_TAGS_PER_KEY = 3;
+const WIFI_QR_TAG_NAME = 'WiFiQR';
 
 // --- SVG ICONS ---
 const ICONS = {
@@ -36,6 +37,7 @@ let currentDbName = '';
 let activeDbFiles = [];
 let currentView = 'list';
 let isBiometricSupported = false;
+let isWiFiMode = false;
 
 
 // --- DOM ELEMENTS ---
@@ -321,16 +323,28 @@ function createKeyListItem(key) {
     const item = document.createElement('div');
     item.className = 'key-item bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden flex flex-col';
     
+    const wifiTag = dbData.tags.find(t => t.name === WIFI_QR_TAG_NAME);
+    const isWifiKey = wifiTag && key.tagIds && key.tagIds.includes(wifiTag.id);
+
     let tagsHtml = '';
     if (key.tagIds && key.tagIds.length > 0) {
         tagsHtml = key.tagIds.map(tagId => {
             const tag = dbData.tags.find(t => t.id === tagId);
-            if (tag) {
+            // Do not render the internal WiFiQR tag
+            if (tag && tag.name !== WIFI_QR_TAG_NAME) {
                 return `<span class="text-xs bg-sky-100 text-sky-800 px-2 py-1 rounded-full dark:bg-sky-900/70 dark:text-sky-300 flex-shrink-0">${escapeHtml(tag.name)}</span>`;
             }
             return '';
         }).join('');
     }
+
+    const wifiButtonHtml = isWifiKey ? `
+        <button class="view-qr-btn text-sm flex items-center gap-1.5 text-indigo-600 dark:text-indigo-400 hover:underline">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" /></svg>
+            Ver WiFi QR
+        </button>
+    ` : '';
+
 
     item.innerHTML = `
         <button class="key-item-header w-full flex justify-between items-center text-left p-3 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors">
@@ -341,18 +355,22 @@ function createKeyListItem(key) {
             ${ICONS.chevronDown}
         </button>
         <div class="key-item-body"><div class="p-3 border-t border-slate-100 dark:border-slate-700 space-y-2 text-sm">
-            ${createRevealingFieldHTML('Usuario', key.user)}
-            ${createRevealingFieldHTML('Contraseña', key.pass, true)}
+            ${createRevealingFieldHTML(isWifiKey ? 'Nombre de Red (SSID)' : 'Usuario', key.user)}
+            ${createRevealingFieldHTML(isWifiKey ? 'Contraseña de Red' : 'Contraseña', key.pass, true)}
             ${createUrlLinkHTML('URL', key.url)}
             ${key.note ? `<div class="pt-2 text-slate-600 dark:text-slate-300"><strong class="font-medium text-slate-800 dark:text-slate-200">Nota:</strong><p class="whitespace-pre-wrap break-words p-2 bg-slate-50 dark:bg-slate-700/50 rounded mt-1">${escapeHtml(key.note)}</p></div>` : ''}
-            <div class="flex gap-2 pt-2 border-t border-slate-100 dark:border-slate-700">
+            <div class="flex gap-4 pt-2 border-t border-slate-100 dark:border-slate-700">
                 <button class="edit-btn text-sm flex items-center gap-1.5 text-blue-600 dark:text-blue-400 hover:underline">${ICONS.edit} Editar</button>
                 <button class="delete-btn text-sm flex items-center gap-1.5 text-red-600 dark:text-red-400 hover:underline">${ICONS.delete} Eliminar</button>
+                ${wifiButtonHtml}
             </div>
         </div></div>`;
     item.querySelector('.key-item-header').onclick = () => item.classList.toggle('expanded');
     item.querySelector('.edit-btn').onclick = () => populateEditForm(key.id);
     item.querySelector('.delete-btn').onclick = () => handleDeleteKey(key.id);
+    if(isWifiKey) {
+        item.querySelector('.view-qr-btn').onclick = () => showWiFiQrCode(key);
+    }
     attachRevealingFieldListeners(item);
     return item;
 }
@@ -536,8 +554,22 @@ function handleSaveKey(event) {
     const name = DOMElements.keyNameInput.value.trim();
     if (!name) return alert('El nombre de la llave es requerido.');
     
+    let wifiTag = dbData.tags.find(t => t.name === WIFI_QR_TAG_NAME);
+    if (isWiFiMode && !wifiTag) {
+        wifiTag = { id: `tag_internal_${WIFI_QR_TAG_NAME}`, name: WIFI_QR_TAG_NAME };
+        dbData.tags.push(wifiTag);
+    }
+    
     const selectedPills = DOMElements.selectedTagsContainer.querySelectorAll('[data-tag-id]');
-    const tagIds = Array.from(selectedPills).map(pill => pill.dataset.tagId);
+    let tagIds = Array.from(selectedPills).map(pill => pill.dataset.tagId);
+
+    if (isWiFiMode && wifiTag) {
+        if (!tagIds.includes(wifiTag.id)) {
+            tagIds.push(wifiTag.id);
+        }
+    } else if (wifiTag) {
+        tagIds = tagIds.filter(id => id !== wifiTag.id);
+    }
 
     const keyData = {
         name,
@@ -547,10 +579,21 @@ function handleSaveKey(event) {
         note: DOMElements.keyNoteInput.value,
         tagIds: tagIds,
     };
+
+    if (isWiFiMode) {
+        keyData.wifiEncryption = DOMElements.wifiEncryptionSelect.value;
+    }
+
     const existingId = DOMElements.keyIdInput.value;
     if (existingId) {
         const index = dbData.keys.findIndex(k => k.id === existingId);
-        if (index > -1) dbData.keys[index] = { ...dbData.keys[index], ...keyData };
+        if (index > -1) {
+            const existingKey = dbData.keys[index];
+            if(!isWiFiMode && existingKey.wifiEncryption) {
+                delete existingKey.wifiEncryption;
+            }
+            dbData.keys[index] = { ...existingKey, ...keyData };
+        }
     } else {
         dbData.keys.push({ id: `id_${Date.now()}_${Math.random()}`, ...keyData });
     }
@@ -624,11 +667,18 @@ function resetKeyForm() {
     DOMElements.cancelEditBtn.classList.add('hidden');
     renderTagSelector([]);
     updatePasswordStrengthUI('');
+    toggleWiFiFormMode(false); // Ensure WiFi mode is off
 }
 
 function populateEditForm(keyId) {
     const key = dbData.keys.find(k => k.id === keyId);
     if (!key) return;
+
+    const wifiTag = dbData.tags.find(t => t.name === WIFI_QR_TAG_NAME);
+    const isWifiKey = wifiTag && key.tagIds && key.tagIds.includes(wifiTag.id);
+
+    toggleWiFiFormMode(isWifiKey);
+
     try {
         DOMElements.keyIdInput.value = key.id;
         DOMElements.keyNameInput.value = key.name;
@@ -639,6 +689,9 @@ function populateEditForm(keyId) {
         DOMElements.keyNoteInput.value = key.note || '';
         DOMElements.keyFormTitle.textContent = `Editando '${key.name}'`;
         DOMElements.cancelEditBtn.classList.remove('hidden');
+        if(isWifiKey) {
+            DOMElements.wifiEncryptionSelect.value = key.wifiEncryption || 'WPA';
+        }
         renderTagSelector(key.tagIds || []);
         showKeyFormView(true);
         updatePasswordStrengthUI(DOMElements.keyPassInput.value);
@@ -680,11 +733,12 @@ function openTagsModal() {
 
 function renderTagsInModal() {
     DOMElements.tagsList.innerHTML = '';
-    if (!dbData || dbData.tags.length === 0) {
+    const userTags = dbData ? dbData.tags.filter(t => t.name !== WIFI_QR_TAG_NAME) : [];
+    if (userTags.length === 0) {
         DOMElements.tagsList.innerHTML = '<p class="text-slate-500 text-sm">No hay etiquetas. Añade una nueva abajo.</p>';
         return;
     }
-    dbData.tags.sort((a,b) => a.name.localeCompare(b.name)).forEach(tag => {
+    userTags.sort((a,b) => a.name.localeCompare(b.name)).forEach(tag => {
         const div = document.createElement('div');
         div.className = 'flex justify-between items-center p-2 bg-slate-50 dark:bg-slate-800 rounded';
         div.innerHTML = `
@@ -704,6 +758,9 @@ function handleAddTag(e) {
     e.preventDefault();
     const newTagName = DOMElements.addTagInput.value.trim();
     if (!newTagName || !dbData) return;
+    if (newTagName === WIFI_QR_TAG_NAME) {
+        return alert('Ese nombre de etiqueta es reservado.');
+    }
     if (dbData.tags.some(t => t.name.toLowerCase() === newTagName.toLowerCase())) {
         return alert('Esa etiqueta ya existe.');
     }
@@ -726,6 +783,9 @@ function handleUpdateTag(e) {
     const newTagName = DOMElements.editTagNameInput.value.trim();
     if (!tagId || !newTagName || !dbData) return;
 
+    if (newTagName === WIFI_QR_TAG_NAME) {
+        return alert('Ese nombre de etiqueta es reservado.');
+    }
     if (dbData.tags.some(t => t.name.toLowerCase() === newTagName.toLowerCase() && t.id !== tagId)) {
         return alert('Ya existe otra etiqueta con ese nombre.');
     }
@@ -759,8 +819,8 @@ function renderTagSelector(selectedIds = []) {
     DOMElements.selectedTagsContainer.innerHTML = '';
     DOMElements.addTagDropdown.innerHTML = '<option value="">Añadir etiqueta...</option>';
     
-    const allTags = dbData.tags || [];
-    const availableTags = allTags.filter(tag => !selectedIds.includes(tag.id));
+    const allUserTags = (dbData.tags || []).filter(t => t.name !== WIFI_QR_TAG_NAME);
+    const availableTags = allUserTags.filter(tag => !selectedIds.includes(tag.id));
 
     availableTags.sort((a,b) => a.name.localeCompare(b.name)).forEach(tag => {
         const option = document.createElement('option');
@@ -768,9 +828,9 @@ function renderTagSelector(selectedIds = []) {
         option.textContent = tag.name;
         DOMElements.addTagDropdown.appendChild(option);
     });
-
+    
     selectedIds.forEach(id => {
-        const tag = allTags.find(t => t.id === id);
+        const tag = allUserTags.find(t => t.id === id);
         if (tag) {
             const pill = document.createElement('div');
             pill.className = 'flex items-center gap-1.5 bg-sky-100 text-sky-800 text-sm px-2 py-1 rounded-full dark:bg-sky-900/70 dark:text-sky-300';
@@ -782,8 +842,9 @@ function renderTagSelector(selectedIds = []) {
             DOMElements.selectedTagsContainer.appendChild(pill);
         }
     });
+    const selectedUserTags = selectedIds.filter(id => allUserTags.some(t => t.id === id));
 
-    const count = selectedIds.length;
+    const count = selectedUserTags.length;
     DOMElements.tagCountIndicator.textContent = count;
     DOMElements.addTagDropdown.disabled = count >= MAX_TAGS_PER_KEY;
     if (count < MAX_TAGS_PER_KEY) DOMElements.addTagDropdown.value = '';
@@ -794,12 +855,70 @@ function populateTagFilterSelect() {
     const select = DOMElements.tagFilterSelect;
     select.innerHTML = '<option value="all">Todas las etiquetas</option>';
     if (!dbData) return;
-    dbData.tags.sort((a, b) => a.name.localeCompare(b.name)).forEach(tag => {
+    const userTags = dbData.tags.filter(t => t.name !== WIFI_QR_TAG_NAME);
+    userTags.sort((a, b) => a.name.localeCompare(b.name)).forEach(tag => {
         const option = document.createElement('option');
         option.value = tag.id;
         option.textContent = tag.name;
         select.appendChild(option);
     });
+}
+
+// --- WIFI QR ---
+function toggleWiFiFormMode(forceState = null) {
+    isWiFiMode = forceState !== null ? forceState : !isWiFiMode;
+
+    DOMElements.toggleWiFiModeBtn.classList.toggle('bg-blue-100', isWiFiMode);
+    DOMElements.toggleWiFiModeBtn.classList.toggle('dark:bg-blue-900/50', isWiFiMode);
+    DOMElements.wifiOptionsContainer.classList.toggle('hidden', !isWiFiMode);
+
+    if (isWiFiMode) {
+        DOMElements.keyUserLabel.textContent = 'Nombre de Red (SSID)';
+        DOMElements.keyUserInput.placeholder = 'ej: MiWiFi_Casa';
+        DOMElements.keyPassLabel.textContent = 'Contraseña de Red';
+        DOMElements.keyPassInput.placeholder = 'Contraseña del WiFi';
+    } else {
+        DOMElements.keyUserLabel.textContent = 'Usuario / Correo';
+        DOMElements.keyUserInput.placeholder = 'usuario@ejemplo.com';
+        DOMElements.keyPassLabel.textContent = 'Contraseña';
+        DOMElements.keyPassInput.placeholder = 'Tu contraseña segura';
+    }
+}
+
+function showWiFiQrCode(key) {
+    if (typeof QRCode === 'undefined') {
+        return showStatus('La librería de QR no está cargada.', 'error');
+    }
+    try {
+        const ssid = CryptoService.decrypt(key.user, masterKey);
+        const password = CryptoService.decrypt(key.pass, masterKey);
+        const encryption = key.wifiEncryption || 'WPA'; // Default to WPA for safety
+        
+        // Format: WIFI:T:<encryption>;S:<ssid>;P:<password>;;
+        const wifiString = `WIFI:T:${encryption};S:${escapeSemicolon(ssid)};P:${escapeSemicolon(password)};;`;
+
+        const container = DOMElements.qrCodeContainer;
+        container.innerHTML = ''; // Clear previous QR
+        new QRCode(container, {
+            text: wifiString,
+            width: 256,
+            height: 256,
+            colorDark : "#000000",
+            colorLight : "#ffffff",
+            correctLevel : QRCode.CorrectLevel.H
+        });
+        
+        DOMElements.qrCodeModal.classList.remove('hidden');
+
+    } catch(e) {
+        showStatus('Error al generar el código QR.', 'error');
+        console.error(e);
+    }
+}
+
+function escapeSemicolon(str) {
+    // According to the spec, special characters like ';', ',', '"', '\' should be escaped with a backslash.
+    return str.replace(/([\\;,"])/g, '\\$1');
 }
 
 // --- BIOMETRIC AUTHENTICATION (WEBAUTHN) ---
@@ -1287,7 +1406,9 @@ document.addEventListener('DOMContentLoaded', () => {
         keyForm: document.getElementById('key-form'),
         keyIdInput: document.getElementById('key-id-input'),
         keyNameInput: document.getElementById('key-name-input'),
+        keyUserLabel: document.getElementById('key-user-label'),
         keyUserInput: document.getElementById('key-user-input'),
+        keyPassLabel: document.getElementById('key-pass-label'),
         keyPassInput: document.getElementById('key-pass-input'),
         keyUrlInput: document.getElementById('key-url-input'),
         keyNoteInput: document.getElementById('key-note-input'),
@@ -1348,6 +1469,12 @@ document.addEventListener('DOMContentLoaded', () => {
         manageBiometricsBtn: document.getElementById('manage-biometrics-btn'),
         biometricsModal: document.getElementById('biometrics-modal'),
         biometricsList: document.getElementById('biometrics-list'),
+        // WiFi QR
+        toggleWiFiModeBtn: document.getElementById('toggle-wifi-mode-btn'),
+        wifiOptionsContainer: document.getElementById('wifi-options-container'),
+        wifiEncryptionSelect: document.getElementById('wifi-encryption-select'),
+        qrCodeModal: document.getElementById('qr-code-modal'),
+        qrCodeContainer: document.getElementById('qr-code-container'),
     };
     
     // --- APP INITIALIZATION FLOW ---
@@ -1442,6 +1569,13 @@ document.addEventListener('DOMContentLoaded', () => {
     DOMElements.keyForm.addEventListener('submit', handleSaveKey);
     DOMElements.searchInput.addEventListener('input', renderKeys);
     DOMElements.tagFilterSelect.addEventListener('change', renderKeys);
+
+    // --- WiFi QR ---
+    DOMElements.toggleWiFiModeBtn.addEventListener('click', () => toggleWiFiFormMode());
+    DOMElements.qrCodeModal.addEventListener('click', () => {
+        DOMElements.qrCodeModal.classList.add('hidden');
+        DOMElements.qrCodeContainer.innerHTML = '';
+    });
 
     // --- Modal Management ---
     document.querySelectorAll('.modal-cancel-btn').forEach(btn => btn.onclick = (e) => {
