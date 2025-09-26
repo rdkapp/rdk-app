@@ -557,28 +557,24 @@ function handleSaveKey(event) {
     const selectedPills = DOMElements.selectedTagsContainer.querySelectorAll('[data-tag-id]');
     let tagIds = Array.from(selectedPills).map(pill => pill.dataset.tagId);
 
-    // --- Refactored WiFi Tag Logic ---
-    // Get the internal tag from the master list
+    // --- Corrected WiFi Tag Logic ---
     let wifiTag = dbData.tags.find(t => t.name === WIFI_QR_TAG_NAME);
 
     if (isWiFiMode) {
-        // If we are in WiFi mode, ensure the tag exists and is applied to the key.
-        // 1. If the master tag doesn't exist yet, create it now.
+        // If in WiFi mode, ensure the master tag exists and is applied to the key.
         if (!wifiTag) {
             wifiTag = { id: `tag_internal_${WIFI_QR_TAG_NAME}`, name: WIFI_QR_TAG_NAME };
             dbData.tags.push(wifiTag);
         }
-        // 2. Add the tag's ID to this key's list of tags if it's not already there.
         if (!tagIds.includes(wifiTag.id)) {
             tagIds.push(wifiTag.id);
         }
     } else {
-        // If we are NOT in WiFi mode, ensure the tag is removed from the key.
-        if (wifiTag) { // Only try to remove it if it exists in the master list
+        // If not in WiFi mode, ensure the internal tag is removed from this key's list.
+        if (wifiTag) {
             tagIds = tagIds.filter(id => id !== wifiTag.id);
         }
     }
-    // --- End Refactor ---
 
     const keyData = {
         name,
@@ -597,11 +593,12 @@ function handleSaveKey(event) {
     if (existingId) {
         const index = dbData.keys.findIndex(k => k.id === existingId);
         if (index > -1) {
-            const existingKey = dbData.keys[index];
-            if (!isWiFiMode && existingKey.wifiEncryption) {
-                delete existingKey.wifiEncryption;
+            const updatedKey = { ...dbData.keys[index], ...keyData };
+            // Explicitly remove wifi property if it's no longer a wifi key
+            if (!isWiFiMode) {
+                delete updatedKey.wifiEncryption;
             }
-            dbData.keys[index] = { ...existingKey, ...keyData };
+            dbData.keys[index] = updatedKey;
         }
     } else {
         dbData.keys.push({ id: `id_${Date.now()}_${Math.random()}`, ...keyData });
