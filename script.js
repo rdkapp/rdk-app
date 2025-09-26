@@ -330,9 +330,12 @@ function createKeyListItem(key) {
     if (key.tagIds && key.tagIds.length > 0) {
         tagsHtml = key.tagIds.map(tagId => {
             const tag = dbData.tags.find(t => t.id === tagId);
-            // Do not render the internal WiFiQR tag
-            if (tag && tag.name !== WIFI_QR_TAG_NAME) {
-                return `<span class="text-xs bg-sky-100 text-sky-800 px-2 py-1 rounded-full dark:bg-sky-900/70 dark:text-sky-300 flex-shrink-0">${escapeHtml(tag.name)}</span>`;
+            if (tag) {
+                const isInternalTag = tag.name === WIFI_QR_TAG_NAME;
+                const pillColor = isInternalTag 
+                    ? 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900/70 dark:text-indigo-300' 
+                    : 'bg-sky-100 text-sky-800 dark:bg-sky-900/70 dark:text-sky-300';
+                return `<span class="text-xs ${pillColor} px-2 py-1 rounded-full flex-shrink-0">${escapeHtml(tag.name)}</span>`;
             }
             return '';
         }).join('');
@@ -461,7 +464,13 @@ async function handleCreateDb(event) {
     setLoading(true, DOMElements.createDbBtn);
     showStatus(`Creando '${name}.db'...`);
     try {
-        const newDbData = { keys: [], tags: [] };
+        const newDbData = { 
+            keys: [], 
+            tags: [
+                // Add the reserved WiFiQR tag by default to all new keychains
+                { id: `tag_internal_${WIFI_QR_TAG_NAME}`, name: WIFI_QR_TAG_NAME }
+            ] 
+        };
         const encryptedContent = CryptoService.encrypt(JSON.stringify(newDbData), mKey);
         const created = await GDriveService.createFile(`${name}.db`, encryptedContent);
         dbData = newDbData; masterKey = mKey; dbFileId = created.id; currentDbName = `${name}.db`;
@@ -555,24 +564,25 @@ function handleSaveKey(event) {
     if (!name) return alert('El nombre de la llave es requerido.');
 
     const selectedPills = DOMElements.selectedTagsContainer.querySelectorAll('[data-tag-id]');
-    let tagIds = Array.from(selectedPills).map(pill => pill.dataset.tagId);
+    const userSelectedTagIds = Array.from(selectedPills).map(pill => pill.dataset.tagId);
+    
+    // Use a Set for robust addition/removal of the WiFi tag
+    const finalTagIds = new Set(userSelectedTagIds);
 
-    // --- Corrected WiFi Tag Logic ---
+    // Find the reserved WiFi tag. It should always exist for new keychains.
     let wifiTag = dbData.tags.find(t => t.name === WIFI_QR_TAG_NAME);
 
     if (isWiFiMode) {
-        // If in WiFi mode, ensure the master tag exists and is applied to the key.
+        // For old keychains that might not have it, create it on the fly.
         if (!wifiTag) {
             wifiTag = { id: `tag_internal_${WIFI_QR_TAG_NAME}`, name: WIFI_QR_TAG_NAME };
             dbData.tags.push(wifiTag);
         }
-        if (!tagIds.includes(wifiTag.id)) {
-            tagIds.push(wifiTag.id);
-        }
+        finalTagIds.add(wifiTag.id);
     } else {
-        // If not in WiFi mode, ensure the internal tag is removed from this key's list.
+        // If not in WiFi mode, ensure the internal tag is removed.
         if (wifiTag) {
-            tagIds = tagIds.filter(id => id !== wifiTag.id);
+            finalTagIds.delete(wifiTag.id);
         }
     }
 
@@ -582,7 +592,7 @@ function handleSaveKey(event) {
         pass: CryptoService.encrypt(DOMElements.keyPassInput.value, masterKey),
         url: CryptoService.encrypt(DOMElements.keyUrlInput.value, masterKey),
         note: DOMElements.keyNoteInput.value,
-        tagIds: tagIds,
+        tagIds: Array.from(finalTagIds), // Convert Set back to Array for saving
     };
 
     if (isWiFiMode) {
@@ -594,7 +604,6 @@ function handleSaveKey(event) {
         const index = dbData.keys.findIndex(k => k.id === existingId);
         if (index > -1) {
             const updatedKey = { ...dbData.keys[index], ...keyData };
-            // Explicitly remove wifi property if it's no longer a wifi key
             if (!isWiFiMode) {
                 delete updatedKey.wifiEncryption;
             }
