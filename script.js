@@ -553,23 +553,32 @@ function handleSaveKey(event) {
     if (!dbData) return;
     const name = DOMElements.keyNameInput.value.trim();
     if (!name) return alert('El nombre de la llave es requerido.');
-    
-    let wifiTag = dbData.tags.find(t => t.name === WIFI_QR_TAG_NAME);
-    if (isWiFiMode && !wifiTag) {
-        wifiTag = { id: `tag_internal_${WIFI_QR_TAG_NAME}`, name: WIFI_QR_TAG_NAME };
-        dbData.tags.push(wifiTag);
-    }
-    
+
     const selectedPills = DOMElements.selectedTagsContainer.querySelectorAll('[data-tag-id]');
     let tagIds = Array.from(selectedPills).map(pill => pill.dataset.tagId);
 
-    if (isWiFiMode && wifiTag) {
+    // --- Refactored WiFi Tag Logic ---
+    // Get the internal tag from the master list
+    let wifiTag = dbData.tags.find(t => t.name === WIFI_QR_TAG_NAME);
+
+    if (isWiFiMode) {
+        // If we are in WiFi mode, ensure the tag exists and is applied to the key.
+        // 1. If the master tag doesn't exist yet, create it now.
+        if (!wifiTag) {
+            wifiTag = { id: `tag_internal_${WIFI_QR_TAG_NAME}`, name: WIFI_QR_TAG_NAME };
+            dbData.tags.push(wifiTag);
+        }
+        // 2. Add the tag's ID to this key's list of tags if it's not already there.
         if (!tagIds.includes(wifiTag.id)) {
             tagIds.push(wifiTag.id);
         }
-    } else if (wifiTag) {
-        tagIds = tagIds.filter(id => id !== wifiTag.id);
+    } else {
+        // If we are NOT in WiFi mode, ensure the tag is removed from the key.
+        if (wifiTag) { // Only try to remove it if it exists in the master list
+            tagIds = tagIds.filter(id => id !== wifiTag.id);
+        }
     }
+    // --- End Refactor ---
 
     const keyData = {
         name,
@@ -589,7 +598,7 @@ function handleSaveKey(event) {
         const index = dbData.keys.findIndex(k => k.id === existingId);
         if (index > -1) {
             const existingKey = dbData.keys[index];
-            if(!isWiFiMode && existingKey.wifiEncryption) {
+            if (!isWiFiMode && existingKey.wifiEncryption) {
                 delete existingKey.wifiEncryption;
             }
             dbData.keys[index] = { ...existingKey, ...keyData };
@@ -601,6 +610,7 @@ function handleSaveKey(event) {
     renderKeys();
     showKeyListView();
 }
+
 
 function handleDeleteKey(keyId) {
     if (!dbData || !confirm('¿Estás seguro de que quieres eliminar esta llave?')) return;
