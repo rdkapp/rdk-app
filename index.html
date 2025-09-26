@@ -26,6 +26,8 @@
   <link rel="stylesheet" href="style.css">
   <!-- CryptoJS for AES -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
+  <!-- QR Code Generator -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js" defer></script>
   <!-- Local script which will dynamically load Google Sign-In -->
   <script src="script.js" defer></script>
 </head>
@@ -140,7 +142,13 @@
             <div id="key-form-view" class="absolute inset-0 w-full transition-transform duration-300 ease-in-out translate-x-full bg-slate-100 dark:bg-slate-900 overflow-y-auto">
                 <div id="key-form-container" class="bg-white dark:bg-slate-800 p-4 rounded-xl shadow-sm m-0">
                     <div class="flex justify-between items-center border-b dark:border-slate-700 pb-2 mb-4">
-                      <h3 id="key-form-title" class="font-bold text-lg text-slate-800 dark:text-slate-100">Añadir llave nueva</h3>
+                      <div class="flex items-center gap-4">
+                        <h3 id="key-form-title" class="font-bold text-lg text-slate-800 dark:text-slate-100">Añadir llave nueva</h3>
+                        <button type="button" id="toggle-wifi-mode-btn" class="flex items-center gap-2 text-sm font-semibold py-1 px-3 rounded-full bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 transition-colors">
+                          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M8.25 15.75l-3-3m0 0l3-3m-3 3h15.75m-12.75-3l-3 3m0 0l3 3m-3-3h15.75" transform="rotate(45 12 12)"/></svg>
+                          WiFi QR
+                        </button>
+                      </div>
                        <button id="back-to-list-btn" class="text-sm flex items-center gap-1 text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100">
                          <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
                          Volver
@@ -153,13 +161,13 @@
                         <input id="key-name-input" placeholder="ej: 'Cuenta de Google'" required class="mt-1 w-full p-2 border border-slate-300 rounded-md dark:bg-slate-700 dark:border-slate-600 dark:text-slate-200 dark:placeholder-slate-400" />
                       </div>
                       <div>
-                        <label for="key-user-input" class="block text-sm font-medium text-slate-700 dark:text-slate-300">Usuario / Correo</label>
+                        <label id="key-user-label" for="key-user-input" class="block text-sm font-medium text-slate-700 dark:text-slate-300">Usuario / Correo</label>
                          <div class="relative">
                           <input id="key-user-input" type="password" placeholder="usuario@ejemplo.com" class="mt-1 w-full p-2 border border-slate-300 rounded-md dark:bg-slate-700 dark:border-slate-600 dark:text-slate-200 dark:placeholder-slate-400" />
                         </div>
                       </div>
                       <div>
-                        <label for="key-pass-input" class="block text-sm font-medium text-slate-700 dark:text-slate-300">Contraseña</label>
+                        <label id="key-pass-label" for="key-pass-input" class="block text-sm font-medium text-slate-700 dark:text-slate-300">Contraseña</label>
                         <div class="relative">
                           <input id="key-pass-input" type="password" placeholder="Tu contraseña segura" class="mt-1 w-full p-2 border border-slate-300 rounded-md font-mono pr-20 transition-colors dark:bg-slate-700 dark:border-slate-600 dark:text-slate-200 dark:placeholder-slate-400" />
                            <div class="absolute inset-y-0 right-0 pr-3 flex items-center">
@@ -167,6 +175,16 @@
                             <button type="button" class="text-slate-500 hover:text-slate-700 dark:hover:text-slate-300" data-toggle-password="key-pass-input" title="Mostrar/Ocultar"></button>
                           </div>
                         </div>
+                      </div>
+                      <div id="wifi-options-container" class="hidden space-y-4 border-y border-dashed border-slate-300 dark:border-slate-600 py-4">
+                          <div>
+                              <label for="wifi-encryption-select" class="block text-sm font-medium text-slate-700 dark:text-slate-300">Tipo de Cifrado</label>
+                              <select id="wifi-encryption-select" class="mt-1 w-full p-2 border border-slate-300 rounded-md bg-white dark:bg-slate-700 dark:border-slate-600 dark:text-slate-200">
+                                  <option value="WPA">WPA/WPA2/WPA3</option>
+                                  <option value="WEP">WEP</option>
+                                  <option value="nopass">None (Sin contraseña)</option>
+                              </select>
+                          </div>
                       </div>
                        <div>
                         <label for="key-url-input" class="block text-sm font-medium text-slate-700 dark:text-slate-300">URL</label>
@@ -400,6 +418,12 @@
          <p class="text-xs text-slate-500 dark:text-slate-400 border-t pt-2 dark:border-slate-700">La información biométrica se guarda únicamente en el almacenamiento local de este navegador/dispositivo.</p>
     </div>
    </div>
+
+  <div id="qr-code-modal" class="modal-container hidden">
+    <div id="qr-code-container" class="p-4 bg-white rounded-lg shadow-xl">
+        <!-- QR code will be generated here -->
+    </div>
+  </div>
 
   <div id="toast-container" class="fixed bottom-4 right-4 z-50 space-y-2"></div>
 
