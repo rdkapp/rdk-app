@@ -7,9 +7,15 @@
 
   <!-- PWA & Mobile Icons -->
   <link rel="manifest" href="/manifest.json">
-  <link rel="icon" type="image/png" sizes="128x128" href="/icon.png">
-  <link rel="shortcut icon" href="/icon.png" type="image/png">
-  <link rel="apple-touch-icon" href="/icon.png">
+  <!-- Standard favicons for browser tabs -->
+  <link rel="icon" type="image/png" sizes="32x32" href="/icon.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/icon.png">
+  <!-- Icon for iOS "Add to Home Screen" -->
+  <link rel="apple-touch-icon" sizes="128x128" href="/icon.png">
+  <link rel="apple-touch-icon" href="/icon.png"> <!-- Fallback for older iOS -->
+  <!-- Fallback for older browsers -->
+  <link rel="shortcut icon" href="/icon.png">
+  
   <meta name="theme-color" content="#1e293b">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
