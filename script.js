@@ -1302,6 +1302,13 @@ document.addEventListener('DOMContentLoaded', () => {
     DOMElements.openDbBtn.addEventListener('click', () => {
         const selectedOption = DOMElements.dbSelect.options[DOMElements.dbSelect.selectedIndex];
         if (!selectedOption) return;
+
+        if (dbFileId && selectedOption.value === dbFileId) {
+            showToast('Ese llavero ya está abierto.', 'info');
+            toggleMenu(true);
+            return;
+        }
+
         openingFile = { id: selectedOption.value, name: selectedOption.dataset.name };
         DOMElements.modalDbName.textContent = openingFile.name;
         DOMElements.openDbModal.classList.remove('hidden');
@@ -1369,11 +1376,20 @@ document.addEventListener('DOMContentLoaded', () => {
     DOMElements.manageBiometricsBtn.addEventListener('click', openBiometricsManager);
 
     // --- Accordion Logic (Side Menu) ---
+    const allAccordionItems = document.querySelectorAll('#menu-accordion .accordion-item');
     document.querySelectorAll('#menu-accordion .accordion-header').forEach(button => {
         button.addEventListener('click', () => {
-            const item = button.parentElement;
-            const content = button.nextElementSibling;
-            item.classList.toggle('expanded');
+            const currentItem = button.parentElement;
+            
+            // Close all other accordion items
+            allAccordionItems.forEach(item => {
+                if (item !== currentItem) {
+                    item.classList.remove('expanded');
+                }
+            });
+            
+            // Toggle the clicked item
+            currentItem.classList.toggle('expanded');
         });
     });
 
