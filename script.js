@@ -1130,7 +1130,7 @@ function handleAuthClick() {
         accessToken = null;
     }
     // We clear the global `accessToken` here to signal to the callback that this is a new, explicit login.
-    tokenClient.requestAccessToken({ prompt: 'consent' });
+    tokenClient.requestAccessToken();
 }
 
 async function fetchUserProfile() {
