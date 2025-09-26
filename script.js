@@ -4,6 +4,7 @@ const SCOPES = 'https://www.googleapis.com/auth/drive.file https://www.googleapi
 const SESSION_TIMEOUT = 5 * 60 * 1000; // 5 minutes
 const BIO_STORAGE_KEY = 'rdk_biometric_data';
 const BIO_ENCRYPTION_KEY = 'a-not-so-secret-key-for-local-encryption'; // Used only to obfuscate master key in localStorage
+const MAX_TAGS_PER_KEY = 3;
 
 // --- SVG ICONS ---
 const ICONS = {
@@ -210,7 +211,6 @@ function showKeyListView() {
 
 function showKeyFormView(isEditing = false) {
     if (!isEditing) resetKeyForm();
-    populateTagSelect();
     toggleMenu(true);
     DOMElements.keyListView.classList.add('-translate-x-full');
     DOMElements.keyListView.classList.remove('translate-x-0');
@@ -243,21 +243,22 @@ function getFilteredKeys() {
     
     const searchFilter = DOMElements.searchInput.value.toLowerCase();
     const tagFilter = DOMElements.tagFilterSelect.value;
-    const tagMap = new Map(dbData.tags.map(t => [t.id, t.name.toLowerCase()]));
+    const tagMap = new Map((dbData.tags || []).map(t => [t.id, t.name.toLowerCase()]));
 
     let filtered = dbData.keys;
 
     // 1. Filter by tag
     if (tagFilter !== 'all') {
-        filtered = filtered.filter(k => k.tagId === tagFilter);
+        filtered = filtered.filter(k => k.tagIds && k.tagIds.includes(tagFilter));
     }
 
     // 2. Filter by search term
     if (searchFilter) {
         filtered = filtered.filter(k => {
-            const tagName = k.tagId ? tagMap.get(k.tagId) || '' : '';
-            // Search is now limited to non-encrypted fields for security
-            return [k.name.toLowerCase(), k.note?.toLowerCase(), tagName].join(' ').includes(searchFilter);
+            const tagNames = (k.tagIds || [])
+                .map(id => tagMap.get(id) || '')
+                .join(' ');
+            return [k.name.toLowerCase(), k.note?.toLowerCase(), tagNames].join(' ').includes(searchFilter);
         });
     }
 
@@ -320,14 +321,22 @@ function createKeyListItem(key) {
     const item = document.createElement('div');
     item.className = 'key-item bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden flex flex-col';
     
-    const tag = dbData.tags.find(t => t.id === key.tagId);
-    const tagHtml = tag ? `<span class="text-xs bg-sky-100 text-sky-800 px-2 py-1 rounded-full dark:bg-sky-900/70 dark:text-sky-300 ml-2 flex-shrink-0">${escapeHtml(tag.name)}</span>` : '';
+    let tagsHtml = '';
+    if (key.tagIds && key.tagIds.length > 0) {
+        tagsHtml = key.tagIds.map(tagId => {
+            const tag = dbData.tags.find(t => t.id === tagId);
+            if (tag) {
+                return `<span class="text-xs bg-sky-100 text-sky-800 px-2 py-1 rounded-full dark:bg-sky-900/70 dark:text-sky-300 flex-shrink-0">${escapeHtml(tag.name)}</span>`;
+            }
+            return '';
+        }).join('');
+    }
 
     item.innerHTML = `
         <button class="key-item-header w-full flex justify-between items-center text-left p-3 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors">
-            <div class="flex items-center min-w-0">
-                <span class="font-bold text-slate-800 dark:text-slate-100 truncate">${escapeHtml(key.name)}</span>
-                ${tagHtml}
+            <div class="flex items-center gap-2 flex-wrap min-w-0">
+                <span class="font-bold text-slate-800 dark:text-slate-100 truncate mr-2">${escapeHtml(key.name)}</span>
+                ${tagsHtml}
             </div>
             ${ICONS.chevronDown}
         </button>
@@ -470,12 +479,23 @@ async function unlockDbWithMasterKey(fileId, fileName, mKey) {
         if (!decryptedJson) throw new Error("Descifrado falló. Clave maestra incorrecta o archivo corrupto.");
         
         let parsedData = JSON.parse(decryptedJson);
-        // --- Backward Compatibility ---
+        
+        // --- Backward Compatibility & Data Migration ---
         if (Array.isArray(parsedData)) { // Very old format was just an array of keys
             parsedData = { keys: parsedData, tags: [] };
         }
         if (!parsedData.tags) {
             parsedData.tags = [];
+        }
+        if (parsedData.keys && Array.isArray(parsedData.keys)) {
+            parsedData.keys.forEach(key => {
+                if (key.tagId && !key.tagIds) { // Migrate single tagId to new array format
+                    key.tagIds = [key.tagId];
+                    delete key.tagId;
+                } else if (!key.tagIds) { // Ensure all keys have the tagIds array
+                    key.tagIds = [];
+                }
+            });
         }
         parsedData.tags.forEach(t => { if(!t.id) t.id = `tag_${Date.now()}_${Math.random()}`; });
 
@@ -515,13 +535,17 @@ function handleSaveKey(event) {
     if (!dbData) return;
     const name = DOMElements.keyNameInput.value.trim();
     if (!name) return alert('El nombre de la llave es requerido.');
+    
+    const selectedPills = DOMElements.selectedTagsContainer.querySelectorAll('[data-tag-id]');
+    const tagIds = Array.from(selectedPills).map(pill => pill.dataset.tagId);
+
     const keyData = {
         name,
         user: CryptoService.encrypt(DOMElements.keyUserInput.value, masterKey),
         pass: CryptoService.encrypt(DOMElements.keyPassInput.value, masterKey),
         url: CryptoService.encrypt(DOMElements.keyUrlInput.value, masterKey),
         note: DOMElements.keyNoteInput.value,
-        tagId: DOMElements.keyTagSelect.value || null,
+        tagIds: tagIds,
     };
     const existingId = DOMElements.keyIdInput.value;
     if (existingId) {
@@ -598,6 +622,7 @@ function resetKeyForm() {
     DOMElements.keyIdInput.value = '';
     DOMElements.keyFormTitle.textContent = 'Añadir llave nueva';
     DOMElements.cancelEditBtn.classList.add('hidden');
+    renderTagSelector([]);
     updatePasswordStrengthUI('');
 }
 
@@ -614,8 +639,8 @@ function populateEditForm(keyId) {
         DOMElements.keyNoteInput.value = key.note || '';
         DOMElements.keyFormTitle.textContent = `Editando '${key.name}'`;
         DOMElements.cancelEditBtn.classList.remove('hidden');
+        renderTagSelector(key.tagIds || []);
         showKeyFormView(true);
-        DOMElements.keyTagSelect.value = key.tagId || '';
         updatePasswordStrengthUI(DOMElements.keyPassInput.value);
     } catch (e) { showStatus('Error al preparar la llave para edición.', 'error'); }
 }
@@ -718,24 +743,52 @@ function handleUpdateTag(e) {
 function handleDeleteTag(tagId) {
     if (!dbData || !confirm('¿Seguro que quieres eliminar esta etiqueta? Se quitará de todas las llaves asociadas.')) return;
     dbData.tags = dbData.tags.filter(t => t.id !== tagId);
-    dbData.keys.forEach(k => { if (k.tagId === tagId) k.tagId = null; });
+    // Remove the tag from any key that has it
+    dbData.keys.forEach(k => {
+        if (k.tagIds) {
+            k.tagIds = k.tagIds.filter(id => id !== tagId);
+        }
+    });
     saveDb();
     renderTagsInModal();
     renderKeys();
     populateTagFilterSelect();
 }
 
-function populateTagSelect() {
-    const select = DOMElements.keyTagSelect;
-    select.innerHTML = '<option value="">Sin etiqueta</option>';
-    if (!dbData) return;
-    dbData.tags.sort((a,b) => a.name.localeCompare(b.name)).forEach(tag => {
+function renderTagSelector(selectedIds = []) {
+    DOMElements.selectedTagsContainer.innerHTML = '';
+    DOMElements.addTagDropdown.innerHTML = '<option value="">Añadir etiqueta...</option>';
+    
+    const allTags = dbData.tags || [];
+    const availableTags = allTags.filter(tag => !selectedIds.includes(tag.id));
+
+    availableTags.sort((a,b) => a.name.localeCompare(b.name)).forEach(tag => {
         const option = document.createElement('option');
         option.value = tag.id;
         option.textContent = tag.name;
-        select.appendChild(option);
+        DOMElements.addTagDropdown.appendChild(option);
     });
+
+    selectedIds.forEach(id => {
+        const tag = allTags.find(t => t.id === id);
+        if (tag) {
+            const pill = document.createElement('div');
+            pill.className = 'flex items-center gap-1.5 bg-sky-100 text-sky-800 text-sm px-2 py-1 rounded-full dark:bg-sky-900/70 dark:text-sky-300';
+            pill.dataset.tagId = tag.id;
+            pill.innerHTML = `
+                <span>${escapeHtml(tag.name)}</span>
+                <button type="button" class="remove-tag-pill-btn font-bold leading-none text-sky-600 dark:text-sky-200 hover:text-sky-900 dark:hover:text-sky-50">&times;</button>
+            `;
+            DOMElements.selectedTagsContainer.appendChild(pill);
+        }
+    });
+
+    const count = selectedIds.length;
+    DOMElements.tagCountIndicator.textContent = count;
+    DOMElements.addTagDropdown.disabled = count >= MAX_TAGS_PER_KEY;
+    if (count < MAX_TAGS_PER_KEY) DOMElements.addTagDropdown.value = '';
 }
+
 
 function populateTagFilterSelect() {
     const select = DOMElements.tagFilterSelect;
@@ -1186,6 +1239,32 @@ function handleSignOut(isTimeout = false) {
 
 // --- INITIALIZATION ---
 
+function handleTagSelectorChange(e) {
+    const selectedTagId = e.target.value;
+    if (!selectedTagId) return;
+
+    const selectedPills = Array.from(DOMElements.selectedTagsContainer.querySelectorAll('[data-tag-id]'));
+    let currentIds = selectedPills.map(pill => pill.dataset.tagId);
+
+    if (currentIds.length < MAX_TAGS_PER_KEY && !currentIds.includes(selectedTagId)) {
+        currentIds.push(selectedTagId);
+        renderTagSelector(currentIds);
+    }
+}
+
+function handleTagPillRemove(e) {
+    if (e.target.classList.contains('remove-tag-pill-btn')) {
+        const pill = e.target.parentElement;
+        const tagIdToRemove = pill.dataset.tagId;
+        
+        const selectedPills = Array.from(DOMElements.selectedTagsContainer.querySelectorAll('[data-tag-id]'));
+        let currentIds = selectedPills.map(p => p.dataset.tagId);
+        
+        currentIds = currentIds.filter(id => id !== tagIdToRemove);
+        renderTagSelector(currentIds);
+    }
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     // Cache all DOM elements
     DOMElements = {
@@ -1212,7 +1291,6 @@ document.addEventListener('DOMContentLoaded', () => {
         keyPassInput: document.getElementById('key-pass-input'),
         keyUrlInput: document.getElementById('key-url-input'),
         keyNoteInput: document.getElementById('key-note-input'),
-        keyTagSelect: document.getElementById('key-tag-select'),
         keyFormTitle: document.getElementById('key-form-title'),
         cancelEditBtn: document.getElementById('cancel-edit-btn'),
         addNewKeyHeaderBtn: document.getElementById('add-new-key-header-btn'),
@@ -1258,6 +1336,10 @@ document.addEventListener('DOMContentLoaded', () => {
         editTagNameInput: document.getElementById('edit-tag-name-input'),
         tagFilterSelect: document.getElementById('tag-filter-select'),
         passwordStrengthIndicator: document.getElementById('password-strength-indicator'),
+        // New Tag Selector
+        tagCountIndicator: document.getElementById('tag-count-indicator'),
+        selectedTagsContainer: document.getElementById('selected-tags-container'),
+        addTagDropdown: document.getElementById('add-tag-dropdown'),
         // View toggle
         viewToggleBtn: document.getElementById('view-toggle-btn'),
         // Biometrics
@@ -1371,6 +1453,9 @@ document.addEventListener('DOMContentLoaded', () => {
     DOMElements.manageTagsBtn.addEventListener('click', openTagsModal);
     DOMElements.addTagForm.addEventListener('submit', handleAddTag);
     DOMElements.editTagForm.addEventListener('submit', handleUpdateTag);
+    DOMElements.addTagDropdown.addEventListener('change', handleTagSelectorChange);
+    DOMElements.selectedTagsContainer.addEventListener('click', handleTagPillRemove);
+
 
     // --- Biometric Management ---
     DOMElements.manageBiometricsBtn.addEventListener('click', openBiometricsManager);
