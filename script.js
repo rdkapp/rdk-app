@@ -6,6 +6,7 @@ const BIO_STORAGE_KEY = 'rdk_biometric_data';
 const BIO_ENCRYPTION_KEY = 'a-not-so-secret-key-for-local-encryption'; // Used only to obfuscate master key in localStorage
 const MAX_TAGS_PER_KEY = 3;
 const WIFI_QR_TAG_NAME = 'WiFiQR';
+const REVEAL_TIMEOUT = 3000; // 3 seconds
 
 // --- SVG ICONS ---
 const ICONS = {
@@ -38,6 +39,7 @@ let activeDbFiles = [];
 let currentView = 'list';
 let isBiometricSupported = false;
 let isWiFiMode = false;
+const revealTimers = new Map();
 
 
 // --- DOM ELEMENTS ---
@@ -358,8 +360,8 @@ function createKeyListItem(key) {
             ${ICONS.chevronDown}
         </button>
         <div class="key-item-body"><div class="p-3 border-t border-slate-100 dark:border-slate-700 space-y-2 text-sm">
-            ${createRevealingFieldHTML(isWifiKey ? 'Nombre de Red (SSID)' : 'Usuario', key.user)}
-            ${createRevealingFieldHTML(isWifiKey ? 'Contraseña de Red' : 'Contraseña', key.pass, true)}
+            ${createRevealingFieldHTML(key.id, 'user', isWifiKey ? 'Nombre de Red (SSID)' : 'Usuario', key.user)}
+            ${createRevealingFieldHTML(key.id, 'pass', isWifiKey ? 'Contraseña de Red' : 'Contraseña', key.pass, true)}
             ${createUrlLinkHTML('URL', key.url)}
             ${key.note ? `<div class="pt-2 text-slate-600 dark:text-slate-300"><strong class="font-medium text-slate-800 dark:text-slate-200">Nota:</strong><p class="whitespace-pre-wrap break-words p-2 bg-slate-50 dark:bg-slate-700/50 rounded mt-1">${escapeHtml(key.note)}</p></div>` : ''}
             <div class="flex gap-4 pt-2 border-t border-slate-100 dark:border-slate-700">
@@ -403,9 +405,10 @@ function createUrlLinkHTML(label, encryptedUrl) {
     return urlContainer.outerHTML;
 }
 
-function createRevealingFieldHTML(label, encryptedValue, isMono = false) {
+function createRevealingFieldHTML(keyId, fieldType, label, encryptedValue, isMono = false) {
     if (!encryptedValue) return '';
     const maskedValue = '••••••••';
+    const uniqueId = `${keyId}-${fieldType}`;
     // Store the ENCRYPTED value in data-value for just-in-time decryption
     return `<div class="flex items-center justify-between gap-2 p-2 bg-slate-50 dark:bg-slate-700/50 rounded">
         <div class="flex-grow min-w-0">
@@ -413,26 +416,49 @@ function createRevealingFieldHTML(label, encryptedValue, isMono = false) {
             <span class="value-span ${isMono ? 'font-mono' : ''} text-slate-700 dark:text-slate-300 break-all ml-1" data-encrypted-value="${escapeHtml(encryptedValue)}">${maskedValue}</span>
         </div>
         <div class="flex-shrink-0 flex items-center gap-2">
-            <button class="reveal-btn p-1 text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 transition-colors" title="Mostrar/Ocultar">${ICONS.eye}</button>
+            <button class="reveal-btn p-1 text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 transition-colors" title="Mostrar/Ocultar" data-field-id="${uniqueId}">${ICONS.eye}</button>
             <button class="copy-btn p-1 text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 transition-colors" title="Copiar ${label}">${ICONS.copy}</button>
         </div>
     </div>`;
 }
 
 function attachRevealingFieldListeners(parentElement) {
-    parentElement.querySelectorAll('.reveal-btn').forEach(btn => btn.onclick = (e) => {
-        const valueSpan = e.currentTarget.closest('div').parentElement.querySelector('.value-span');
-        const isMasked = valueSpan.textContent === '••••••••';
-        if (isMasked) {
-            const encryptedValue = valueSpan.dataset.encryptedValue;
-            const decryptedValue = CryptoService.decrypt(encryptedValue, masterKey);
-            valueSpan.textContent = decryptedValue || '[Error al descifrar]';
-        } else {
+    parentElement.querySelectorAll('.reveal-btn').forEach(btn => {
+        const fieldId = btn.dataset.fieldId;
+        const valueSpan = btn.closest('div').parentElement.querySelector('.value-span');
+
+        const hideField = () => {
             valueSpan.textContent = '••••••••';
-        }
-        e.currentTarget.innerHTML = isMasked ? ICONS.eyeOff : ICONS.eye;
+            btn.innerHTML = ICONS.eye;
+            if (revealTimers.has(fieldId)) {
+                clearTimeout(revealTimers.get(fieldId));
+                revealTimers.delete(fieldId);
+            }
+        };
+
+        btn.onclick = (e) => {
+            e.stopPropagation(); // Prevent card from expanding/collapsing
+            if (revealTimers.has(fieldId)) {
+                hideField(); // If clicked again while revealed, hide immediately
+                return;
+            }
+
+            const isMasked = valueSpan.textContent === '••••••••';
+            if (isMasked) {
+                const encryptedValue = valueSpan.dataset.encryptedValue;
+                const decryptedValue = CryptoService.decrypt(encryptedValue, masterKey);
+                valueSpan.textContent = decryptedValue || '[Error al descifrar]';
+                btn.innerHTML = ICONS.eyeOff;
+
+                // Set a timer to auto-hide
+                const timerId = setTimeout(hideField, REVEAL_TIMEOUT);
+                revealTimers.set(fieldId, timerId);
+            }
+        };
     });
+
     parentElement.querySelectorAll('.copy-btn').forEach(btn => btn.onclick = (e) => {
+        e.stopPropagation(); // Prevent card from expanding/collapsing
         const valueSpan = e.currentTarget.closest('div').parentElement.querySelector('.value-span');
         const encryptedValue = valueSpan.dataset.encryptedValue;
         const decryptedValue = CryptoService.decrypt(encryptedValue, masterKey);
@@ -676,13 +702,80 @@ async function handleDeleteDb() {
     finally { setLoading(false, DOMElements.deleteConfirmBtn); }
 }
 
+async function handleChangeMasterKey(event) {
+    event.preventDefault();
+    const currentKey = DOMElements.currentMasterKeyInput.value;
+    const newKey = DOMElements.newMasterKeyInput.value;
+    const confirmKey = DOMElements.confirmMasterKeyInput.value;
+
+    if (newKey !== confirmKey) {
+        showStatus('La nueva clave y su confirmación no coinciden.', 'error');
+        return;
+    }
+    if (!currentKey || !newKey) {
+        showStatus('Todos los campos son obligatorios.', 'error');
+        return;
+    }
+
+    setLoading(true, DOMElements.changeMasterKeyConfirmBtn);
+
+    // Correct validation against the in-memory master key
+    if (currentKey !== masterKey) {
+        showStatus('La clave maestra actual es incorrecta.', 'error');
+        setLoading(false, DOMElements.changeMasterKeyConfirmBtn);
+        return;
+    }
+    
+    showStatus('Re-encriptando datos...');
+
+    try {
+        // Re-encrypt all data with the new key
+        dbData.keys.forEach(key => {
+            key.user = CryptoService.encrypt(CryptoService.decrypt(key.user, currentKey), newKey);
+            key.pass = CryptoService.encrypt(CryptoService.decrypt(key.pass, currentKey), newKey);
+            key.url = CryptoService.encrypt(CryptoService.decrypt(key.url, currentKey), newKey);
+            // Non-encrypted fields like name, note, tagIds, etc., are left as is.
+        });
+
+        masterKey = newKey; // Update global master key
+
+        // Update biometric data if it exists for this file
+        const bioData = getBiometricData();
+        if (bioData[dbFileId] && Array.isArray(bioData[dbFileId])) {
+            bioData[dbFileId].forEach(cred => {
+                cred.encryptedMasterKey = CryptoService.encrypt(newKey, BIO_ENCRYPTION_KEY);
+            });
+            saveBiometricData(bioData);
+            showToast('Clave biométrica actualizada.', 'info');
+        }
+
+        await saveDb(); // This will save the re-encrypted data and update session state
+
+        DOMElements.changeMasterKeyModal.classList.add('hidden');
+        DOMElements.changeMasterKeyForm.reset();
+        showStatus('Clave maestra cambiada con éxito.', 'ok');
+        showToast('Clave maestra cambiada con éxito.', 'success');
+        renderKeys(); // Re-render to ensure all listeners use the new master key
+    } catch (e) {
+        showStatus(`Error al cambiar la clave: ${e.message}`, 'error');
+        // IMPORTANT: If re-encryption fails, revert the master key to avoid a locked state.
+        masterKey = currentKey;
+    } finally {
+        setLoading(false, DOMElements.changeMasterKeyConfirmBtn);
+    }
+}
+
+
 function resetKeyForm() {
     DOMElements.keyForm.reset();
     DOMElements.keyIdInput.value = '';
     DOMElements.keyFormTitle.textContent = 'Añadir llave nueva';
     DOMElements.cancelEditBtn.classList.add('hidden');
+    // Ensure inputs are not password type on reset
+    DOMElements.keyUserInput.type = 'text';
+    DOMElements.keyPassInput.type = 'password';
     renderTagSelector([]);
-    updatePasswordStrengthUI('');
+    updatePasswordStrengthUI('', DOMElements.passwordStrengthIndicator, DOMElements.keyPassInput);
     toggleWiFiFormMode(false); // Ensure WiFi mode is off
 }
 
@@ -699,6 +792,8 @@ function populateEditForm(keyId) {
         DOMElements.keyIdInput.value = key.id;
         DOMElements.keyNameInput.value = key.name;
         // Decrypt only when populating the edit form
+        DOMElements.keyUserInput.type = 'text';
+        DOMElements.keyPassInput.type = 'password';
         DOMElements.keyUserInput.value = CryptoService.decrypt(key.user, masterKey);
         DOMElements.keyPassInput.value = CryptoService.decrypt(key.pass, masterKey);
         DOMElements.keyUrlInput.value = CryptoService.decrypt(key.url, masterKey);
@@ -710,7 +805,7 @@ function populateEditForm(keyId) {
         }
         renderTagSelector(key.tagIds || []);
         showKeyFormView(true);
-        updatePasswordStrengthUI(DOMElements.keyPassInput.value);
+        updatePasswordStrengthUI(DOMElements.keyPassInput.value, DOMElements.passwordStrengthIndicator, DOMElements.keyPassInput);
     } catch (e) { showStatus('Error al preparar la llave para edición.', 'error'); }
 }
 
@@ -730,12 +825,12 @@ function checkPasswordStrength(password) {
     return { score, strength: 'strong', emoji: '🟢', className: 'strength-strong' };
 }
 
-function updatePasswordStrengthUI(password) {
+function updatePasswordStrengthUI(password, indicatorEl, inputEl) {
     const { emoji, className } = checkPasswordStrength(password);
-    DOMElements.passwordStrengthIndicator.textContent = emoji;
-    DOMElements.keyPassInput.classList.remove('strength-weak', 'strength-medium', 'strength-strong');
+    indicatorEl.textContent = emoji;
+    inputEl.classList.remove('strength-weak', 'strength-medium', 'strength-strong');
     if (className) {
-        DOMElements.keyPassInput.classList.add(className);
+        inputEl.classList.add(className);
     }
 }
 
@@ -1445,6 +1540,7 @@ document.addEventListener('DOMContentLoaded', () => {
         dbManagementDropdown: document.getElementById('db-management-dropdown'),
         renameDbBtn: document.getElementById('rename-db-btn'),
         deleteDbBtn: document.getElementById('delete-db-btn'),
+        changeMasterKeyBtn: document.getElementById('change-master-key-btn'),
         searchInput: document.getElementById('search-input'),
         toastContainer: document.getElementById('toast-container'),
         sessionTimerTimeHeader: document.getElementById('session-timer-time-header'),
@@ -1462,6 +1558,13 @@ document.addEventListener('DOMContentLoaded', () => {
         deleteDbModal: document.getElementById('delete-db-modal'),
         deleteDbName: document.getElementById('delete-db-name'),
         deleteConfirmBtn: document.getElementById('delete-confirm-btn'),
+        changeMasterKeyModal: document.getElementById('change-master-key-modal'),
+        changeMasterKeyForm: document.getElementById('change-master-key-form'),
+        currentMasterKeyInput: document.getElementById('current-master-key-input'),
+        newMasterKeyInput: document.getElementById('new-master-key-input'),
+        confirmMasterKeyInput: document.getElementById('confirm-master-key-input'),
+        changeMasterKeyConfirmBtn: document.getElementById('change-master-key-confirm-btn'),
+        newPasswordStrengthIndicator: document.getElementById('new-password-strength-indicator'),
         tagsModal: document.getElementById('tags-modal'),
         tagsList: document.getElementById('tags-list'),
         addTagForm: document.getElementById('add-tag-form'),
@@ -1579,6 +1682,13 @@ document.addEventListener('DOMContentLoaded', () => {
         DOMElements.deleteDbModal.classList.remove('hidden');
     });
     DOMElements.deleteConfirmBtn.addEventListener('click', handleDeleteDb);
+    DOMElements.changeMasterKeyBtn.addEventListener('click', () => {
+        DOMElements.dbManagementDropdown.classList.add('hidden');
+        DOMElements.changeMasterKeyModal.classList.remove('hidden');
+        DOMElements.currentMasterKeyInput.focus();
+    });
+    DOMElements.changeMasterKeyForm.addEventListener('submit', handleChangeMasterKey);
+    DOMElements.newMasterKeyInput.addEventListener('input', e => updatePasswordStrengthUI(e.target.value, DOMElements.newPasswordStrengthIndicator, DOMElements.newMasterKeyInput));
 
 
     // --- Key Management ---
@@ -1628,28 +1738,41 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
-    // --- Password visibility toggles ---
-    DOMElements.keyPassInput.addEventListener('input', e => updatePasswordStrengthUI(e.target.value));
+    // --- Password visibility toggles with auto-hide ---
+    DOMElements.keyPassInput.addEventListener('input', e => updatePasswordStrengthUI(e.target.value, DOMElements.passwordStrengthIndicator, DOMElements.keyPassInput));
     
     document.querySelectorAll('[data-toggle-password]').forEach(btn => {
         const input = document.getElementById(btn.dataset.togglePassword);
         btn.innerHTML = ICONS.eye; // Set initial icon
         btn.addEventListener('click', () => {
-            if(input.type === 'password') {
-                input.type = 'text';
-                btn.innerHTML = ICONS.eyeOff;
-            } else {
+            const inputId = input.id;
+
+            // If a timer is already running for this input, clicking the button again should just hide it.
+            if (revealTimers.has(inputId)) {
+                clearTimeout(revealTimers.get(inputId));
+                revealTimers.delete(inputId);
                 input.type = 'password';
                 btn.innerHTML = ICONS.eye;
+                return;
+            }
+            
+            if (input.type === 'password') {
+                input.type = 'text';
+                btn.innerHTML = ICONS.eyeOff;
+
+                // Set a timer to hide it again
+                const timerId = setTimeout(() => {
+                    if (document.getElementById(inputId)) { // Check if element still exists
+                        input.type = 'password';
+                        btn.innerHTML = ICONS.eye;
+                    }
+                    revealTimers.delete(inputId);
+                }, REVEAL_TIMEOUT);
+                revealTimers.set(inputId, timerId);
             }
         });
     });
 
-    [DOMElements.keyUserInput, DOMElements.keyPassInput].forEach(input => {
-        input.addEventListener('focus', () => input.type = 'text');
-        input.addEventListener('blur', () => input.type = 'password');
-    });
-    
     // --- View Toggle (List/Card) ---
     function updateViewToggleBtn(view) {
         DOMElements.viewToggleBtn.innerHTML = view === 'list' ? ICONS.grid : ICONS.list;
