@@ -7,6 +7,7 @@ const BIO_ENCRYPTION_KEY = 'a-not-so-secret-key-for-local-encryption'; // Used o
 const MAX_TAGS_PER_KEY = 3;
 const WIFI_QR_TAG_NAME = 'WiFiQR';
 const REVEAL_TIMEOUT = 3000; // 3 seconds
+const COLLAPSE_TIMEOUT = 10000; // 10 seconds
 
 // --- SVG ICONS ---
 const ICONS = {
@@ -40,6 +41,7 @@ let currentView = 'list';
 let isBiometricSupported = false;
 let isWiFiMode = false;
 const revealTimers = new Map();
+const collapseTimers = new Map();
 
 
 // --- DOM ELEMENTS ---
@@ -370,7 +372,34 @@ function createKeyListItem(key) {
                 ${wifiButtonHtml}
             </div>
         </div></div>`;
-    item.querySelector('.key-item-header').onclick = () => item.classList.toggle('expanded');
+    
+    const header = item.querySelector('.key-item-header');
+    header.onclick = () => {
+        const keyId = key.id;
+
+        // Immediately reflect the user's action
+        item.classList.toggle('expanded');
+
+        const isNowExpanded = item.classList.contains('expanded');
+
+        // Always clear any existing timer for this item
+        if (collapseTimers.has(keyId)) {
+            clearTimeout(collapseTimers.get(keyId));
+            collapseTimers.delete(keyId);
+        }
+
+        // If it is now expanded, set a new timer to collapse it
+        if (isNowExpanded) {
+            const timerId = setTimeout(() => {
+                if (document.body.contains(item)) {
+                    item.classList.remove('expanded');
+                }
+                collapseTimers.delete(keyId);
+            }, COLLAPSE_TIMEOUT);
+            collapseTimers.set(keyId, timerId);
+        }
+    };
+
     item.querySelector('.edit-btn').onclick = () => populateEditForm(key.id);
     item.querySelector('.delete-btn').onclick = () => handleDeleteKey(key.id);
     if(isWifiKey) {
