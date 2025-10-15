@@ -580,7 +580,10 @@ async function saveDb() {
         await GDriveService.updateFileContent(dbFileId, encryptedContent);
         saveSessionState();
         showToast('Guardado en Drive correctamente.');
-    } catch (e) { showStatus(`Error al guardar: ${e.message}`, 'error'); }
+    } catch (e) {
+        // Re-throw the error so the calling function knows about the failure and can handle the UI.
+        throw e;
+    }
 }
 
 function handleSaveKey(event) {
@@ -638,7 +641,7 @@ function handleSaveKey(event) {
     } else {
         dbData.keys.push({ id: `id_${Date.now()}_${Math.random()}`, ...keyData });
     }
-    saveDb();
+    saveDb().catch(e => showToast(`Error al guardar: ${e.message}`, 'error'));
     renderKeys();
     showKeyListView();
 }
@@ -647,7 +650,7 @@ function handleSaveKey(event) {
 function handleDeleteKey(keyId) {
     if (!dbData || !confirm('¿Estás seguro de que quieres eliminar esta llave?')) return;
     dbData.keys = dbData.keys.filter(k => k.id !== keyId);
-    saveDb();
+    saveDb().catch(e => showToast(`Error al guardar: ${e.message}`, 'error'));
     renderKeys();
 }
 
@@ -709,19 +712,18 @@ async function handleChangeMasterKey(event) {
     const confirmKey = DOMElements.confirmMasterKeyInput.value;
 
     if (newKey !== confirmKey) {
-        showStatus('La nueva clave y su confirmación no coinciden.', 'error');
+        showToast('La nueva clave y su confirmación no coinciden.', 'error');
         return;
     }
     if (!currentKey || !newKey) {
-        showStatus('Todos los campos son obligatorios.', 'error');
+        showToast('Todos los campos son obligatorios.', 'error');
         return;
     }
 
     setLoading(true, DOMElements.changeMasterKeyConfirmBtn);
 
-    // Correct validation against the in-memory master key
     if (currentKey !== masterKey) {
-        showStatus('La clave maestra actual es incorrecta.', 'error');
+        showToast('La clave maestra actual es incorrecta.', 'error');
         setLoading(false, DOMElements.changeMasterKeyConfirmBtn);
         return;
     }
@@ -734,7 +736,6 @@ async function handleChangeMasterKey(event) {
             key.user = CryptoService.encrypt(CryptoService.decrypt(key.user, currentKey), newKey);
             key.pass = CryptoService.encrypt(CryptoService.decrypt(key.pass, currentKey), newKey);
             key.url = CryptoService.encrypt(CryptoService.decrypt(key.url, currentKey), newKey);
-            // Non-encrypted fields like name, note, tagIds, etc., are left as is.
         });
 
         masterKey = newKey; // Update global master key
@@ -755,9 +756,9 @@ async function handleChangeMasterKey(event) {
         DOMElements.changeMasterKeyForm.reset();
         showStatus('Clave maestra cambiada con éxito.', 'ok');
         showToast('Clave maestra cambiada con éxito.', 'success');
-        renderKeys(); // Re-render to ensure all listeners use the new master key
+        renderKeys();
     } catch (e) {
-        showStatus(`Error al cambiar la clave: ${e.message}`, 'error');
+        showToast(`Error al cambiar la clave: ${e.message}`, 'error');
         // IMPORTANT: If re-encryption fails, revert the master key to avoid a locked state.
         masterKey = currentKey;
     } finally {
@@ -877,7 +878,7 @@ function handleAddTag(e) {
     }
     dbData.tags.push({ id: `tag_${Date.now()}_${Math.random()}`, name: newTagName });
     DOMElements.addTagInput.value = '';
-    saveDb();
+    saveDb().catch(e => showToast(`Error al guardar: ${e.message}`, 'error'));
     renderTagsInModal();
     populateTagFilterSelect();
 }
@@ -903,7 +904,7 @@ function handleUpdateTag(e) {
     const tag = dbData.tags.find(t => t.id === tagId);
     if (tag) {
         tag.name = newTagName;
-        saveDb();
+        saveDb().catch(e => showToast(`Error al guardar: ${e.message}`, 'error'));
         renderTagsInModal();
         renderKeys();
         populateTagFilterSelect();
@@ -920,7 +921,7 @@ function handleDeleteTag(tagId) {
             k.tagIds = k.tagIds.filter(id => id !== tagId);
         }
     });
-    saveDb();
+    saveDb().catch(e => showToast(`Error al guardar: ${e.message}`, 'error'));
     renderTagsInModal();
     renderKeys();
     populateTagFilterSelect();
